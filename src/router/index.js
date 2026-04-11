@@ -1,48 +1,31 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 
-const LoginView = () => import('../views/LoginView.vue')
-const DashboardView = () => import('../views/DashboardView.vue')
-const ConversationsView = () => import('../views/ConversationsView.vue')
-const UsersView = () => import('../views/UsersView.vue')
-const SettingsView = () => import('../views/SettingsView.vue')
-const ProfileView = () => import('../views/ProfileView.vue')
-
-const routes = [
-  { path: '/login', name: 'Login', component: LoginView, meta: { public: true } },
-  { path: '/', name: 'Dashboard', component: DashboardView },
-  { path: '/conversations', name: 'Conversations', component: ConversationsView },
-  { path: '/users', name: 'Users', component: UsersView },
-  { path: '/settings', name: 'Settings', component: SettingsView },
-  { path: '/profile', name: 'Profile', component: ProfileView },
-  { path: '/:pathMatch(.*)*', redirect: '/' }
-]
-
 const router = createRouter({
   history: createWebHistory(),
-  routes
+  routes: [
+    { path: '/login',      name: 'Login',         component: () => import('../views/LoginView.vue'),         meta: { public: true } },
+    { path: '/register',   name: 'Register',       component: () => import('../views/RegisterView.vue'),      meta: { public: true } },
+    { path: '/recover',    name: 'Recover',        component: () => import('../views/RecoverView.vue'),       meta: { public: true } },
+    { path: '/',           name: 'Dashboard',      component: () => import('../views/DashboardView.vue') },
+    { path: '/conversations', name: 'Conversations', component: () => import('../views/ConversationsView.vue') },
+    { path: '/users',      name: 'Users',          component: () => import('../views/UsersView.vue') },
+    { path: '/whitelist',  name: 'Whitelist',      component: () => import('../views/WhitelistView.vue') },
+    { path: '/settings',   name: 'Settings',       component: () => import('../views/SettingsView.vue') },
+    { path: '/profile',    name: 'Profile',        component: () => import('../views/ProfileView.vue') },
+    { path: '/:pathMatch(.*)*', redirect: '/' },
+  ],
 })
 
 router.beforeEach(async (to, from, next) => {
-  const auth = useAuthStore()
+  const auth  = useAuthStore()
   const token = localStorage.getItem('token')
-  
-  // 如果有 token 但 store 中没有，尝试恢复
-  if (token && !auth.isLoggedIn) {
-    await auth.checkAuth()
-  }
-  
+  if (token && !auth.isLoggedIn) await auth.checkAuth()
   if (to.meta.public) {
-    if (auth.isLoggedIn && to.path === '/login') {
-      return next('/')
-    }
+    if (auth.isLoggedIn && (to.path === '/login' || to.path === '/register')) return next('/')
     return next()
   }
-  
-  if (!auth.isLoggedIn) {
-    return next('/login')
-  }
-  
+  if (!auth.isLoggedIn) return next('/login')
   next()
 })
 
