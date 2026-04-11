@@ -52,7 +52,7 @@ async function getOrCreateThread(tg, db, user, groupId, kv) {
     if (u2?.thread_id) return u2.thread_id;
   }
 
-  await kv.put(lockKey, '1', { expirationTtl: 30 });
+  await kv.put(lockKey, '1', { expirationTtl: 60 }); // CF KV minimum TTL is 60s
   try {
     const topicName = (name(user) || `User ${user.id}`).slice(0, 128);
     const res = await tg.createTopic({ chatId: groupId, name: topicName });
