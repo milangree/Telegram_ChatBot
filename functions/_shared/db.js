@@ -485,7 +485,7 @@ export class DB {
     this._activeStore = null; // reset cache
   }
 
-  /** Full sync from KV → D1 or D1 → KV. */
+  /** Full sync from KV → D1 or D1 → KV. Idempotent — safe to call multiple times. */
   async syncData(from, to) {
     const src = from === 'kv' ? this._kv : this._d1;
     const dst = to   === 'kv' ? this._kv : this._d1;
@@ -493,38 +493,74 @@ export class DB {
 
     if (to === 'd1') await this._d1.initSchema();
 
-    // Sync settings
+    // Settings
     const settings = await src.getAllSettings();
     for (const [k, v] of Object.entries(settings)) await dst.setSetting(k, v);
 
-    // Sync users
-    const users = await src.getAllUsersRaw();
-    for (const u of users) await dst.upsertUser(u);
+    // Users (upsertUser uses ON CONFLICT / overwrite — safe)
+    for (const u of await src.getAllUsersRaw()) await dst.upsertUser(u);
 
-    // Sync whitelist
+    // Whitelist: use INSERT OR REPLACE in D1, overwrite in KV
     const wl = await src.getWhitelistRaw();
-    for (const e of wl) await dst.addToWhitelist(e.user_id, e.reason, e.added_by);
+    if (to === 'd1') {
+      for (const e of wl) {
+        await this._d1.exec(
+          'INSERT OR REPLACE INTO whitelist(user_id,reason,added_by,created_at) VALUES(?,?,?,?)',
+          e.user_id, e.reason || '', e.added_by || '', e.created_at || new Date().toISOString()
+        );
+      }
+    } else {
+      for (const e of wl) await this._kv.addToWhitelist(e.user_id, e.reason, e.added_by);
+    }
 
-    // Sync messages
+    // Messages: INSERT OR IGNORE in D1 (keyed by id), overwrite in KV
     const msgs = await src.getAllMsgsRaw();
-    for (const m of msgs) await dst.addMsg(m);
+    if (to === 'd1') {
+      for (const m of msgs) {
+        await this._d1.exec(
+          `INSERT OR IGNORE INTO messages(id,user_id,direction,content,message_type,telegram_message_id,created_at)
+           VALUES(?,?,?,?,?,?,?)`,
+          m.id, m.user_id, m.direction, m.content || '', m.message_type || 'text',
+          m.telegram_message_id || null, m.created_at || new Date().toISOString()
+        );
+      }
+    } else {
+      for (const m of msgs) await this._kv.addMsg(m);
+    }
 
-    // Sync web users
+    // Web users — preserve original ID to avoid UNIQUE re-insert on repeated sync
     const wu = await src.getAllWebUsersRaw();
-    for (const u of wu) {
-      const ex = await dst.getWebUserById(u.id);
-      if (!ex) await dst.createWebUser(u.username, u.password_hash);
+    if (to === 'd1') {
+      for (const u of wu) {
+        // INSERT OR REPLACE keeps the row idempotent on both username and id
+        await this._d1.exec(
+          `INSERT OR REPLACE INTO web_users(id,username,password_hash,totp_secret,totp_enabled,is_admin,created_at)
+           VALUES(?,?,?,?,?,?,?)`,
+          u.id, u.username, u.password_hash,
+          u.totp_secret || null, u.totp_enabled ? 1 : 0,
+          u.is_admin ? 1 : 1, u.created_at || new Date().toISOString()
+        );
+      }
+    } else {
+      for (const u of wu) {
+        await this._kv.kv.put(`webuser:${u.username.toLowerCase()}`, JSON.stringify(u));
+        await this._kv.kv.put(`webuser_id:${u.id}`, JSON.stringify(u));
+      }
     }
   }
 
   async ensureDefaultAdmin() {
     try {
+      // KV lock prevents re-running on every cold start
       if (await this.kv.get('init:admin_done')) return;
-      if (await this._d1?.initSchema().catch(() => {}), false) { /* just init schema */ }
-      if (this._d1) await this._d1.initSchema().catch(console.error);
+
+      // Always init D1 schema so it's ready before any queries
+      if (this._d1) await this._d1.initSchema().catch(e => console.error('D1 initSchema:', e));
+
+      // Check against the currently active store
       if ((await this.webUserCount()) === 0) {
         await this.createWebUser('admin', await hashPw('admins'));
-        console.log('Default admin: admin / admins');
+        console.log('Default admin created: admin / admins');
       }
       await this.kv.put('init:admin_done', '1');
     } catch (e) { console.error('ensureDefaultAdmin:', e); }
