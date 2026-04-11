@@ -515,28 +515,21 @@ export class DB {
   }
 
   /**
-   * FIX: only call ensureDefaultAdmin once (on first request) by checking count.
-   * Moved to a lazy init guard to avoid the race condition of two cold-starts
-   * both seeing count=0 and creating duplicate admins.
+   * 首次部署自动创建默认管理员账号 admin / admins。
+   * 用 init:default_admin 锁防止并发冷启动重复创建。
+   * 登录成功后请立即在「个人设置」修改密码。
    */
   async ensureDefaultAdmin() {
     try {
-      // Use a lock key to prevent concurrent initialization
       const initDone = await this.kv.get('init:default_admin');
       if (initDone) return;
 
       const count = await this.webUserCount();
       if (count === 0) {
-        // Use a strong random password instead of a hardcoded one
-        const { genToken } = await import('./auth.js');
-        const pw = genToken(16);
-        const hashed = await hashPw(pw);
+        const hashed = await hashPw('admins');
         await this.createWebUser('admin', hashed);
-        // Store the generated password in KV so the operator can retrieve it once
-        await this.kv.put('init:default_admin_pw', pw, { expirationTtl: 3600 });
-        console.log(`Default admin created. Retrieve password once via KV key "init:default_admin_pw" (expires in 1h).`);
+        console.log('Default admin created: admin / admins');
       }
-      // Mark as initialized regardless (existing users already present)
       await this.kv.put('init:default_admin', '1');
     } catch (e) {
       console.error('ensureDefaultAdmin error:', e);
