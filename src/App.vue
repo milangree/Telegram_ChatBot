@@ -1,197 +1,97 @@
 <template>
-  <div class="app-container">
-    <!-- 侧边栏 -->
-    <nav class="sidebar" v-if="auth.isLoggedIn">
+  <div class="app-container" v-if="auth.isLoggedIn">
+    <!-- Mobile overlay -->
+    <div v-if="sidebarOpen" class="sidebar-overlay" @click="sidebarOpen = false"></div>
+
+    <!-- Sidebar -->
+    <nav class="sidebar" :class="{ open: sidebarOpen }">
       <div class="sidebar-header">
-        <RouterLink to="/" class="logo-link">
+        <RouterLink to="/" class="logo-link" @click="closeSidebar">
           <span class="logo">🤖</span>
           <span class="logo-text">Bot 管理</span>
         </RouterLink>
+        <button class="btn-icon mobile-only" @click="sidebarOpen = false" title="关闭">✕</button>
       </div>
+
       <div class="nav-links">
-        <RouterLink to="/" class="nav-item">📊 仪表盘</RouterLink>
-        <RouterLink to="/conversations" class="nav-item">💬 对话记录</RouterLink>
-        <RouterLink to="/users" class="nav-item">👥 用户管理</RouterLink>
-        <RouterLink to="/settings" class="nav-item">⚙️ 系统设置</RouterLink>
+        <span class="nav-section">主菜单</span>
+        <RouterLink v-for="item in navItems" :key="item.to" :to="item.to" class="nav-item" @click="closeSidebar">
+          <span>{{ item.icon }}</span><span>{{ item.label }}</span>
+        </RouterLink>
       </div>
+
       <div class="sidebar-footer">
         <div class="user-info">
-          <div class="user-avatar">{{ auth.username?.[0]?.toUpperCase() || 'U' }}</div>
-          <span class="user-name">{{ auth.username || '用户' }}</span>
+          <div class="user-ava">{{ auth.username?.[0]?.toUpperCase() || 'U' }}</div>
+          <span class="user-name">{{ auth.username }}</span>
         </div>
-        <RouterLink to="/profile" class="icon-btn" title="个人设置">⚙️</RouterLink>
-        <button class="icon-btn logout-btn" @click="handleLogout" title="退出">⏻</button>
+        <!-- Theme toggle -->
+        <button class="btn-icon" @click="toggleTheme" :title="isDark ? '切换亮色' : '切换暗色'">
+          {{ isDark ? '☀️' : '🌙' }}
+        </button>
+        <RouterLink to="/profile" class="btn-icon" title="个人设置" @click="closeSidebar">⚙️</RouterLink>
+        <button class="btn-icon" @click="handleLogout" title="退出" style="color:var(--danger)">⏻</button>
       </div>
     </nav>
-    
-    <main class="main-content" :class="{ 'no-sidebar': !auth.isLoggedIn }">
+
+    <!-- Mobile top bar -->
+    <div class="mobile-header mobile-only">
+      <button class="btn-icon" @click="sidebarOpen = true">☰</button>
+      <span style="font-weight:700;font-size:15px">🤖 Bot 管理</span>
+      <button class="btn-icon" @click="toggleTheme" style="margin-left:auto">{{ isDark ? '☀️' : '🌙' }}</button>
+    </div>
+
+    <main class="main-content">
       <RouterView />
     </main>
+  </div>
+
+  <!-- Auth pages (login/register etc.) -->
+  <div v-else class="main-content no-sidebar">
+    <RouterView />
   </div>
 </template>
 
 <script setup>
-import { RouterLink, RouterView, useRouter } from 'vue-router'
+import { ref, onMounted, watch } from 'vue'
+import { RouterLink, RouterView, useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from './stores/auth'
 
-const auth = useAuthStore()
-const router = useRouter()
+const auth        = useAuthStore()
+const router      = useRouter()
+const route       = useRoute()
+const sidebarOpen = ref(false)
+const isDark      = ref(true)
 
-const handleLogout = async () => {
+const navItems = [
+  { to: '/',              icon: '📊', label: '仪表盘' },
+  { to: '/conversations', icon: '💬', label: '对话记录' },
+  { to: '/users',         icon: '👥', label: '用户管理' },
+  { to: '/whitelist',     icon: '⚪', label: '白名单' },
+  { to: '/settings',      icon: '⚙️', label: '系统设置' },
+]
+
+function closeSidebar() { sidebarOpen.value = false }
+
+function toggleTheme() {
+  isDark.value = !isDark.value
+  document.documentElement.classList.toggle('light', !isDark.value)
+  localStorage.setItem('theme', isDark.value ? 'dark' : 'light')
+}
+
+async function handleLogout() {
   await auth.logout()
   router.push('/login')
 }
+
+onMounted(() => {
+  const saved = localStorage.getItem('theme')
+  if (saved === 'light') {
+    isDark.value = false
+    document.documentElement.classList.add('light')
+  }
+})
+
+// Close sidebar on route change
+watch(() => route.path, () => { sidebarOpen.value = false })
 </script>
-
-<style>
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
-body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  background: #0f1117;
-  color: #e2e8f0;
-}
-
-.app-container {
-  display: flex;
-  min-height: 100vh;
-}
-
-.sidebar {
-  width: 260px;
-  background: #161b27;
-  border-right: 1px solid #2a3248;
-  display: flex;
-  flex-direction: column;
-  position: fixed;
-  top: 0;
-  left: 0;
-  bottom: 0;
-  z-index: 100;
-}
-
-.sidebar-header {
-  padding: 20px 16px;
-  border-bottom: 1px solid #2a3248;
-}
-
-.logo-link {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  text-decoration: none;
-  color: inherit;
-}
-
-.logo {
-  font-size: 24px;
-}
-
-.logo-text {
-  font-weight: 700;
-  font-size: 16px;
-}
-
-.nav-links {
-  flex: 1;
-  padding: 16px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.nav-item {
-  padding: 10px 12px;
-  border-radius: 8px;
-  color: #8b98b4;
-  text-decoration: none;
-  transition: all 0.2s;
-}
-
-.nav-item:hover {
-  background: #1e2535;
-  color: #e2e8f0;
-}
-
-.nav-item.router-link-active {
-  background: rgba(79, 142, 247, 0.15);
-  color: #4f8ef7;
-}
-
-.sidebar-footer {
-  padding: 16px;
-  border-top: 1px solid #2a3248;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.user-info {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: 1;
-}
-
-.user-avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background: rgba(79, 142, 247, 0.15);
-  color: #4f8ef7;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-}
-
-.user-name {
-  font-size: 14px;
-  color: #8b98b4;
-}
-
-.icon-btn {
-  background: transparent;
-  border: none;
-  color: #5a6580;
-  cursor: pointer;
-  padding: 6px;
-  border-radius: 6px;
-  font-size: 16px;
-  text-decoration: none;
-}
-
-.icon-btn:hover {
-  background: #1e2535;
-  color: #e2e8f0;
-}
-
-.logout-btn:hover {
-  color: #f74f4f;
-}
-
-.main-content {
-  flex: 1;
-  margin-left: 260px;
-  padding: 24px;
-  min-height: 100vh;
-}
-
-.main-content.no-sidebar {
-  margin-left: 0;
-}
-
-@media (max-width: 768px) {
-  .sidebar {
-    transform: translateX(-100%);
-    transition: transform 0.3s;
-  }
-  .main-content {
-    margin-left: 0;
-  }
-}
-</style>
