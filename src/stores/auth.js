@@ -3,88 +3,50 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 
 export const useAuthStore = defineStore('auth', () => {
-  const token = ref('')
-  const username = ref('')
-  const isAdmin = ref(false)
-  
+  const token    = ref(localStorage.getItem('token') || '')
+  const username = ref(localStorage.getItem('username') || '')
+  const isAdmin  = ref(localStorage.getItem('isAdmin') === 'true')
+
   const isLoggedIn = computed(() => !!token.value)
 
-  // 初始化
-  const init = () => {
-    const storedToken = localStorage.getItem('token')
-    const storedUsername = localStorage.getItem('username')
-    const storedIsAdmin = localStorage.getItem('isAdmin') === 'true'
-    
-    if (storedToken) {
-      token.value = storedToken
-      username.value = storedUsername || ''
-      isAdmin.value = storedIsAdmin
-    }
-  }
-  
-  init()
-
-  async function login(usernameInput, passwordInput) {
-    const response = await fetch('/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: usernameInput, password: passwordInput })
-    })
-    
-    const data = await response.json()
-    
-    if (!response.ok) {
-      throw new Error(data.error || '登录失败')
-    }
-    
-    token.value = data.token
+  async function _doLogin(body) {
+    const res  = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.error || '登录失败')
+    token.value    = data.token
     username.value = data.username
-    isAdmin.value = data.isAdmin || false
-    
-    localStorage.setItem('token', data.token)
+    isAdmin.value  = data.isAdmin || false
+    localStorage.setItem('token',    data.token)
     localStorage.setItem('username', data.username)
-    localStorage.setItem('isAdmin', String(data.isAdmin || false))
-    
+    localStorage.setItem('isAdmin',  String(data.isAdmin || false))
     return data
   }
 
+  async function login(u, p, totpCode) {
+    return _doLogin({ username: u, password: p, totp: totpCode })
+  }
+
+  async function loginTotp(u, totpCode) {
+    return _doLogin({ username: u, totp: totpCode, loginMode: 'totp_only' })
+  }
+
   async function logout() {
-    try {
-      await fetch('/api/auth/logout', { method: 'POST' })
-    } catch (e) {
-      console.error('Logout error:', e)
-    }
-    
-    token.value = ''
-    username.value = ''
-    isAdmin.value = false
-    
-    localStorage.removeItem('token')
-    localStorage.removeItem('username')
-    localStorage.removeItem('isAdmin')
+    try { await fetch('/api/auth/logout', { method: 'POST' }) } catch { /* noop */ }
+    token.value = ''; username.value = ''; isAdmin.value = false
+    localStorage.removeItem('token'); localStorage.removeItem('username'); localStorage.removeItem('isAdmin')
   }
 
   async function checkAuth() {
-    const storedToken = localStorage.getItem('token')
-    if (!storedToken) return false
-    
+    const t = localStorage.getItem('token')
+    if (!t) return false
     try {
-      const response = await fetch('/api/auth/me', {
-        headers: { 'Authorization': `Bearer ${storedToken}` }
-      })
-      
-      if (!response.ok) throw new Error('Auth failed')
-      
-      const data = await response.json()
-      token.value = storedToken
-      username.value = data.username
-      isAdmin.value = data.isAdmin
+      const res = await fetch('/api/auth/me', { headers: { 'Authorization': `Bearer ${t}` } })
+      if (!res.ok) throw new Error()
+      const data = await res.json()
+      token.value = t; username.value = data.username; isAdmin.value = data.isAdmin
       return true
-    } catch (e) {
-      logout()
-      return false
-    }
+    } catch { await logout(); return false }
   }
 
-  return { token, username, isAdmin, isLoggedIn, login, logout, checkAuth, init }
+  return { token, username, isAdmin, isLoggedIn, login, loginTotp, logout, checkAuth }
 })
