@@ -1,171 +1,128 @@
 <template>
-  <div class="login-container">
-    <div class="login-card">
+  <div class="login-wrap">
+    <div class="login-card card">
       <div class="login-logo">🤖</div>
       <h1 class="login-title">Bot 管理后台</h1>
-      <p class="login-subtitle">请登录以继续</p>
-      
-      <div v-if="error" class="error-message">{{ error }}</div>
-      
-      <form @submit.prevent="handleLogin">
-        <div class="form-group">
-          <input 
-            v-model="username" 
-            type="text" 
-            placeholder="用户名" 
-            required
-            autocomplete="username"
-          />
-        </div>
-        <div class="form-group">
-          <input 
-            v-model="password" 
-            type="password" 
-            placeholder="密码" 
-            required
-            autocomplete="current-password"
-          />
-        </div>
-        <button type="submit" class="login-btn" :disabled="loading">
-          {{ loading ? '登录中...' : '登录' }}
-        </button>
-      </form>
-      
-      <div class="login-footer">
-        默认账号: admin / admins
+
+      <div v-if="error" class="alert alert-error">{{ error }}</div>
+
+      <!-- Username field (shared) -->
+      <div class="form-group" v-if="step === 'username' || step === 'password' || step === 'totp_only'">
+        <label>用户名</label>
+        <input v-model="username" placeholder="用户名" autocomplete="username"
+          @keydown.enter="step === 'username' ? checkUsername() : null" />
       </div>
+
+      <!-- Step 1: enter username only, then we detect if TOTP is enabled -->
+      <div v-if="step === 'username'">
+        <button class="btn-primary w-full" :disabled="loading" @click="checkUsername">
+          <span v-if="loading" class="spinner"></span>{{ loading ? '检查中…' : '下一步' }}
+        </button>
+        <div class="login-links">
+          <RouterLink to="/register">首次注册</RouterLink>
+          <RouterLink to="/recover">找回密码</RouterLink>
+        </div>
+      </div>
+
+      <!-- Step 2a: password (+ optional TOTP) -->
+      <div v-else-if="step === 'password'">
+        <div class="form-group">
+          <label>密码</label>
+          <input v-model="password" type="password" placeholder="密码" autocomplete="current-password"
+            @keydown.enter="handleLogin" />
+        </div>
+        <div class="form-group" v-if="totpEnabled">
+          <label>两步验证码 <span class="text-muted">(6位)</span></label>
+          <input v-model="totp" placeholder="123456" maxlength="6" @keydown.enter="handleLogin" />
+        </div>
+        <button class="btn-primary w-full" :disabled="loading" @click="handleLogin">
+          <span v-if="loading" class="spinner"></span>{{ loading ? '登录中…' : '登录' }}
+        </button>
+        <div style="margin-top:10px;text-align:center">
+          <button class="btn-ghost btn-sm" @click="step = 'username'">← 返回</button>
+          <button v-if="totpEnabled" class="btn-ghost btn-sm" style="margin-left:8px" @click="step = 'totp_only'">
+            仅用验证码登录
+          </button>
+        </div>
+      </div>
+
+      <!-- Step 2b: TOTP-only login -->
+      <div v-else-if="step === 'totp_only'">
+        <div class="alert alert-info">使用 Authenticator 验证码直接登录（无需密码）</div>
+        <div class="form-group">
+          <label>两步验证码 <span class="text-muted">(6位)</span></label>
+          <input v-model="totp" placeholder="123456" maxlength="6" @keydown.enter="handleLoginTotp" />
+        </div>
+        <button class="btn-primary w-full" :disabled="loading" @click="handleLoginTotp">
+          <span v-if="loading" class="spinner"></span>{{ loading ? '登录中…' : '验证登录' }}
+        </button>
+        <div style="margin-top:10px;text-align:center">
+          <button class="btn-ghost btn-sm" @click="step = 'password'">← 密码登录</button>
+        </div>
+      </div>
+
+      <div class="login-footer">默认账号：admin / admins</div>
     </div>
   </div>
 </template>
 
 <script setup>
 import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, RouterLink } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 
-const auth = useAuthStore()
-const router = useRouter()
+const auth     = useAuthStore()
+const router   = useRouter()
+const step     = ref('username')
 const username = ref('')
 const password = ref('')
-const loading = ref(false)
-const error = ref('')
+const totp     = ref('')
+const loading  = ref(false)
+const error    = ref('')
+const totpEnabled = ref(false)
 
-const handleLogin = async () => {
-  if (!username.value || !password.value) {
-    error.value = '请输入用户名和密码'
-    return
-  }
-  
-  error.value = ''
-  loading.value = true
-  
+async function checkUsername() {
+  if (!username.value.trim()) { error.value = '请输入用户名'; return }
+  loading.value = true; error.value = ''
   try {
-    await auth.login(username.value, password.value)
+    const res = await fetch('/api/auth/totp-status', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: username.value }),
+    })
+    const data = await res.json()
+    totpEnabled.value = data.totpEnabled
+    step.value = 'password'
+  } catch { step.value = 'password' }
+  finally { loading.value = false }
+}
+
+async function handleLogin() {
+  if (!password.value) { error.value = '请输入密码'; return }
+  loading.value = true; error.value = ''
+  try {
+    await auth.login(username.value, password.value, totp.value || undefined)
     router.push('/')
-  } catch (e) {
-    error.value = e.message
-  } finally {
-    loading.value = false
-  }
+  } catch (e) { error.value = e.message }
+  finally { loading.value = false }
+}
+
+async function handleLoginTotp() {
+  if (!totp.value) { error.value = '请输入验证码'; return }
+  loading.value = true; error.value = ''
+  try {
+    await auth.loginTotp(username.value, totp.value)
+    router.push('/')
+  } catch (e) { error.value = e.message }
+  finally { loading.value = false }
 }
 </script>
 
 <style scoped>
-.login-container {
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #0f1117;
-  padding: 20px;
-}
-
-.login-card {
-  width: 100%;
-  max-width: 380px;
-  background: #161b27;
-  border: 1px solid #2a3248;
-  border-radius: 16px;
-  padding: 40px 32px;
-}
-
-.login-logo {
-  font-size: 48px;
-  text-align: center;
-  margin-bottom: 16px;
-}
-
-.login-title {
-  font-size: 22px;
-  font-weight: 700;
-  text-align: center;
-  margin-bottom: 8px;
-  color: #e2e8f0;
-}
-
-.login-subtitle {
-  font-size: 13px;
-  text-align: center;
-  color: #8b98b4;
-  margin-bottom: 28px;
-}
-
-.form-group {
-  margin-bottom: 16px;
-}
-
-.form-group input {
-  width: 100%;
-  padding: 12px 14px;
-  background: #1e2535;
-  border: 1px solid #2a3248;
-  border-radius: 8px;
-  color: #e2e8f0;
-  font-size: 14px;
-  outline: none;
-}
-
-.form-group input:focus {
-  border-color: #4f8ef7;
-  box-shadow: 0 0 0 3px rgba(79, 142, 247, 0.15);
-}
-
-.login-btn {
-  width: 100%;
-  padding: 12px;
-  background: #4f8ef7;
-  border: none;
-  border-radius: 8px;
-  color: white;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  margin-top: 8px;
-}
-
-.login-btn:hover {
-  background: #6ba3ff;
-}
-
-.login-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.error-message {
-  background: rgba(247, 79, 79, 0.12);
-  border: 1px solid rgba(247, 79, 79, 0.3);
-  color: #f74f4f;
-  padding: 10px 14px;
-  border-radius: 8px;
-  font-size: 13px;
-  margin-bottom: 20px;
-}
-
-.login-footer {
-  margin-top: 20px;
-  text-align: center;
-  font-size: 12px;
-  color: #5a6580;
-}
+.login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);padding:20px}
+.login-card{width:100%;max-width:380px;padding:36px 28px}
+.login-logo{font-size:44px;text-align:center;margin-bottom:12px}
+.login-title{font-size:21px;font-weight:700;text-align:center;margin-bottom:22px}
+.login-links{margin-top:14px;display:flex;justify-content:space-between;font-size:13px}
+.login-footer{margin-top:20px;text-align:center;font-size:12px;color:var(--text3)}
 </style>
