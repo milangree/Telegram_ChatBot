@@ -12,19 +12,27 @@ export async function onRequestPost(context) {
 
     const secret   = await db.getSetting('WEBHOOK_SECRET');
     const received = request.headers.get('X-Telegram-Bot-Api-Secret-Token');
-    if (secret && received !== secret) return new Response('Unauthorized', { status: 401 });
+    if (secret && received !== secret) {
+      console.error('Webhook secret mismatch');
+      return new Response('Unauthorized', { status: 401 });
+    }
 
     let update;
     try { update = await request.json(); }
     catch { return new Response('Bad JSON', { status: 400 }); }
 
+    // Log update type so it's visible in CF Pages log viewer
+    const updateType = update.message ? 'message' : update.callback_query ? 'callback_query' : 'other';
+    const userId = update.message?.from?.id || update.callback_query?.from?.id || '?';
+    console.log(`[webhook] ${updateType} from user ${userId}`);
+
     const baseUrl = new URL(request.url).origin;
     const ctx     = { _db: db, KV: env.KV, baseUrl };
 
-    waitUntil(processUpdate(update, ctx).catch(e => console.error('processUpdate:', e)));
+    waitUntil(processUpdate(update, ctx).catch(e => console.error('[processUpdate]', e)));
     return new Response('OK');
   } catch (e) {
-    console.error('Webhook error:', e);
+    console.error('[webhook error]', e);
     return new Response('Internal Server Error', { status: 500 });
   }
 }
