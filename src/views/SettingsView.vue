@@ -2,77 +2,62 @@
   <div class="page">
     <div class="page-header">
       <h2 class="page-title">⚙️ 系统设置</h2>
-      <button class="btn-primary" @click="save" :disabled="saving">
-        <span v-if="saving" class="spinner"></span>{{ saving ? '保存中…' : '💾 保存设置' }}
-      </button>
+      <div class="flex gap-2">
+        <button class="btn-ghost btn-sm" @click="load">🔄</button>
+        <button class="btn-primary" @click="save" :disabled="saving">
+          <span v-if="saving" class="spinner"></span>{{ saving ? '保存中…' : '💾 保存' }}
+        </button>
+      </div>
     </div>
 
     <div v-if="loading" class="flex-center mt-3"><div class="spinner"></div></div>
     <template v-else>
-      <div v-if="saved" class="alert alert-success">✅ 设置已保存</div>
+      <transition name="fade">
+        <div v-if="saved" class="alert alert-success">✅ 设置已保存</div>
+      </transition>
       <div v-if="saveErr" class="alert alert-error">{{ saveErr }}</div>
 
       <!-- Bot 配置 -->
-      <div class="card section">
+      <div class="card section mb-2">
         <h3 class="sec-title">🤖 Bot 配置</h3>
         <div class="form-group">
           <label>Bot Token <span class="req">*</span></label>
           <div class="row-g">
-            <input 
-              v-model="form.BOT_TOKEN" 
-              type="password" 
-              placeholder="1234567890:AAF…" 
-              autocomplete="off"
-            />
-            <button class="btn-ghost btn-sm" @click="testToken" :disabled="testingTok">
-              {{ testingTok ? '测试中…' : '测试' }}
-            </button>
+            <input v-model="form.BOT_TOKEN" type="password" placeholder="1234567890:AAF…" autocomplete="off" />
+            <button class="btn-ghost btn-sm" @click="testToken" :disabled="testingTok">{{ testingTok ? '…' : '测试' }}</button>
           </div>
           <div v-if="tokResult" class="form-hint" :class="tokResult.ok ? 'text-success' : 'text-danger'">
             {{ tokResult.ok ? `✅ @${tokResult.bot.username} (ID: ${tokResult.bot.id})` : '❌ ' + tokResult.err }}
           </div>
         </div>
-      </div>
 
-      <!-- 群组与管理员 -->
-      <div class="card section">
-        <h3 class="sec-title">👥 群组与管理员</h3>
-        
         <div class="form-group">
           <label>论坛群组 ID <span class="req">*</span></label>
           <div class="row-g">
             <input v-model="form.FORUM_GROUP_ID" placeholder="-1001234567890" />
             <button class="btn-ghost btn-sm" @click="resolveChat(form.FORUM_GROUP_ID, 'group')" :disabled="resolvingGroup">
-              {{ resolvingGroup ? '获取中…' : '🔍 解析' }}
+              {{ resolvingGroup ? '…' : '🔍 解析' }}
             </button>
           </div>
           <div v-if="groupInfo" class="resolve-card">
-            <div class="resolve-icon">{{ groupInfo.type === 'supergroup' ? '👥' : '💬' }}</div>
-            <div>
-              <div style="font-weight:600">{{ groupInfo.title }}</div>
-              <div class="text-muted text-sm">ID: <code>{{ groupInfo.id }}</code></div>
-            </div>
-            <button class="btn-primary btn-sm" @click="form.FORUM_GROUP_ID = String(groupInfo.id)">使用此 ID</button>
+            <span>{{ groupInfo.type === 'supergroup' ? '👥' : '💬' }}</span>
+            <div><div style="font-weight:600">{{ groupInfo.title }}</div><div class="text-muted text-sm">ID: <code>{{ groupInfo.id }}</code></div></div>
+            <button class="btn-primary btn-sm" @click="form.FORUM_GROUP_ID = String(groupInfo.id)">使用</button>
           </div>
           <div v-if="groupErr" class="form-hint text-danger">{{ groupErr }}</div>
         </div>
 
         <div class="form-group">
-          <label>🔍 查询群组 / 频道 ID</label>
+          <label>查询群组 / 频道 ID</label>
           <div class="row-g">
-            <input v-model="chatQuery" placeholder="输入 @username 或 ID" />
-            <button class="btn-ghost btn-sm" @click="resolveChat(chatQuery, 'custom')" :disabled="resolvingCustom">
-              {{ resolvingCustom ? '查询中…' : '查询' }}
-            </button>
+            <input v-model="chatQuery" placeholder="@username 或 -100xxxxx" />
+            <button class="btn-ghost btn-sm" @click="resolveChat(chatQuery, 'custom')" :disabled="resolvingCustom">查询</button>
           </div>
           <div v-if="customInfo" class="resolve-card">
-            <div class="resolve-icon">{{ { supergroup: '👥', channel: '📢' }[customInfo.type] || '💬' }}</div>
-            <div style="flex:1">
-              <div>{{ customInfo.title || customInfo.first_name }}</div>
-              <div class="text-muted">ID: {{ customInfo.id }}</div>
-            </div>
+            <span>{{ {supergroup:'👥',channel:'📢'}[customInfo.type]||'💬' }}</span>
+            <div style="flex:1"><div>{{ customInfo.title||customInfo.first_name }}</div><div class="text-muted text-sm">ID: {{ customInfo.id }}</div></div>
             <button class="btn-ghost btn-sm" @click="form.FORUM_GROUP_ID = String(customInfo.id)">设为群组</button>
-            <button class="btn-ghost btn-sm" @click="addAdminId(String(customInfo.id))">设为管理员</button>
+            <button class="btn-ghost btn-sm" @click="addAdmin(String(customInfo.id))">设为管理员</button>
           </div>
         </div>
 
@@ -86,75 +71,117 @@
           </div>
           <div class="row-g">
             <UserSearchPicker v-model="newAdminId" @selected="u => newAdminId = String(u.user_id)" />
-            <button class="btn-ghost btn-sm" @click="addAdminId(newAdminId)">+ 添加</button>
+            <button class="btn-ghost btn-sm" @click="addAdmin(newAdminId)">+ 添加</button>
           </div>
+          <div class="form-hint">管理员可在私聊查看控制台，在话题中使用管理按钮</div>
         </div>
       </div>
 
       <!-- Webhook -->
-      <div class="card section">
+      <div class="card section mb-2">
         <h3 class="sec-title">🔗 Webhook</h3>
         <div class="form-group">
           <label>Webhook URL</label>
           <div class="row-g">
-            <input v-model="webhookUrl" placeholder="https://your-project.pages.dev/webhook" />
-            <button class="btn-primary btn-sm" @click="setWebhook" :disabled="settingWh">
-              {{ settingWh ? '设置中…' : '设置 Webhook' }}
-            </button>
+            <input v-model="webhookUrl" placeholder="https://xxx.pages.dev/webhook" />
+            <button class="btn-primary btn-sm" @click="setWebhook" :disabled="settingWh">{{ settingWh ? '…' : '设置' }}</button>
           </div>
           <div v-if="whResult" class="form-hint" :class="whResult.ok ? 'text-success' : 'text-danger'">
             {{ whResult.ok ? '✅ ' + whResult.message : '❌ ' + whResult.err }}
           </div>
+          <div class="form-hint">设置 Webhook 时会自动更新 Bot 命令列表</div>
         </div>
+      </div>
+
+      <!-- 验证配置 -->
+      <div class="card section mb-2">
+        <h3 class="sec-title">🔐 人机验证</h3>
+        <div class="toggle-row">
+          <div><div class="toggle-label">启用验证</div><div class="form-hint">新用户首次发消息须通过验证</div></div>
+          <label class="toggle"><input type="checkbox" v-model="verifyEnabled" /><span class="toggle-slider"></span></label>
+        </div>
+        <template v-if="verifyEnabled">
+          <div class="divider"></div>
+          <div class="form-group">
+            <label>验证类型</label>
+            <select v-model="form.CAPTCHA_TYPE">
+              <option value="math">数学题（按钮选择）</option>
+              <option value="image_numeric">图片验证码（4位数字）</option>
+              <option value="image_alphanumeric">图片验证码（5位字母+数字）</option>
+            </select>
+          </div>
+          <div v-if="form.CAPTCHA_TYPE !== 'math'" class="form-group">
+            <label>图片验证码站点 URL</label>
+            <input v-model="form.CAPTCHA_SITE_URL" placeholder="https://xxx.pages.dev（自动从 Webhook URL 获取）" />
+            <div class="form-hint">设置 Webhook 后自动填写，通常无需手动填写</div>
+          </div>
+          <div class="toggle-row">
+            <div class="toggle-label">验证超时（秒）</div>
+            <input v-model="form.VERIFICATION_TIMEOUT" type="number" min="60" max="3600" style="width:90px" />
+          </div>
+          <div class="toggle-row">
+            <div class="toggle-label">最多尝试次数</div>
+            <input v-model="form.MAX_VERIFICATION_ATTEMPTS" type="number" min="1" max="10" style="width:90px" />
+          </div>
+        </template>
       </div>
 
       <!-- 功能配置 -->
-      <div class="card section">
+      <div class="card section mb-2">
         <h3 class="sec-title">🔧 功能配置</h3>
-        
         <div class="toggle-row">
-          <div>
-            <div class="toggle-label">人机验证</div>
-            <div class="form-hint">新用户首次发消息须通过验证</div>
-          </div>
-          <label class="toggle">
-            <input type="checkbox" v-model="verifyEnabled" />
-            <span class="toggle-slider"></span>
-          </label>
+          <div><div class="toggle-label">自动解封申诉</div><div class="form-hint">允许封禁用户发起申诉</div></div>
+          <label class="toggle"><input type="checkbox" v-model="autoUnblock" /><span class="toggle-slider"></span></label>
         </div>
-        
-        <template v-if="verifyEnabled">
-          <hr class="divider" />
-          <div class="toggle-row">
-            <div class="toggle-label">验证超时（秒）</div>
-            <input v-model="form.VERIFICATION_TIMEOUT" type="number" style="width: 90px" />
-          </div>
-          <div class="toggle-row">
-            <div class="toggle-label">最大尝试次数</div>
-            <input v-model="form.MAX_VERIFICATION_ATTEMPTS" type="number" style="width: 90px" />
-          </div>
-        </template>
-        
-        <hr class="divider" />
+        <div class="divider"></div>
         <div class="toggle-row">
-          <div>
-            <div class="toggle-label">自动解封申诉</div>
-            <div class="form-hint">允许被封禁用户发起申诉</div>
-          </div>
-          <label class="toggle">
-            <input type="checkbox" v-model="autoUnblock" />
-            <span class="toggle-slider"></span>
-          </label>
+          <div><div class="toggle-label">白名单功能</div><div class="form-hint">白名单用户跳过验证和速率限制</div></div>
+          <label class="toggle"><input type="checkbox" v-model="whitelistEnabled" /><span class="toggle-slider"></span></label>
         </div>
-        
-        <hr class="divider" />
+        <div class="divider"></div>
+        <div class="toggle-row">
+          <div><div class="toggle-label">过滤机器人指令</div><div class="form-hint">不将 /xxx 指令转发给管理员</div></div>
+          <label class="toggle"><input type="checkbox" v-model="cmdFilter" /><span class="toggle-slider"></span></label>
+        </div>
+        <div class="divider"></div>
         <div class="toggle-row">
           <div class="toggle-label">每分钟最大消息数</div>
-          <input v-model="form.MAX_MESSAGES_PER_MINUTE" type="number" style="width: 90px" />
+          <input v-model="form.MAX_MESSAGES_PER_MINUTE" type="number" min="1" max="300" style="width:90px" />
         </div>
       </div>
 
-      <div style="text-align: right; margin-top: 16px">
+      <!-- 欢迎消息 -->
+      <div class="card section mb-2">
+        <h3 class="sec-title">👋 /start 欢迎消息</h3>
+        <div class="toggle-row">
+          <div class="toggle-label">启用欢迎消息</div>
+          <label class="toggle"><input type="checkbox" v-model="welcomeEnabled" /><span class="toggle-slider"></span></label>
+        </div>
+        <div class="form-group mt-1" v-if="welcomeEnabled">
+          <label>消息内容（支持 HTML 格式）</label>
+          <textarea v-model="form.WELCOME_MESSAGE" rows="5" style="resize:vertical;font-family:monospace;font-size:13px"></textarea>
+        </div>
+      </div>
+
+      <!-- 数据库切换 -->
+      <div class="card section mb-2">
+        <h3 class="sec-title">🗄️ 数据存储</h3>
+        <div class="db-status">
+          <div>
+            <div class="toggle-label">当前：<span :class="dbInfo.active === 'd1' ? 'text-success' : 'text-warn'">{{ dbInfo.active === 'd1' ? 'D1 SQL 数据库' : 'KV 键值存储' }}</span></div>
+            <div class="form-hint" v-if="!dbInfo.hasD1">D1 未绑定 — 在 Pages 设置中添加 D1 绑定（变量名 <code>D1</code>）后才可切换</div>
+          </div>
+          <div class="flex gap-2" v-if="dbInfo.hasD1">
+            <button class="btn-ghost btn-sm" :class="{ 'btn-primary': dbInfo.active === 'kv' }" :disabled="dbSwitching || dbInfo.active === 'kv'" @click="switchDb('kv', true)">KV</button>
+            <button class="btn-ghost btn-sm" :class="{ 'btn-primary': dbInfo.active === 'd1' }" :disabled="dbSwitching || dbInfo.active === 'd1'" @click="switchDb('d1', true)">D1 SQL</button>
+          </div>
+        </div>
+        <div v-if="dbSwitching" class="flex gap-2 mt-1"><div class="spinner"></div><span class="text-muted text-sm">正在同步数据并切换…</span></div>
+        <div v-if="dbMsg" class="form-hint mt-1" :class="dbOk ? 'text-success' : 'text-danger'">{{ dbMsg }}</div>
+        <div class="form-hint mt-1">切换时会自动将全量数据从旧存储同步到新存储，可安全切换。</div>
+      </div>
+
+      <div style="text-align:right;margin-top:12px">
         <button class="btn-primary" @click="save" :disabled="saving">
           <span v-if="saving" class="spinner"></span>{{ saving ? '保存中…' : '💾 保存所有设置' }}
         </button>
@@ -169,282 +196,82 @@ import api from '../stores/api.js'
 import UserSearchPicker from '../components/UserSearchPicker.vue'
 
 const form = ref({})
-const loading = ref(true)
-const saving = ref(false)
-const saved = ref(false)
-const saveErr = ref('')
-
-const testingTok = ref(false)
-const tokResult = ref(null)
-
-const webhookUrl = ref('')
-const settingWh = ref(false)
-const whResult = ref(null)
-
-const chatQuery = ref('')
-const resolvingCustom = ref(false)
-const customInfo = ref(null)
-const customErr = ref('')
-
-const resolvingGroup = ref(false)
-const groupInfo = ref(null)
-const groupErr = ref('')
-
+const loading = ref(true), saving = ref(false), saved = ref(false), saveErr = ref('')
+const testingTok = ref(false), tokResult = ref(null)
+const webhookUrl = ref(''), settingWh = ref(false), whResult = ref(null)
+const chatQuery = ref(''), resolvingCustom = ref(false), customInfo = ref(null)
+const resolvingGroup = ref(false), groupInfo = ref(null), groupErr = ref('')
 const newAdminId = ref('')
+const dbInfo = ref({ active: 'kv', hasD1: false }), dbSwitching = ref(false), dbMsg = ref(''), dbOk = ref(true)
 
-const verifyEnabled = computed({
-  get: () => form.value.VERIFICATION_ENABLED === 'true',
-  set: v => { form.value.VERIFICATION_ENABLED = v ? 'true' : 'false' }
-})
-
-const autoUnblock = computed({
-  get: () => form.value.AUTO_UNBLOCK_ENABLED === 'true',
-  set: v => { form.value.AUTO_UNBLOCK_ENABLED = v ? 'true' : 'false' }
-})
+const boolProp = key => computed({ get: () => form.value[key] === 'true', set: v => { form.value[key] = v ? 'true' : 'false' } })
+const verifyEnabled   = boolProp('VERIFICATION_ENABLED')
+const autoUnblock     = boolProp('AUTO_UNBLOCK_ENABLED')
+const whitelistEnabled = boolProp('WHITELIST_ENABLED')
+const cmdFilter       = boolProp('BOT_COMMAND_FILTER')
+const welcomeEnabled  = boolProp('WELCOME_ENABLED')
 
 const adminList = computed({
-  get: () => (form.value.ADMIN_IDS || '').split(',').filter(s => s.trim()),
-  set: arr => { form.value.ADMIN_IDS = arr.join(',') }
+  get: () => (form.value.ADMIN_IDS || '').split(',').map(s => s.trim()).filter(Boolean),
+  set: arr => { form.value.ADMIN_IDS = arr.join(',') },
 })
+function addAdmin(id) { const v = String(id).trim(); if (v && !adminList.value.includes(v)) adminList.value = [...adminList.value, v]; newAdminId.value = '' }
+function removeAdmin(i) { const a = [...adminList.value]; a.splice(i, 1); adminList.value = a }
 
-function addAdminId(id) {
-  const v = String(id).trim()
-  if (!v) return
-  if (!adminList.value.includes(v)) {
-    adminList.value = [...adminList.value, v]
-  }
-  newAdminId.value = ''
-}
-
-function removeAdmin(i) {
-  const a = [...adminList.value]
-  a.splice(i, 1)
-  adminList.value = a
-}
-
-async function loadSettings() {
+async function load() {
   loading.value = true
   try {
-    console.log('Loading settings...')
-    const data = await api.get('/api/settings')
-    console.log('Settings loaded:', data)
-    form.value = data
-  } catch (e) {
-    console.error('Load settings error:', e)
-    saveErr.value = '加载设置失败: ' + e.message
-  } finally {
-    loading.value = false
-  }
+    const [data, db] = await Promise.all([api.get('/api/settings'), api.get('/api/settings/db')])
+    form.value   = data
+    dbInfo.value = db
+  } catch (e) { saveErr.value = '加载失败: ' + e.message }
+  finally { loading.value = false }
 }
-
 async function save() {
-  saving.value = true
-  saved.value = false
-  saveErr.value = ''
-  try {
-    console.log('Saving settings...', form.value)
-    await api.put('/api/settings', form.value)
-    saved.value = true
-    setTimeout(() => (saved.value = false), 3000)
-  } catch (e) {
-    console.error('Save error:', e)
-    saveErr.value = e.message
-  } finally {
-    saving.value = false
-  }
+  saving.value = true; saved.value = false; saveErr.value = ''
+  try { await api.put('/api/settings', form.value); saved.value = true; setTimeout(() => saved.value = false, 3000) }
+  catch (e) { saveErr.value = e.message }
+  finally { saving.value = false }
 }
-
 async function testToken() {
-  testingTok.value = true
-  tokResult.value = null
-  try {
-    console.log('Testing token...')
-    const d = await api.post('/api/settings/test-token', { token: form.value.BOT_TOKEN })
-    tokResult.value = d
-    console.log('Token test result:', d)
-  } catch (e) {
-    console.error('Token test error:', e)
-    tokResult.value = { ok: false, err: e.message }
-  } finally {
-    testingTok.value = false
-  }
+  testingTok.value = true; tokResult.value = null
+  try { tokResult.value = await api.post('/api/settings/test-token', { token: form.value.BOT_TOKEN }) }
+  catch (e) { tokResult.value = { ok: false, err: e.message } }
+  finally { testingTok.value = false }
 }
-
 async function resolveChat(val, which) {
   if (!val) return
-  if (which === 'group') {
-    resolvingGroup.value = true
-    groupInfo.value = null
-    groupErr.value = ''
-  } else {
-    resolvingCustom.value = true
-    customInfo.value = null
-    customErr.value = ''
-  }
+  if (which === 'group') { resolvingGroup.value = true; groupInfo.value = null; groupErr.value = '' }
+  else { resolvingCustom.value = true; customInfo.value = null }
   try {
-    console.log('Resolving chat:', val)
     const d = await api.post('/api/tg/resolve-chat', { chatId: val })
-    if (which === 'group') {
-      groupInfo.value = d.chat
-    } else {
-      customInfo.value = d.chat
-    }
-  } catch (e) {
-    console.error('Resolve chat error:', e)
-    if (which === 'group') {
-      groupErr.value = e.message
-    } else {
-      customErr.value = e.message
-    }
-  } finally {
-    if (which === 'group') {
-      resolvingGroup.value = false
-    } else {
-      resolvingCustom.value = false
-    }
-  }
+    if (which === 'group') groupInfo.value = d.chat; else customInfo.value = d.chat
+  } catch (e) { if (which === 'group') groupErr.value = e.message }
+  finally { if (which === 'group') resolvingGroup.value = false; else resolvingCustom.value = false }
 }
-
 async function setWebhook() {
-  settingWh.value = true
-  whResult.value = null
-  try {
-    console.log('Setting webhook:', webhookUrl.value)
-    const d = await api.post('/api/settings/webhook', { webhookUrl: webhookUrl.value })
-    whResult.value = d
-  } catch (e) {
-    console.error('Set webhook error:', e)
-    whResult.value = { ok: false, err: e.message }
-  } finally {
-    settingWh.value = false
-  }
+  settingWh.value = true; whResult.value = null
+  try { whResult.value = await api.post('/api/settings/webhook', { webhookUrl: webhookUrl.value }) }
+  catch (e) { whResult.value = { ok: false, err: e.message } }
+  finally { settingWh.value = false }
 }
-
-onMounted(() => {
-  console.log('SettingsView mounted')
-  loadSettings()
-})
+async function switchDb(target, sync = true) {
+  dbSwitching.value = true; dbMsg.value = ''
+  try {
+    await api.post('/api/settings/db/switch', { target, sync })
+    dbInfo.value.active = target; dbMsg.value = `✅ 已切换到 ${target === 'd1' ? 'D1 SQL' : 'KV'}`; dbOk.value = true
+  } catch (e) { dbMsg.value = '❌ ' + e.message; dbOk.value = false }
+  finally { dbSwitching.value = false }
+}
+onMounted(load)
 </script>
 
 <style scoped>
-.page {
-  max-width: 720px;
-  margin: 0 auto;
-}
-
-.page-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 20px;
-}
-
-.page-title {
-  font-size: 20px;
-  font-weight: 700;
-}
-
-.section {
-  margin-bottom: 16px;
-}
-
-.sec-title {
-  font-size: 14px;
-  font-weight: 600;
-  margin-bottom: 16px;
-}
-
-.req {
-  color: var(--danger);
-}
-
-.row-g {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.row-g input {
-  flex: 1;
-}
-
-.toggle-row {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 20px;
-  padding: 8px 0;
-}
-
-.toggle-label {
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.text-success {
-  color: var(--success);
-}
-
-.text-danger {
-  color: var(--danger);
-}
-
-.resolve-card {
-  margin-top: 8px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  background: var(--bg3);
-  border: 1px solid var(--border);
-  border-radius: var(--rs);
-  padding: 10px 14px;
-}
-
-.resolve-icon {
-  font-size: 24px;
-  flex-shrink: 0;
-}
-
-.admin-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 8px;
-}
-
-.admin-tag {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  background: var(--accent-dim);
-  border: 1px solid rgba(79, 142, 247, 0.3);
-  color: var(--accent);
-  border-radius: 20px;
-  padding: 3px 10px;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.admin-tag button {
-  background: none;
-  border: none;
-  color: var(--danger);
-  cursor: pointer;
-  padding: 0 2px;
-  font-size: 12px;
-}
-
-.divider {
-  border: none;
-  border-top: 1px solid var(--border);
-  margin: 12px 0;
-}
-
-.mt-2 {
-  margin-top: 16px;
-}
-
-.mt-3 {
-  margin-top: 24px;
-}
+.section{margin-bottom:0}
+.resolve-card{margin-top:8px;display:flex;align-items:center;gap:12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rs);padding:10px 14px;flex-wrap:wrap}
+.admin-tags{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;min-height:8px}
+.admin-tag{display:flex;align-items:center;gap:4px;background:var(--accent-dim);border:1px solid rgba(79,142,247,.3);color:var(--accent);border-radius:20px;padding:3px 10px;font-size:12px;font-weight:600}
+.admin-tag button{background:none;border:none;color:var(--danger);cursor:pointer;font-size:12px;padding:0 2px}
+.db-status{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.page{max-width:720px;margin:0 auto}
 </style>
