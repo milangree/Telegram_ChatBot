@@ -247,7 +247,7 @@ async function handleMsg(msg, { tg, db, kv, settings, baseUrl }) {
 
     // ── Verification ──────────────────────────────────────────────────────
     if (settings.VERIFICATION_ENABLED === 'true' && !dbUser?.is_verified) {
-      const timeout     = parseInt(settings.VERIFICATION_TIMEOUT || '300', 10);
+      const timeout     = Math.max(60, parseInt(settings.VERIFICATION_TIMEOUT || '300', 10)); // CF KV minimum TTL is 60s
       const captchaType = settings.CAPTCHA_TYPE || 'math';
       const existing    = await db.getVerify(user.id);
       if (existing && existing.expires_at > Date.now()) {
