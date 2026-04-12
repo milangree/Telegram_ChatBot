@@ -176,3 +176,20 @@ button{cursor:pointer;border:none;border-radius:var(--rs);font-size:14px;font-fa
 @media (min-width: 769px) {
   .mobile-only{display:none!important}
 }
+
+/* ── Ensure no white flash areas in dark mode ────────────────────────────── */
+/* Selects, options, and number inputs that browsers render with system styling */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button { opacity: 0.4 }
+input[type="checkbox"] { accent-color: var(--accent) }
+
+/* Code blocks */
+pre, code { background: var(--bg3); color: var(--text); border-radius: var(--rs); }
+pre { padding: 10px 14px; overflow-x: auto; font-size: 13px; }
+
+/* Ensure modal overlays work in both themes */
+.modal-overlay { backdrop-filter: blur(2px); }
+
+/* Profile page - ensure card uses theme vars */
+.profile-section { max-width: 540px; margin: 0 auto; }
+

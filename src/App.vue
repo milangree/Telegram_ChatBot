@@ -29,7 +29,6 @@
         <button class="btn-icon" @click="toggleTheme" :title="isDark ? '切换亮色' : '切换暗色'">
           {{ isDark ? '☀️' : '🌙' }}
         </button>
-        <RouterLink to="/profile" class="btn-icon" title="个人设置" @click="closeSidebar">⚙️</RouterLink>
         <button class="btn-icon" @click="handleLogout" title="退出" style="color:var(--danger)">⏻</button>
       </div>
     </nav>
@@ -69,6 +68,7 @@ const navItems = [
   { to: '/users',         icon: '👥', label: '用户管理' },
   { to: '/whitelist',     icon: '⚪', label: '白名单' },
   { to: '/settings',      icon: '⚙️', label: '系统设置' },
+  { to: '/profile',       icon: '👤', label: '个人设置' },
 ]
 
 function closeSidebar() { sidebarOpen.value = false }
