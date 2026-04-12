@@ -74,7 +74,20 @@
                   </span>
                 </td>
                 <td class="hide-mobile">
+<<<<<<< HEAD
                   <span class="text-sm text-muted">{{ u.username || '—' }}</span>
+=======
+                  <div v-if="editingUsername === u.user_id" class="row-g">
+                    <input v-model="newUsername" style="width:110px;padding:4px 8px;font-size:12px"
+                      @keydown.enter="saveUsername(u)" @keydown.esc="editingUsername = null" />
+                    <button class="btn-primary btn-sm" @click="saveUsername(u)">✓</button>
+                    <button class="btn-ghost btn-sm" @click="editingUsername = null">✕</button>
+                  </div>
+                  <div v-else class="flex gap-1" style="align-items:center">
+                    <span class="text-sm text-muted">{{ u.username || '—' }}</span>
+                    <button class="btn-icon" style="font-size:11px;padding:2px 4px" @click.stop="startEditUsername(u)">✏️</button>
+                  </div>
+>>>>>>> 1f4b014bea61d272db421d42e0c09bd79c6e9ba8
                 </td>
                 <td class="hide-mobile text-muted text-sm">{{ fmtDate(u.created_at) }}</td>
                 <td>
@@ -134,6 +147,10 @@
           <button v-else class="btn-success" @click="unblockDetail">✅ 解封</button>
           <button class="btn-ghost" @click="toggleWlDetail">{{ detailIsWl ? '移出白名单' : '⚪ 加白名单' }}</button>
           <RouterLink :to="`/conversations?user=${detailUser.user_id}`" class="btn-ghost" style="text-decoration:none" @click="detailUser = null">💬 消息</RouterLink>
+<<<<<<< HEAD
+=======
+          <button class="btn-ghost" @click="startEditUsername(detailUser); detailUser = null">✏️ 改用户名</button>
+>>>>>>> 1f4b014bea61d272db421d42e0c09bd79c6e9ba8
         </div>
       </div>
     </div>
@@ -149,6 +166,10 @@ import UserSearchPicker from '../components/UserSearchPicker.vue'
 const users = ref([]), total = ref(0), page = ref(1), pageSize = 20
 const loading = ref(true), filter = ref('')
 const quickId = ref(''), quickReason = ref(''), quickMsg = ref(''), quickOk = ref(true)
+<<<<<<< HEAD
+=======
+const editingUsername = ref(null), newUsername = ref('')
+>>>>>>> 1f4b014bea61d272db421d42e0c09bd79c6e9ba8
 const avatars = ref({})
 const selected = ref([])
 const detailUser = ref(null), detailIsWl = ref(false)
@@ -239,6 +260,15 @@ async function toggleWlDetail() {
   else { await api.post(`/api/whitelist/${detailUser.value.user_id}`, { reason:'手动' }); detailIsWl.value = true }
 }
 
+<<<<<<< HEAD
+=======
+function startEditUsername(u) { editingUsername.value = u.user_id; newUsername.value = u.username || '' }
+async function saveUsername(u) {
+  try { await api.put(`/api/users/${u.user_id}/username`, { username: newUsername.value }); u.username = newUsername.value; editingUsername.value = null }
+  catch(e) { alert(e.message) }
+}
+
+>>>>>>> 1f4b014bea61d272db421d42e0c09bd79c6e9ba8
 // UTC+8 precise to second
 function fmtDate(ts) {
   if (!ts) return '—'
