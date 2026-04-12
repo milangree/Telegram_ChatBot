@@ -188,7 +188,7 @@ pre, code { background: var(--bg3); color: var(--text); border-radius: var(--rs)
 pre { padding: 10px 14px; overflow-x: auto; font-size: 13px; }
 
 /* Ensure modal overlays work in both themes */
-.modal-overlay { backdrop-filter: blur(2px); }
+.modal-overlay { backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px);}
 
 /* Profile page - ensure card uses theme vars */
 .profile-section { max-width: 540px; margin: 0 auto; }

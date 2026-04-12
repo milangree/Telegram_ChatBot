@@ -89,10 +89,7 @@ function buildCardText(user, u) {
     `用户名：${user.username ? '@' + esc(user.username) : '无'}\n` +
     `ID：<code>${user.id}</code>\n` +
     `语言：${user.language_code || '未知'}\n` +
-<<<<<<< HEAD
     `首次联系：${fmtUtc8(u?.created_at)}\n` +
-=======
->>>>>>> 1f4b014bea61d272db421d42e0c09bd79c6e9ba8
     `状态：${u?.is_blocked ? '⛔ 已封禁' : (u?.is_verified ? '✅ 已验证' : '🟡 未验证')}`;
 }
 
@@ -114,12 +111,9 @@ function fullUserKb(uid, u) {
 }
 
 function adminPanelKb(s) {
-<<<<<<< HEAD
   const capLabel = s.CAPTCHA_TYPE === 'image_numeric'
     ? '图片数字'
     : (s.CAPTCHA_TYPE === 'image_alphanumeric' ? '图片字母数字' : '数学题');
-=======
->>>>>>> 1f4b014bea61d272db421d42e0c09bd79c6e9ba8
   return [
     [
       { text: `✅ 验证: ${s.VERIFICATION_ENABLED === 'true' ? '开' : '关'}`, callback_data: 'adm:tv' },
@@ -130,7 +124,6 @@ function adminPanelKb(s) {
       { text: `🤖 过滤指令: ${s.BOT_COMMAND_FILTER === 'true' ? '开' : '关'}`, callback_data: 'adm:tf' },
     ],
     [
-<<<<<<< HEAD
       { text: `🧩 验证类型: ${capLabel}`, callback_data: 'adm:ct' },
       { text: `⏱ 超时: ${s.VERIFICATION_TIMEOUT || '300'}s`, callback_data: 'adm:to' },
     ],
@@ -139,8 +132,6 @@ function adminPanelKb(s) {
       { text: `📩 管理私聊: ${s.ADMIN_NOTIFY_ENABLED === 'true' ? '开' : '关'}`, callback_data: 'adm:tn' },
     ],
     [
-=======
->>>>>>> 1f4b014bea61d272db421d42e0c09bd79c6e9ba8
       { text: '📊 统计', callback_data: 'adm:st' },
       { text: '🚫 黑名单', callback_data: 'adm:bk:1' },
     ],
@@ -215,11 +206,7 @@ async function handleMsg(msg, { tg, db, kv, settings, baseUrl }) {
 
   // ── Admin private chat: control panel or command processing ───────────────
   if (adminIds.includes(user.id)) {
-<<<<<<< HEAD
     await handleAdminPrivateMsg(msg, user, { tg, db, kv, settings, groupId });
-=======
-    await handleAdminPrivateMsg(msg, user, { tg, db, kv, settings });
->>>>>>> 1f4b014bea61d272db421d42e0c09bd79c6e9ba8
     return;
   }
 
@@ -249,7 +236,6 @@ async function handleMsg(msg, { tg, db, kv, settings, baseUrl }) {
   // ── Block check ───────────────────────────────────────────────────────────
   const dbUser = await db.getUser(user.id);
   if (dbUser?.is_blocked) {
-<<<<<<< HEAD
     const pendingAppeal = await kv.get(`pending_appeal:${user.id}`);
     if (pendingAppeal && msg.text && !msg.text.startsWith('/')) {
       const appealText = msg.text.trim();
@@ -283,8 +269,6 @@ async function handleMsg(msg, { tg, db, kv, settings, baseUrl }) {
       return;
     }
 
-=======
->>>>>>> 1f4b014bea61d272db421d42e0c09bd79c6e9ba8
     if (dbUser.is_permanent_block) {
       await tg.sendMsg({ chatId: user.id, text: '⛔ <b>您已被永久封禁</b>，如有疑问请联系管理员。' });
     } else if (settings.AUTO_UNBLOCK_ENABLED === 'true') {
@@ -370,11 +354,7 @@ async function handleMsg(msg, { tg, db, kv, settings, baseUrl }) {
   }
 }
 
-<<<<<<< HEAD
 async function handleAdminPrivateMsg(msg, user, { tg, db, kv, settings, groupId }) {
-=======
-async function handleAdminPrivateMsg(msg, user, { tg, db, settings }) {
->>>>>>> 1f4b014bea61d272db421d42e0c09bd79c6e9ba8
   if (msg.text?.startsWith('/')) {
     const parts = msg.text.trim().split(/\s+/);
     const cmd   = parts[0].split('@')[0].slice(1).toLowerCase();
@@ -413,7 +393,6 @@ async function handleAdminPrivateMsg(msg, user, { tg, db, settings }) {
     }
   }
 
-<<<<<<< HEAD
   if (msg.text?.startsWith('/panel')) {
     const s = await db.getStats();
     await tg.sendMsg({
@@ -426,8 +405,6 @@ async function handleAdminPrivateMsg(msg, user, { tg, db, settings }) {
 
   if (settings.ADMIN_NOTIFY_ENABLED !== 'true') return;
 
-=======
->>>>>>> 1f4b014bea61d272db421d42e0c09bd79c6e9ba8
   // Default: show admin control panel
   const s  = await db.getStats();
   await tg.sendMsg({
@@ -478,11 +455,8 @@ async function handleCb(q, { tg, db, kv, settings }) {
     // ── Appeal ────────────────────────────────────────────────────────────────
     if (data.startsWith('appeal:')) {
       const isStart = data === 'appeal:start';
-<<<<<<< HEAD
       if (isStart) await kv.put(`pending_appeal:${user.id}`, '1', { expirationTtl: 900 });
       else await kv.delete(`pending_appeal:${user.id}`);
-=======
->>>>>>> 1f4b014bea61d272db421d42e0c09bd79c6e9ba8
       await tg.editText({
         chatId, msgId,
         text: isStart ? '📝 <b>申诉</b>\n\n请直接发送申诉内容，管理员会审核。' : '⛔ <b>您已被封禁</b>',
@@ -553,11 +527,7 @@ async function handleCb(q, { tg, db, kv, settings }) {
       const page = parseInt(pg || '1', 10), ps = 8;
       const msgs = await db.getMsgs(parseInt(uid, 10), ps, (page - 1) * ps);
       if (!msgs.length) { await tg.answerCb({ id: q.id, text: '暂无记录' }); return; }
-<<<<<<< HEAD
       const lines = msgs.map(m => `[${fmtMsgTime(m.created_at)}] ${m.direction === 'incoming' ? '→' : '←'} ${esc((m.content || '').slice(0, 36))}`).join('\n');
-=======
-      const lines = msgs.map(m => `[${m.created_at.slice(5, 16)}] ${m.direction === 'incoming' ? '→' : '←'} ${esc((m.content || '').slice(0, 36))}`).join('\n');
->>>>>>> 1f4b014bea61d272db421d42e0c09bd79c6e9ba8
       const nav = [];
       if (page > 1)           nav.push({ text: '◀', callback_data: `ml:${uid}:${page - 1}` });
       if (msgs.length === ps) nav.push({ text: '▶', callback_data: `ml:${uid}:${page + 1}` });
@@ -565,7 +535,6 @@ async function handleCb(q, { tg, db, kv, settings }) {
       await tg.answerCb({ id: q.id });
       return;
     }
-<<<<<<< HEAD
     if (data.startsWith('apu:')) {
       const uid = parseInt(data.slice(4), 10);
       await db.unblockUser(uid);
@@ -577,15 +546,6 @@ async function handleCb(q, { tg, db, kv, settings }) {
       const uid = parseInt(data.slice(4), 10);
       await tg.sendMsg({ chatId: uid, text: '❌ 您的申诉未通过，请稍后再试或联系管理员。' }).catch(() => {});
       await tg.answerCb({ id: q.id, text: '已拒绝申诉' });
-=======
-    if (data.startsWith('nu:')) {
-      const uid = parseInt(data.slice(3), 10);
-      await editCard(tg, chatId, msgId, message,
-        `✏️ <b>修改用户名</b>\n\n发送新的用户名（不含@），或发送 /cancel 取消。\n\n<i>请直接在本对话发送新用户名。</i>`,
-        [[{ text: '❌ 取消', callback_data: `rf:${uid}` }]]);
-      await kv.put(`pending_rename:${user.id}`, String(uid), { expirationTtl: 120 });
-      await tg.answerCb({ id: q.id });
->>>>>>> 1f4b014bea61d272db421d42e0c09bd79c6e9ba8
       return;
     }
 
@@ -656,7 +616,6 @@ async function handleAdmCb(q, action, { tg, db, settings, chatId, msgId }) {
   if (action === 'ta') return toggle('AUTO_UNBLOCK_ENABLED', '申诉');
   if (action === 'tw') return toggle('WHITELIST_ENABLED', '白名单');
   if (action === 'tf') return toggle('BOT_COMMAND_FILTER', '指令过滤');
-<<<<<<< HEAD
   if (action === 'tn') return toggle('ADMIN_NOTIFY_ENABLED', '管理私聊提示');
 
   if (action === 'ct') {
@@ -689,8 +648,6 @@ async function handleAdmCb(q, action, { tg, db, settings, chatId, msgId }) {
     await tg.answerCb({ id: q.id, text: `尝试次数已设为 ${next}` });
     return;
   }
-=======
->>>>>>> 1f4b014bea61d272db421d42e0c09bd79c6e9ba8
 
   if (action === 'st') {
     const s = await db.getStats();
@@ -735,11 +692,7 @@ function buildDetailText(u, isWl = false) {
     (u.is_blocked ? `原因: ${esc(u.block_reason || '无')}\n` : '') +
     `白名单: ${isWl ? '⚪ 是' : '否'}\n` +
     `验证: ${u.is_verified ? '✅ 已验证' : '未验证'}\n` +
-<<<<<<< HEAD
     `首次联系: ${fmtUtc8(u.created_at)}`;
-=======
-    `注册: ${u.created_at?.slice(0, 10) || '未知'}`;
->>>>>>> 1f4b014bea61d272db421d42e0c09bd79c6e9ba8
 }
 
 /** Edit existing card — handles both text and photo (caption) messages. */
@@ -766,7 +719,6 @@ async function refreshCard(tg, db, chatId, msgId, uid, message) {
     );
   }
 }
-<<<<<<< HEAD
 
 function fmtUtc8(ts) {
   if (!ts) return '未知';
@@ -781,5 +733,3 @@ function fmtMsgTime(ts) {
   const pad = n => String(n).padStart(2, '0');
   return `${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
 }
-=======
->>>>>>> 1f4b014bea61d272db421d42e0c09bd79c6e9ba8
