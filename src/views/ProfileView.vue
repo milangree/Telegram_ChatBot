@@ -150,8 +150,12 @@ onMounted(async () => {
   try {
     const d = await api.get('/api/auth/me')
     totpEnabled.value = d.totpEnabled
+<<<<<<< HEAD
     auth.username = d.username
     newUsername.value = d.username
+=======
+    newUsername.value = auth.username
+>>>>>>> 1f4b014bea61d272db421d42e0c09bd79c6e9ba8
   } catch { /* noop */ }
 })
 </script>

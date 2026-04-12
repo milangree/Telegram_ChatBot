@@ -20,6 +20,7 @@ export async function onRequest({ request, env }) {
   // PUBLIC ROUTES
   // ═══════════════════════════════════════════════
 
+<<<<<<< HEAD
   if (path === '/auth/status' && request.method === 'GET') {
     const hasDefaultAdmin = (await kv.get('auth:has_default_admin')) === '1';
     return j({ needsRegistration: hasDefaultAdmin || (await db.webUserCount()) === 0 });
@@ -29,6 +30,14 @@ export async function onRequest({ request, env }) {
     try {
       const hasDefaultAdmin = (await kv.get('auth:has_default_admin')) === '1';
       if (!hasDefaultAdmin && (await db.webUserCount()) > 0) return err('首次联系已关闭', 403);
+=======
+  if (path === '/auth/status' && request.method === 'GET')
+    return j({ needsRegistration: (await db.webUserCount()) === 0 });
+
+  if (path === '/auth/register' && request.method === 'POST') {
+    try {
+      if ((await db.webUserCount()) > 0) return err('注册已关闭', 403);
+>>>>>>> 1f4b014bea61d272db421d42e0c09bd79c6e9ba8
       const { username, password } = await request.json();
       if (!username || !password)  return err('缺少参数');
       if (username.length < 3)     return err('用户名至少3字符');
@@ -41,7 +50,11 @@ export async function onRequest({ request, env }) {
       return new Response(JSON.stringify({ token, username: user.username, isAdmin: true }), {
         status: 200, headers: { ...CORS, 'Content-Type': 'application/json', 'Set-Cookie': cookie(token) },
       });
+<<<<<<< HEAD
     } catch (e) { return err('首次联系失败: ' + e.message, 500); }
+=======
+    } catch (e) { return err('注册失败: ' + e.message, 500); }
+>>>>>>> 1f4b014bea61d272db421d42e0c09bd79c6e9ba8
   }
 
   if (path === '/auth/login' && request.method === 'POST') {
@@ -52,12 +65,15 @@ export async function onRequest({ request, env }) {
       const user = await db.getWebUser(username);
       if (!user) return err('用户名或密码错误', 401);
 
+<<<<<<< HEAD
       // If default admin fallback has been disabled, block admin/admins forever.
       if (String(user.username).toLowerCase() === 'admin') {
         const hasDefaultAdmin = (await kv.get('auth:has_default_admin')) === '1';
         if (!hasDefaultAdmin) return err('用户名或密码错误', 401);
       }
 
+=======
+>>>>>>> 1f4b014bea61d272db421d42e0c09bd79c6e9ba8
       // loginMode: 'totp_only' — login with just username + TOTP (no password)
       if (loginMode === 'totp_only') {
         if (!user.totp_enabled) return err('该账号未启用两步验证', 401);
@@ -200,7 +216,10 @@ export async function onRequest({ request, env }) {
         'AUTO_UNBLOCK_ENABLED','MAX_MESSAGES_PER_MINUTE',
         'CAPTCHA_TYPE','CAPTCHA_SITE_URL',
         'WELCOME_ENABLED','WELCOME_MESSAGE','BOT_COMMAND_FILTER','WHITELIST_ENABLED',
+<<<<<<< HEAD
         'ADMIN_NOTIFY_ENABLED',
+=======
+>>>>>>> 1f4b014bea61d272db421d42e0c09bd79c6e9ba8
         'WEBHOOK_URL',
       ];
       for (const key of allowed) {
@@ -322,8 +341,18 @@ export async function onRequest({ request, env }) {
   }
 
   const unameMatch = path.match(/^\/users\/(\d+)\/username$/);
+<<<<<<< HEAD
   if (unameMatch && request.method === 'PUT')
     return err('该功能已下线', 410);
+=======
+  if (unameMatch && request.method === 'PUT') {
+    try {
+      const { username } = await request.json();
+      await db.updateUsername(parseInt(unameMatch[1], 10), username);
+      return j({ ok: true });
+    } catch { return err('修改失败', 500); }
+  }
+>>>>>>> 1f4b014bea61d272db421d42e0c09bd79c6e9ba8
 
   // Whitelist
   if (path === '/whitelist' && request.method === 'GET')
