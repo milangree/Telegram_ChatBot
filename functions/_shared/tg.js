@@ -119,6 +119,15 @@ export class TG {
     });
   }
 
+  deleteForumTopic({ chatId, threadId }) {
+    return this.call('deleteForumTopic', { chat_id: chatId, message_thread_id: threadId });
+  }
+  closeForumTopic({ chatId, threadId }) {
+    return this.call('closeForumTopic', { chat_id: chatId, message_thread_id: threadId });
+  }
+  reopenForumTopic({ chatId, threadId }) {
+    return this.call('reopenForumTopic', { chat_id: chatId, message_thread_id: threadId });
+  }
   setWebhook({ url, secret }) {
     return this.call('setWebhook', {
       url, secret_token: secret,

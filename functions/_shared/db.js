@@ -18,7 +18,8 @@ export const DEFAULT_SETTINGS = {
   WELCOME_MESSAGE: '👋 欢迎使用双向消息机器人！\n\n请直接发送您的问题或留言，管理员将尽快回复。\n\n发送 /help 查看帮助。',
   BOT_COMMAND_FILTER: 'true',
   WHITELIST_ENABLED: 'false',
-  ACTIVE_DB: 'kv',                     // kv | d1
+  ACTIVE_DB: 'kv',
+  WEBHOOK_URL: '',                     // kv | d1
 };
 
 // ─── KV helpers ───────────────────────────────────────────────────────────────
@@ -171,6 +172,19 @@ class KVStore {
   }
   async getAllMsgsRaw() {
     return (await Promise.all((await kvListAll(this.kv, 'msg:')).map(k => this.kv.get(k.name).then(d => d ? JSON.parse(d) : null)))).filter(Boolean);
+  }
+  async deleteUserMsgs(userId) {
+    const keys = await kvListAll(this.kv, `msg:${userId}:`);
+    await Promise.all(keys.map(k => this.kv.delete(k.name)));
+    await this.kv.delete(`recent:${userId}`);
+  }
+  async clearUserThread(userId) {
+    const u = await this.getUser(userId);
+    if (u) {
+      if (u.thread_id) await this.kv.delete(`thread:${u.thread_id}`);
+      u.thread_id = null;
+      await this.kv.put(`user:${userId}`, JSON.stringify(u));
+    }
   }
   async getAllRecentRaw() {
     return (await Promise.all((await kvListAll(this.kv, 'recent:')).map(k => this.kv.get(k.name).then(d => d ? JSON.parse(d) : null)))).filter(Boolean);
@@ -383,6 +397,15 @@ class D1Store {
   }
   async getAllMsgsRaw() { return this.all('SELECT * FROM messages'); }
   async getAllRecentRaw() { return this.all('SELECT * FROM recent_convs'); }
+  async deleteUserMsgs(userId) {
+    await this.exec('DELETE FROM messages WHERE user_id=?', userId);
+    await this.exec('DELETE FROM recent_convs WHERE user_id=?', userId);
+  }
+  async clearUserThread(userId) {
+    const u = await this.getUser(userId);
+    if (u?.thread_id) await this.exec('DELETE FROM thread_map WHERE thread_id=?', u.thread_id);
+    await this.exec('UPDATE users SET thread_id=NULL WHERE user_id=?', userId);
+  }
 
   // Verification (always in KV since it's ephemeral — D1Store delegates)
   // These will be overridden at DB level to always use KV
@@ -468,6 +491,8 @@ export class DB {
   async addMsg(opts)                       { return (await this._store()).addMsg(opts); }
   async getMsgs(uid, lim, off)            { return (await this._store()).getMsgs(uid, lim, off); }
   async getRecentConvs(lim)              { return (await this._store()).getRecentConvs(lim); }
+  async deleteUserMsgs(uid)              { return (await this._store()).deleteUserMsgs(uid); }
+  async clearUserThread(uid)             { return (await this._store()).clearUserThread(uid); }
   async getStats()                        { return (await this._store()).getStats(); }
 
   async webUserCount()                    { return (await this._store()).webUserCount(); }
@@ -550,20 +575,43 @@ export class DB {
     }
   }
 
+  /**
+   * On first boot, create the fallback admin/admins account.
+   * Once a real user registers (registerWebUser is called), we disable the
+   * fallback account so it can never be used again.
+   */
   async ensureDefaultAdmin() {
     try {
-      // KV lock prevents re-running on every cold start
-      if (await this.kv.get('init:admin_done')) return;
-
-      // Always init D1 schema so it's ready before any queries
+      // Always init D1 schema so tables exist before any query
       if (this._d1) await this._d1.initSchema().catch(e => console.error('D1 initSchema:', e));
 
-      // Check against the currently active store
-      if ((await this.webUserCount()) === 0) {
+      // Only create default if no real admin exists yet
+      const count = await this.webUserCount();
+      if (count === 0) {
         await this.createWebUser('admin', await hashPw('admins'));
+        // Mark as "default" so we can disable it after real registration
+        await this.kv.put('auth:has_default_admin', '1');
         console.log('Default admin created: admin / admins');
       }
-      await this.kv.put('init:admin_done', '1');
     } catch (e) { console.error('ensureDefaultAdmin:', e); }
+  }
+
+  /**
+   * Called after a real admin registers. Disables the default admin/admins
+   * account so it cannot be used to log in anymore.
+   */
+  async disableDefaultAdmin() {
+    try {
+      const hasDefault = await this.kv.get('auth:has_default_admin');
+      if (!hasDefault) return;
+      const u = await this.getWebUser('admin');
+      if (u) {
+        // Overwrite the password hash with a random irreversible value
+        const { genToken } = await import('./auth.js');
+        await this.updateWebUserPassword(u.id, '!!disabled:' + genToken(32));
+        console.log('Default admin account disabled after real registration');
+      }
+      await this.kv.delete('auth:has_default_admin');
+    } catch (e) { console.error('disableDefaultAdmin:', e); }
   }
 }

@@ -104,7 +104,6 @@ function fullUserKb(uid, u) {
       { text: '📨 消息记录', callback_data: `ml:${uid}:1` },
     ],
     [
-      { text: '✏️ 改用户名', callback_data: `nu:${uid}` },
       { text: '🔄 刷新', callback_data: `rf:${uid}` },
     ],
   ];
