@@ -19,8 +19,8 @@ export const DEFAULT_SETTINGS = {
   BOT_COMMAND_FILTER: 'true',
   WHITELIST_ENABLED: 'false',
   ADMIN_NOTIFY_ENABLED: 'false',
-  ACTIVE_DB: 'kv',
-  WEBHOOK_URL: '',                     // kv | d1
+  ACTIVE_DB: 'kv',                     // kv | d1
+  WEBHOOK_URL: '',
 };
 
 // ─── KV helpers ───────────────────────────────────────────────────────────────
@@ -565,7 +565,7 @@ export class DB {
            VALUES(?,?,?,?,?,?,?)`,
           u.id, u.username, u.password_hash,
           u.totp_secret || null, u.totp_enabled ? 1 : 0,
-          u.is_admin ? 1 : 1, u.created_at || new Date().toISOString()
+          u.is_admin ? 1 : 0, u.created_at || new Date().toISOString()
         );
       }
     } else {
