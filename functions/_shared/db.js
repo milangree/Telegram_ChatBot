@@ -178,8 +178,9 @@ class KVStore {
 
   // Verification
   async setVerify(userId, data, ttlSeconds = 300) {
-    const rec = { user_id: userId, attempts: 0, expires_at: Date.now() + ttlSeconds * 1000, ...data };
-    await this.kv.put(`verify:${userId}`, JSON.stringify(rec), { expirationTtl: ttlSeconds });
+    const ttl = Math.max(60, ttlSeconds); // CF KV minimum TTL is 60s
+    const rec = { user_id: userId, attempts: 0, expires_at: Date.now() + ttl * 1000, ...data };
+    await this.kv.put(`verify:${userId}`, JSON.stringify(rec), { expirationTtl: ttl });
   }
   async getVerify(userId) { const d = await this.kv.get(`verify:${userId}`); return d ? JSON.parse(d) : null; }
   async incVerify(userId) {
