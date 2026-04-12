@@ -1,0 +1,68 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "dev:web",
+      "type": "shell",
+      "command": "npm run dev:web",
+      "isBackground": true,
+      "problemMatcher": [
+        {
+          "owner": "custom",
+          "pattern": {
+            "regexp": "^(.*(?:\\[wrangler:error\\]|\\bERROR\\b|\\bError\\b|\\bERR!\\b).*)$",
+            "message": 1
+          },
+          "background": {
+            "activeOnStart": true,
+            "beginsPattern": ".*",
+            "endsPattern": "ready in|Local:"
+          }
+        }
+      ],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "dev:functions",
+      "type": "shell",
+      "command": "npm run dev:functions",
+      "isBackground": true,
+      "problemMatcher": [
+        {
+          "owner": "custom",
+          "pattern": {
+            "regexp": "^(.*(?:\\[wrangler:error\\]|\\bERROR\\b|\\bError\\b|\\bERR!\\b).*)$",
+            "message": 1
+          },
+          "background": {
+            "activeOnStart": true,
+            "beginsPattern": ".*",
+            "endsPattern": ".*(Listening|Ready|localhost:8788|127.0.0.1:8788).*"
+          }
+        }
+      ],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "dev:all",
+      "dependsOn": [
+        "dev:functions",
+        "dev:web"
+      ],
+      "dependsOrder": "parallel"
+    },
+    {
+      "label": "build",
+      "type": "shell",
+      "command": "npm run build",
+      "group": "build",
+      "problemMatcher": []
+    }
+  ]
+}

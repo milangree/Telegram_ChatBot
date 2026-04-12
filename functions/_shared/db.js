@@ -454,9 +454,32 @@ export class DB {
     this._activeStore = null;
   }
 
+  async _resolveActiveDb() {
+    // Prefer D1 marker when D1 is bound (strongly consistent).
+    if (this._d1) {
+      try {
+        await this._d1.initSchema();
+        const fromD1 = await this._d1.getSetting('ACTIVE_DB');
+        if (fromD1 === 'kv' || fromD1 === 'd1') return fromD1;
+      } catch (e) {
+        console.error('resolve active db from D1 failed:', e);
+      }
+    }
+
+    // Fallback to KV marker (legacy / no D1).
+    const fromKv = await this.kv.get('config:active_db');
+    if (fromKv === 'kv' || fromKv === 'd1') return fromKv;
+
+    return 'kv';
+  }
+
+  async getActiveDb() {
+    return this._resolveActiveDb();
+  }
+
   async _store() {
     if (this._activeStore) return this._activeStore;
-    const active = (await this.kv.get('config:active_db')) || 'kv';
+    const active = await this._resolveActiveDb();
     this._activeStore = (active === 'd1' && this._d1) ? this._d1 : this._kv;
     return this._activeStore;
   }
@@ -508,7 +531,19 @@ export class DB {
   async switchDb(target) {
     if (target !== 'kv' && target !== 'd1') throw new Error('Invalid target');
     if (target === 'd1' && !this._d1) throw new Error('D1 not bound');
+
+    // Keep KV marker for backward compatibility.
     await this.kv.put('config:active_db', target);
+
+    // Keep settings marker in KV store too.
+    await this._kv.setSetting('ACTIVE_DB', target).catch(() => {});
+
+    // Keep settings marker in D1 as source-of-truth when available.
+    if (this._d1) {
+      await this._d1.initSchema();
+      await this._d1.setSetting('ACTIVE_DB', target);
+    }
+
     this._activeStore = null; // reset cache
   }
 

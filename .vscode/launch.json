@@ -1,0 +1,33 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Launch Chrome (Frontend)",
+      "type": "chrome",
+      "request": "launch",
+      "url": "http://127.0.0.1:5173",
+      "webRoot": "${workspaceFolder}/src",
+      "preLaunchTask": "dev:all"
+    },
+    {
+      "name": "Attach Node (Wrangler/Functions)",
+      "type": "node",
+      "request": "attach",
+      "port": 9229,
+      "restart": true,
+      "timeout": 30000,
+      "skipFiles": [
+        "<node_internals>/**"
+      ]
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Debug Full Stack",
+      "configurations": [
+        "Launch Chrome (Frontend)"
+      ],
+      "preLaunchTask": "dev:all"
+    }
+  ]
+}

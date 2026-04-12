@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:web": "vite",
+    "dev:functions": "npx --yes wrangler@latest pages dev . --port 8788 --kv=KV --inspector-port 9229 --show-interactive-dev-session=false",
     "build": "vite build",
     "preview": "vite preview"
   },

@@ -171,6 +171,37 @@ Pages 项目 → **Settings → Bindings**：
 
 ---
 
+## 🧪 本地 VSCode 运行与调试
+
+### 1) 安装依赖
+```bash
+npm install
+```
+
+### 2) 启动本地联调（前端 + Functions）
+推荐在 VSCode 中直接使用任务：
+
+- `Terminal -> Run Task -> dev:all`
+  - `dev:web`：启动 Vite 前端（`http://127.0.0.1:5173`）
+  - `dev:functions`：启动 Pages Functions 本地服务（`http://127.0.0.1:8788`）
+
+项目已内置代理配置，前端的 `/api` 与 `/webhook` 会自动转发到 `8788` 端口。
+
+### 3) VSCode 调试
+- 打开 `Run and Debug`
+- 选择 `Debug Full Stack`（会自动拉起 `dev:all`）
+- 浏览器会打开前端页面，可在 `src/` 里下断点调试
+
+> 如需调试 Functions 侧代码，可再使用 `Attach Node (Wrangler/Functions)`（默认端口 `9229`）。
+
+> `dev:functions` 已启用 `--inspector-port 9229` 且关闭交互会话（`--show-interactive-dev-session=false`），并使用 `npx --yes` 避免首次确认提示卡住调试流程。
+
+### 4) 相关配置文件
+- `package.json`：`dev:functions` 使用 Wrangler Pages 本地服务并开放 `9229` 调试端口
+- `vite.config.js`：新增 `/api`、`/webhook` 代理
+- `.vscode/tasks.json`：一键启动本地联调任务
+- `.vscode/launch.json`：前端/全链路调试配置
+
 ## 🔧 常见问题
 
 **Q：WebUI 打不开 / 返回 500？**

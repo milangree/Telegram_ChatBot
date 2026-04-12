@@ -93,6 +93,23 @@ function buildCardText(user, u) {
     `状态：${u?.is_blocked ? '⛔ 已封禁' : (u?.is_verified ? '✅ 已验证' : '🟡 未验证')}`;
 }
 
+async function sendToUserThreadOrAdminDm({ tg, db, groupId, adminIds, userId, text, kb }) {
+  const u = await db.getUser(userId);
+  const tid = u?.thread_id;
+
+  if (groupId && !isNaN(groupId) && tid) {
+    const r = await tg.sendMsg({ chatId: groupId, threadId: tid, text, kb }).catch(() => null);
+    if (r?.ok) return { sent: true, via: 'thread' };
+  }
+
+  let dmCount = 0;
+  for (const aid of adminIds) {
+    const r = await tg.sendMsg({ chatId: aid, text, kb }).catch(() => null);
+    if (r?.ok) dmCount++;
+  }
+  return { sent: dmCount > 0, via: dmCount > 0 ? 'admin_dm' : 'none' };
+}
+
 // ── Keyboards ─────────────────────────────────────────────────────────────────
 function fullUserKb(uid, u) {
   return [
@@ -188,6 +205,7 @@ async function handleMsg(msg, { tg, db, kv, settings, baseUrl }) {
   // ── Group topic: admin → user forwarding ──────────────────────────────────
   if (msg.chat.id === groupId && msg.is_topic_message) {
     if (!adminIds.includes(user.id)) return; // only admins' replies get forwarded
+    if (msg.text?.startsWith('/')) return;   // avoid accidental command forwarding
     const target = await db.getUserByThread(msg.message_thread_id);
     if (!target) return;
     // Use copyMessage to preserve ALL formatting (code, monospace, quotes, media)
@@ -242,29 +260,19 @@ async function handleMsg(msg, { tg, db, kv, settings, baseUrl }) {
       if (appealText) {
         const who = `${name(user)} (${user.id})`;
         const text = `📝 <b>用户申诉</b>\n\n用户：${esc(who)}\n内容：\n${esc(appealText)}`;
-        if (dbUser.thread_id) {
-          await tg.sendMsg({
-            chatId: groupId,
-            threadId: dbUser.thread_id,
-            text,
-            kb: [[
-              { text: '✅ 通过申诉(解封)', callback_data: `apu:${user.id}` },
-              { text: '❌ 拒绝申诉', callback_data: `apr:${user.id}` },
-            ]],
-          }).catch(() => {});
-        }
-        for (const aid of adminIds) {
-          await tg.sendMsg({
-            chatId: aid,
-            text,
-            kb: [[
-              { text: '✅ 通过申诉(解封)', callback_data: `apu:${user.id}` },
-              { text: '❌ 拒绝申诉', callback_data: `apr:${user.id}` },
-            ]],
-          }).catch(() => {});
-        }
+        const kb = [[
+          { text: '✅ 通过申诉(解封)', callback_data: `apu:${user.id}` },
+          { text: '❌ 拒绝申诉', callback_data: `apr:${user.id}` },
+        ]];
+
+        const delivery = await sendToUserThreadOrAdminDm({ tg, db, groupId, adminIds, userId: user.id, text, kb });
         await kv.delete(`pending_appeal:${user.id}`);
-        await tg.sendMsg({ chatId: user.id, text: '✅ 申诉已提交，请等待管理员处理。' });
+
+        if (delivery.sent) {
+          await tg.sendMsg({ chatId: user.id, text: '✅ 申诉已提交，请等待管理员处理。' });
+        } else {
+          await tg.sendMsg({ chatId: user.id, text: '⚠️ 申诉已记录，但通知管理员失败，请稍后重试。' });
+        }
       }
       return;
     }
@@ -369,11 +377,24 @@ async function handleMsg(msg, { tg, db, kv, settings, baseUrl }) {
 }
 
 async function handleAdminPrivateMsg(msg, user, { tg, db, kv, settings, groupId }) {
+  const sendPanel = async () => {
+    const s = await db.getStats();
+    await tg.sendMsg({
+      chatId: user.id,
+      text: `🤖 <b>管理员控制台</b>\n\n👥 ${s.totalUsers} 用户  ⛔ ${s.blockedUsers} 封禁\n💬 ${s.totalMessages} 消息  📅 今日 ${s.todayMessages}`,
+      kb: adminPanelKb(settings),
+    });
+  };
+
   if (msg.text?.startsWith('/')) {
     const parts = msg.text.trim().split(/\s+/);
     const cmd   = parts[0].split('@')[0].slice(1).toLowerCase();
     const arg   = parts[1];
 
+    if (cmd === 'panel') {
+      await sendPanel();
+      return;
+    }
     if (cmd === 'stats') {
       const s = await db.getStats();
       await tg.sendMsg({ chatId: user.id, text: `📊 <b>统计</b>\n\n👥 总用户：${s.totalUsers}\n⛔ 封禁：${s.blockedUsers}\n💬 消息：${s.totalMessages}\n📅 今日：${s.todayMessages}` });
@@ -405,32 +426,21 @@ async function handleAdminPrivateMsg(msg, user, { tg, db, kv, settings, groupId 
       await tg.sendMsg({ chatId: user.id, text: buildDetailText(u), kb: fullUserKb(u.user_id, u) });
       return;
     }
-  }
 
-  if (msg.text?.startsWith('/panel')) {
-    const s = await db.getStats();
-    await tg.sendMsg({
-      chatId: user.id,
-      text: `🤖 <b>管理员控制台</b>\n\n👥 ${s.totalUsers} 用户  ⛔ ${s.blockedUsers} 封禁\n💬 ${s.totalMessages} 消息  📅 今日 ${s.todayMessages}`,
-      kb: adminPanelKb(settings),
-    });
+    // Unknown slash commands should not be forwarded to group/topic.
+    await tg.sendMsg({ chatId: user.id, text: 'ℹ️ 未知命令。可用命令：/panel /stats /ban /unban /wl /unwl /info' });
     return;
   }
 
   if (settings.ADMIN_NOTIFY_ENABLED !== 'true') return;
 
-  // ADMIN_NOTIFY is ON: forward the admin's message to the forum group (general area)
+  // ADMIN_NOTIFY is ON: forward admin message to forum group (no target thread context in private chat)
   const fwdRes = await tg.copyMsg({ chatId: groupId, fromChatId: msg.chat.id, msgId: msg.message_id });
   if (fwdRes.ok) {
-    await tg.sendMsg({ chatId: user.id, text: '✅ 消息已转发到话题群组。' });
+    await tg.sendMsg({ chatId: user.id, text: '✅ 消息已转发到群组。' });
   } else {
     // Fallback: show admin control panel if forwarding fails (e.g. bot not in group yet)
-    const s = await db.getStats();
-    await tg.sendMsg({
-      chatId: user.id,
-      text: `🤖 <b>管理员控制台</b>\n\n👥 ${s.totalUsers} 用户  ⛔ ${s.blockedUsers} 封禁\n💬 ${s.totalMessages} 消息  📅 今日 ${s.todayMessages}`,
-      kb: adminPanelKb(settings),
-    });
+    await sendPanel();
   }
 }
 

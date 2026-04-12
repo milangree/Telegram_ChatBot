@@ -35,9 +35,10 @@
 
     <!-- Mobile top bar -->
     <div class="mobile-header mobile-only">
-      <button class="btn-icon" @click="sidebarOpen = true">☰</button>
-      <span style="font-weight:700;font-size:15px">🤖 Bot 管理</span>
-      <button class="btn-icon" @click="toggleTheme" style="margin-left:auto">{{ isDark ? '☀️' : '🌙' }}</button>
+      <button class="btn-icon" @click="sidebarOpen = true" title="菜单">☰</button>
+      <span class="mobile-title">🤖 Bot 管理</span>
+      <button class="btn-icon" @click="toggleTheme" title="切换主题" style="margin-left:auto">{{ isDark ? '☀️' : '🌙' }}</button>
+      <button class="btn-icon" @click="handleLogout" title="退出登录" style="color:var(--danger)">⏻</button>
     </div>
 
     <main class="main-content">

@@ -243,7 +243,7 @@ export async function onRequest({ request, env }) {
 
   // Database switch + sync
   if (path === '/settings/db' && request.method === 'GET') {
-    const active = (await kv.get('config:active_db')) || 'kv';
+    const active = await db.getActiveDb();
     const hasD1  = !!env.D1;
     return j({ active, hasD1 });
   }
@@ -253,8 +253,10 @@ export async function onRequest({ request, env }) {
       const { target, sync } = await request.json();
       if (!['kv', 'd1'].includes(target)) return err('无效目标', 400);
       if (target === 'd1' && !env.D1) return err('D1 未绑定', 400);
-      const current = (await kv.get('config:active_db')) || 'kv';
+
+      const current = await db.getActiveDb();
       if (sync && current !== target) await db.syncData(current, target);
+
       await db.switchDb(target);
       return j({ ok: true, active: target });
     } catch (e) { return err('切换失败: ' + e.message, 500); }

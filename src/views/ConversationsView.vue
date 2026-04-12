@@ -48,6 +48,7 @@
           <button v-if="!selUser.is_blocked" class="btn-danger btn-sm hide-mobile" @click="blockUser">🚫</button>
           <button v-else class="btn-success btn-sm hide-mobile" @click="unblockUser">✅</button>
           <button class="btn-ghost btn-sm hide-mobile" @click="deleteConv" title="删除对话并关闭话题">🗑️</button>
+          <button class="btn-ghost btn-sm mobile-only" @click="deleteConv" title="删除对话并关闭话题">🗑️</button>
         </div>
 
         <div class="msg-list" ref="msgRef">

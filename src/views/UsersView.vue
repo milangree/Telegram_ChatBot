@@ -116,7 +116,11 @@
         </div>
 
         <div class="detail-grid">
-          <div class="dr"><span class="dl">ID</span><code>{{ detailUser.user_id }}</code></div>
+          <div class="dr">
+            <span class="dl">ID</span>
+            <code>{{ detailUser.user_id }}</code>
+            <button class="btn-ghost btn-sm copy-btn" @click="copyText(String(detailUser.user_id), 'UID')">复制</button>
+          </div>
           <div class="dr"><span class="dl">状态</span>
             <span class="badge" :class="detailUser.is_blocked ? 'badge-danger' : 'badge-success'">
               {{ detailUser.is_blocked ? (detailUser.is_permanent_block ? '♾️ 永久封禁' : '⛔ 封禁') : '✅ 正常' }}
@@ -125,6 +129,11 @@
           <div class="dr" v-if="detailUser.block_reason"><span class="dl">封禁原因</span>{{ detailUser.block_reason }}</div>
           <div class="dr"><span class="dl">验证</span>{{ detailUser.is_verified ? '✅ 已验证' : '❌ 未验证' }}</div>
           <div class="dr"><span class="dl">白名单</span>{{ detailIsWl ? '⚪ 是' : '否' }}</div>
+          <div class="dr">
+            <span class="dl">姓名</span>
+            <span>{{ detailUser.first_name }} {{ detailUser.last_name }}</span>
+            <button class="btn-ghost btn-sm copy-btn" @click="copyText(`${detailUser.first_name || ''} ${detailUser.last_name || ''}`.trim(), '姓名')">复制</button>
+          </div>
           <div class="dr"><span class="dl">语言</span>{{ detailUser.language_code || '未知' }}</div>
           <div class="dr"><span class="dl">首次联系</span>{{ fmtDate(detailUser.created_at) }}</div>
         </div>
@@ -142,10 +151,11 @@
 
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
-import { RouterLink } from 'vue-router'
+import { RouterLink, useRoute } from 'vue-router'
 import api from '../stores/api.js'
 import UserSearchPicker from '../components/UserSearchPicker.vue'
 
+const route = useRoute()
 const users = ref([]), total = ref(0), page = ref(1), pageSize = 20
 const loading = ref(true), filter = ref('')
 const quickId = ref(''), quickReason = ref(''), quickMsg = ref(''), quickOk = ref(true)
@@ -239,6 +249,27 @@ async function toggleWlDetail() {
   else { await api.post(`/api/whitelist/${detailUser.value.user_id}`, { reason:'手动' }); detailIsWl.value = true }
 }
 
+async function copyText(text, label) {
+  const val = String(text || '').trim()
+  if (!val) return
+  try {
+    if (navigator?.clipboard?.writeText) await navigator.clipboard.writeText(val)
+    else {
+      const ta = document.createElement('textarea')
+      ta.value = val
+      ta.style.position = 'fixed'
+      ta.style.opacity = '0'
+      document.body.appendChild(ta)
+      ta.focus(); ta.select()
+      document.execCommand('copy')
+      document.body.removeChild(ta)
+    }
+    flash(`✅ 已复制${label}`)
+  } catch (e) {
+    flash(`❌ 复制失败: ${e?.message || '未知错误'}`, false)
+  }
+}
+
 // UTC+8 precise to second
 function fmtDate(ts) {
   if (!ts) return '—'
@@ -248,7 +279,15 @@ function fmtDate(ts) {
 }
 
 watch(filter, () => { page.value = 1; load() })
-onMounted(load)
+watch(() => route.query.filter, (v) => {
+  const next = v === 'blocked' || v === 'normal' ? v : ''
+  if (filter.value !== next) filter.value = next
+})
+onMounted(() => {
+  const qf = route.query.filter
+  filter.value = qf === 'blocked' || qf === 'normal' ? qf : ''
+  load()
+})
 </script>
 
 <style scoped>
@@ -271,4 +310,5 @@ onMounted(load)
 .dl{width:80px;flex-shrink:0;color:var(--text2);font-size:12px}
 .modal-acts{display:flex;gap:8px;flex-wrap:wrap}
 .modal-acts button,.modal-acts a{flex:1;min-width:70px;justify-content:center;font-size:12px;padding:7px 10px}
+.copy-btn{padding:2px 8px;font-size:11px}
 </style>

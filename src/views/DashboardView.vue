@@ -8,7 +8,7 @@
     <div v-if="loading" class="flex-center mt-3"><div class="spinner"></div></div>
     <template v-else>
       <div class="stat-grid mb-2">
-        <div class="stat-card card" v-for="s in statCards" :key="s.label">
+        <div class="stat-card card clickable" v-for="s in statCards" :key="s.label" @click="goTo(s.to)">
           <div class="stat-icon">{{ s.icon }}</div>
           <div>
             <div class="stat-val" :class="s.cls">{{ s.val }}</div>
@@ -65,17 +65,18 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { RouterLink } from 'vue-router'
+import { RouterLink, useRouter } from 'vue-router'
 import api from '../stores/api.js'
 
+const router = useRouter()
 const stats = ref({}), convs = ref([]), settings = ref({}), bot = ref(null)
 const loading = ref(true), avatars = ref({})
 
 const statCards = computed(() => [
-  { icon: '👥', label: '总用户数',   val: stats.value.totalUsers    ?? '—', cls: '' },
-  { icon: '⛔', label: '封禁用户',   val: stats.value.blockedUsers  ?? '—', cls: 'text-danger' },
-  { icon: '💬', label: '总消息数',   val: stats.value.totalMessages ?? '—', cls: '' },
-  { icon: '📅', label: '今日消息',   val: stats.value.todayMessages ?? '—', cls: 'text-success' },
+  { icon: '👥', label: '总用户数',   val: stats.value.totalUsers    ?? '—', cls: '', to: '/users' },
+  { icon: '⛔', label: '封禁用户',   val: stats.value.blockedUsers  ?? '—', cls: 'text-danger', to: '/users?filter=blocked' },
+  { icon: '💬', label: '总消息数',   val: stats.value.totalMessages ?? '—', cls: '', to: '/conversations' },
+  { icon: '📅', label: '今日消息',   val: stats.value.todayMessages ?? '—', cls: 'text-success', to: '/conversations' },
 ])
 
 const configChecks = computed(() => [
@@ -105,6 +106,10 @@ async function load() {
   } finally { loading.value = false }
 }
 
+function goTo(path) {
+  if (path) router.push(path)
+}
+
 function fmtTime(ts) {
   if (!ts) return ''
   const diff = Date.now() - new Date(ts)
@@ -124,6 +129,8 @@ onMounted(load)
 .page{max-width:900px}
 .stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
 .stat-card{display:flex;align-items:center;gap:14px}
+.stat-card.clickable{cursor:pointer;user-select:none}
+.stat-card.clickable:hover{border-color:var(--accent);transform:translateY(-1px)}
 .stat-icon{font-size:28px}
 .stat-val{font-size:26px;font-weight:700;line-height:1}
 .text-danger{color:var(--danger)}.text-success{color:var(--success)}
