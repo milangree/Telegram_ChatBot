@@ -34,11 +34,7 @@
 </template>
 
 <script setup>
-<<<<<<< HEAD
 import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
-=======
-import { ref, onMounted, onBeforeUnmount } from 'vue'
->>>>>>> 1f4b014bea61d272db421d42e0c09bd79c6e9ba8
 import api from '../stores/api.js'
 
 const props = defineProps({
@@ -55,10 +51,7 @@ const root    = ref(null)
 
 let timer = null
 function onInput() {
-<<<<<<< HEAD
   emit('update:modelValue', query.value)
-=======
->>>>>>> 1f4b014bea61d272db421d42e0c09bd79c6e9ba8
   clearTimeout(timer)
   if (!query.value) { results.value = []; return }
   timer = setTimeout(doSearch, 300)
@@ -77,14 +70,11 @@ function select(u) {
 }
 
 function onClickOutside(e) { if (root.value && !root.value.contains(e.target)) open.value = false }
-<<<<<<< HEAD
 
 watch(() => props.modelValue, (v) => {
   if (v !== query.value) query.value = v || ''
 })
 
-=======
->>>>>>> 1f4b014bea61d272db421d42e0c09bd79c6e9ba8
 onMounted(() => document.addEventListener('mousedown', onClickOutside))
 onBeforeUnmount(() => document.removeEventListener('mousedown', onClickOutside))
 </script>
@@ -93,8 +83,4 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onClickOutside))
 .input-row { display:flex; gap:8px; align-items:center }
 .input-row input { flex:1 }
 .user-ava-sm { width:28px;height:28px;border-radius:50%;background:var(--accent-dim);color:var(--accent);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;flex-shrink:0 }
-<<<<<<< HEAD
 </style>
-=======
-</style>
->>>>>>> 1f4b014bea61d272db421d42e0c09bd79c6e9ba8

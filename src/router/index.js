@@ -17,7 +17,6 @@ const router = createRouter({
   ],
 })
 
-<<<<<<< HEAD
 let checkedStatus = false
 let needsFirstContact = false
 
@@ -35,13 +34,10 @@ async function fetchAuthStatus() {
   return needsFirstContact
 }
 
-=======
->>>>>>> 1f4b014bea61d272db421d42e0c09bd79c6e9ba8
 router.beforeEach(async (to, from, next) => {
   const auth  = useAuthStore()
   const token = localStorage.getItem('token')
   if (token && !auth.isLoggedIn) await auth.checkAuth()
-<<<<<<< HEAD
 
   const needFirst = await fetchAuthStatus()
   if (needFirst) {
@@ -50,8 +46,6 @@ router.beforeEach(async (to, from, next) => {
     return next('/register')
   }
 
-=======
->>>>>>> 1f4b014bea61d272db421d42e0c09bd79c6e9ba8
   if (to.meta.public) {
     if (auth.isLoggedIn && (to.path === '/login' || to.path === '/register')) return next('/')
     return next()

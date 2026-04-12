@@ -19,11 +19,7 @@
           <span v-if="loading" class="spinner"></span>{{ loading ? '检查中…' : '下一步' }}
         </button>
         <div class="login-links">
-<<<<<<< HEAD
           <RouterLink to="/register">首次联系</RouterLink>
-=======
-          <RouterLink to="/register">首次注册</RouterLink>
->>>>>>> 1f4b014bea61d272db421d42e0c09bd79c6e9ba8
           <RouterLink to="/recover">找回密码</RouterLink>
         </div>
       </div>
@@ -65,11 +61,7 @@
         </div>
       </div>
 
-<<<<<<< HEAD
       <div class="login-footer">首次联系完成后默认账号将自动禁用</div>
-=======
-      <div class="login-footer">默认账号：admin / admins</div>
->>>>>>> 1f4b014bea61d272db421d42e0c09bd79c6e9ba8
     </div>
   </div>
 </template>

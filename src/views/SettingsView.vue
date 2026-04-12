@@ -145,14 +145,11 @@
         </div>
         <div class="divider"></div>
         <div class="toggle-row">
-<<<<<<< HEAD
           <div><div class="toggle-label">接收管理员私聊消息</div><div class="form-hint">关闭后，管理员私聊 Bot 不再默认弹出控制台</div></div>
           <label class="toggle"><input type="checkbox" v-model="adminNotifyEnabled" /><span class="toggle-slider"></span></label>
         </div>
         <div class="divider"></div>
         <div class="toggle-row">
-=======
->>>>>>> 1f4b014bea61d272db421d42e0c09bd79c6e9ba8
           <div class="toggle-label">每分钟最大消息数</div>
           <input v-model="form.MAX_MESSAGES_PER_MINUTE" type="number" min="1" max="300" style="width:90px" />
         </div>
@@ -217,10 +214,7 @@ const verifyEnabled   = boolProp('VERIFICATION_ENABLED')
 const autoUnblock     = boolProp('AUTO_UNBLOCK_ENABLED')
 const whitelistEnabled = boolProp('WHITELIST_ENABLED')
 const cmdFilter       = boolProp('BOT_COMMAND_FILTER')
-<<<<<<< HEAD
 const adminNotifyEnabled = boolProp('ADMIN_NOTIFY_ENABLED')
-=======
->>>>>>> 1f4b014bea61d272db421d42e0c09bd79c6e9ba8
 const welcomeEnabled  = boolProp('WELCOME_ENABLED')
 
 const adminList = computed({

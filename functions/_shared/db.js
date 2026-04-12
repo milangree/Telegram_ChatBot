@@ -18,10 +18,7 @@ export const DEFAULT_SETTINGS = {
   WELCOME_MESSAGE: '👋 欢迎使用双向消息机器人！\n\n请直接发送您的问题或留言，管理员将尽快回复。\n\n发送 /help 查看帮助。',
   BOT_COMMAND_FILTER: 'true',
   WHITELIST_ENABLED: 'false',
-<<<<<<< HEAD
   ADMIN_NOTIFY_ENABLED: 'false',
-=======
->>>>>>> 1f4b014bea61d272db421d42e0c09bd79c6e9ba8
   ACTIVE_DB: 'kv',
   WEBHOOK_URL: '',                     // kv | d1
 };
