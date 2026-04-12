@@ -9,7 +9,7 @@
         <label>新用户名</label>
         <input v-model="newUsername" placeholder="字母、数字、下划线，至少3位" />
       </div>
-      <div v-if="unameMsg" class="alert" :class="unameOk?'alert-success':'alert-error'">{{ unameMsg }}</div>
+      <div v-if="unameMsg" class="alert" :class="unameOk ? 'alert-success' : 'alert-error'">{{ unameMsg }}</div>
       <button class="btn-primary" @click="changeUsername" :disabled="unameLoading">
         <span v-if="unameLoading" class="spinner"></span>更新用户名
       </button>
@@ -26,7 +26,7 @@
         <label>新密码</label>
         <input type="password" v-model="newPw" placeholder="至少6位" />
       </div>
-      <div v-if="pwMsg" class="alert" :class="pwOk?'alert-success':'alert-error'">{{ pwMsg }}</div>
+      <div v-if="pwMsg" class="alert" :class="pwOk ? 'alert-success' : 'alert-error'">{{ pwMsg }}</div>
       <button class="btn-primary" @click="changePassword" :disabled="pwLoading">
         <span v-if="pwLoading" class="spinner"></span>更新密码
       </button>
@@ -69,7 +69,7 @@
         </button>
       </div>
 
-      <div v-if="totpMsg" class="alert mt-2" :class="totpOk?'alert-success':'alert-error'">{{ totpMsg }}</div>
+      <div v-if="totpMsg" class="alert mt-2" :class="totpOk ? 'alert-success' : 'alert-error'">{{ totpMsg }}</div>
     </div>
   </div>
 </template>
@@ -81,87 +81,131 @@ import { useAuthStore } from '../stores/auth.js'
 
 const auth = useAuthStore()
 
-const newUsername = ref(''), unameMsg = ref(''), unameOk = ref(true), unameLoading = ref(false)
-const oldPw = ref(''), newPw = ref(''), pwMsg = ref(''), pwOk = ref(true), pwLoading = ref(false)
-const totpEnabled = ref(false), totpSecret = ref(''), qrUrl = ref(''), totpToken = ref('')
-const totpMsg = ref(''), totpOk = ref(true), totpLoading = ref(false)
+const newUsername = ref(''),
+  unameMsg = ref(''),
+  unameOk = ref(true),
+  unameLoading = ref(false)
+const oldPw = ref(''),
+  newPw = ref(''),
+  pwMsg = ref(''),
+  pwOk = ref(true),
+  pwLoading = ref(false)
+const totpEnabled = ref(false),
+  totpSecret = ref(''),
+  qrUrl = ref(''),
+  totpToken = ref('')
+const totpMsg = ref(''),
+  totpOk = ref(true),
+  totpLoading = ref(false)
 
 function flash(msgRef, okRef, msg, ok = true, timeout = 4000) {
-  msgRef.value = msg; okRef.value = ok
-  if (timeout) setTimeout(() => msgRef.value = '', timeout)
+  msgRef.value = msg
+  okRef.value = ok
+  if (timeout) setTimeout(() => (msgRef.value = ''), timeout)
 }
 
 async function changeUsername() {
   if (!newUsername.value) return
-  unameLoading.value = true; unameMsg.value = ''
+  unameLoading.value = true
+  unameMsg.value = ''
   try {
     await api.put('/api/profile/username', { newUsername: newUsername.value })
     flash(unameMsg, unameOk, '✅ 用户名已更新')
     auth.username = newUsername.value
     localStorage.setItem('username', newUsername.value)
     newUsername.value = ''
-  } catch (e) { flash(unameMsg, unameOk, '❌ ' + e.message, false) }
-  finally { unameLoading.value = false }
+  } catch (e) {
+    flash(unameMsg, unameOk, '❌ ' + e.message, false)
+  } finally {
+    unameLoading.value = false
+  }
 }
 
 async function changePassword() {
   if (!oldPw.value || !newPw.value) return
-  pwLoading.value = true; pwMsg.value = ''
+  pwLoading.value = true
+  pwMsg.value = ''
   try {
     await api.put('/api/profile/password', { oldPassword: oldPw.value, newPassword: newPw.value })
     flash(pwMsg, pwOk, '✅ 密码已更新')
-    oldPw.value = ''; newPw.value = ''
-  } catch (e) { flash(pwMsg, pwOk, '❌ ' + e.message, false) }
-  finally { pwLoading.value = false }
+    oldPw.value = ''
+    newPw.value = ''
+  } catch (e) {
+    flash(pwMsg, pwOk, '❌ ' + e.message, false)
+  } finally {
+    pwLoading.value = false
+  }
 }
 
 async function setup2FA() {
-  totpLoading.value = true; totpMsg.value = ''
+  totpLoading.value = true
+  totpMsg.value = ''
   try {
     const d = await api.post('/api/profile/2fa/setup', { enable: true })
-    totpSecret.value = d.secret; qrUrl.value = d.qrcode
-  } catch (e) { flash(totpMsg, totpOk, '❌ ' + e.message, false) }
-  finally { totpLoading.value = false }
+    totpSecret.value = d.secret
+    qrUrl.value = d.qrcode
+  } catch (e) {
+    flash(totpMsg, totpOk, '❌ ' + e.message, false)
+  } finally {
+    totpLoading.value = false
+  }
 }
 
 async function verify2FA() {
   if (!totpToken.value) return
-  totpLoading.value = true; totpMsg.value = ''
+  totpLoading.value = true
+  totpMsg.value = ''
   try {
     await api.post('/api/profile/2fa/verify', { token: totpToken.value, secret: totpSecret.value })
-    totpEnabled.value = true; totpSecret.value = ''; totpToken.value = ''
+    totpEnabled.value = true
+    totpSecret.value = ''
+    totpToken.value = ''
     flash(totpMsg, totpOk, '✅ 两步验证已启用')
-  } catch (e) { flash(totpMsg, totpOk, '❌ ' + e.message, false) }
-  finally { totpLoading.value = false }
+  } catch (e) {
+    flash(totpMsg, totpOk, '❌ ' + e.message, false)
+  } finally {
+    totpLoading.value = false
+  }
 }
 
 async function disable2FA() {
   if (!confirm('确认禁用两步验证？')) return
-  totpLoading.value = true; totpMsg.value = ''
+  totpLoading.value = true
+  totpMsg.value = ''
   try {
     await api.post('/api/profile/2fa/setup', { enable: false })
     totpEnabled.value = false
     flash(totpMsg, totpOk, '✅ 两步验证已禁用')
-  } catch (e) { flash(totpMsg, totpOk, '❌ ' + e.message, false) }
-  finally { totpLoading.value = false }
+  } catch (e) {
+    flash(totpMsg, totpOk, '❌ ' + e.message, false)
+  } finally {
+    totpLoading.value = false
+  }
 }
 
 onMounted(async () => {
   try {
     const d = await api.get('/api/auth/me')
     totpEnabled.value = d.totpEnabled
-<<<<<<< HEAD
     auth.username = d.username
     newUsername.value = d.username
-=======
-    newUsername.value = auth.username
->>>>>>> 1f4b014bea61d272db421d42e0c09bd79c6e9ba8
-  } catch { /* noop */ }
+  } catch {
+    /* noop */
+  }
 })
 </script>
 
 <style scoped>
-.page{max-width:540px;margin:0 auto}
-.qr-wrap{display:flex;justify-content:center}
-.qr-wrap img{border-radius:8px;border:4px solid var(--bg2)}
+.page {
+  max-width: 540px;
+  margin: 0 auto;
+}
+.qr-wrap {
+  display: flex;
+  justify-content: center;
+}
+.qr-wrap img {
+  border-radius: 8px;
+  border: 4px solid var(--bg2);
+}
 </style>

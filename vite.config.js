@@ -14,8 +14,10 @@ export default defineConfig({
     sourcemap: false,
     rollupOptions: {
       output: {
-        manualChunks: {
-          vendor: ['vue', 'vue-router', 'pinia', 'axios']
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            return 'vendor'
+          }
         }
       }
     }
