@@ -315,7 +315,7 @@ export async function onRequest({ request, env }) {
     try {
       const uid = parseInt(blockMatch[1], 10), action = blockMatch[2];
       const body = await request.json();
-      if (action === 'block') await db.blockUser(uid, body.reason || 'WebUI', webUser.id, body.permanent !== false);
+      if (action === 'block') await db.blockUser(uid, body.reason || 'WebUI', webUser.id, body.permanent === true);
       else await db.unblockUser(uid);
       return j({ ok: true });
     } catch { return err('操作失败', 500); }
