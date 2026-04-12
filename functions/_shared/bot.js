@@ -1,735 +1,618 @@
-// functions/_shared/bot.js
-import { TG, esc, name, msgType } from './tg.js';
-import { generateCode, generateWrongOptions } from './captcha.js';
+// functions/_shared/db.js
+import { hashPw } from './auth.js';
 
-// ── Verification helpers ──────────────────────────────────────────────────────
-const MATH_QS = [
-  {q:'1 + 1',a:'2'},{q:'3 × 3',a:'9'},{q:'10 - 4',a:'6'},{q:'2 + 5',a:'7'},
-  {q:'4 × 2',a:'8'},{q:'15 ÷ 3',a:'5'},{q:'6 + 7',a:'13'},{q:'9 - 3',a:'6'},
-  {q:'8 + 4',a:'12'},{q:'7 × 2',a:'14'},{q:'18 ÷ 2',a:'9'},{q:'11 - 5',a:'6'},
-];
+// ─── Default settings ────────────────────────────────────────────────────────
+export const DEFAULT_SETTINGS = {
+  BOT_TOKEN: '',
+  FORUM_GROUP_ID: '',
+  ADMIN_IDS: '',
+  VERIFICATION_ENABLED: 'true',
+  VERIFICATION_TIMEOUT: '300',
+  MAX_VERIFICATION_ATTEMPTS: '3',
+  AUTO_UNBLOCK_ENABLED: 'true',
+  MAX_MESSAGES_PER_MINUTE: '30',
+  WEBHOOK_SECRET: '',
+  CAPTCHA_TYPE: 'math',                // math | image_numeric | image_alphanumeric
+  CAPTCHA_SITE_URL: '',
+  WELCOME_ENABLED: 'true',
+  WELCOME_MESSAGE: '👋 欢迎使用双向消息机器人！\n\n请直接发送您的问题或留言，管理员将尽快回复。\n\n发送 /help 查看帮助。',
+  BOT_COMMAND_FILTER: 'true',
+  WHITELIST_ENABLED: 'false',
+  ADMIN_NOTIFY_ENABLED: 'false',
+  ACTIVE_DB: 'kv',                     // kv | d1
+  WEBHOOK_URL: '',
+};
 
-function rows2(items, mk) {
-  const rows = [];
-  for (let i = 0; i < items.length; i += 2) rows.push(items.slice(i, i + 2).map(mk));
-  return rows;
+// ─── KV helpers ───────────────────────────────────────────────────────────────
+async function kvListAll(kv, prefix) {
+  const keys = [];
+  let cursor;
+  do {
+    const opts = { prefix };
+    if (cursor) opts.cursor = cursor;
+    const res = await kv.list(opts);
+    keys.push(...res.keys);
+    cursor = res.list_complete ? undefined : res.cursor;
+  } while (cursor);
+  return keys;
 }
 
-function mkMathVerify() {
-  const {q, a} = MATH_QS[Math.floor(Math.random() * MATH_QS.length)];
-  const cor = parseInt(a, 10);
-  const opts = new Set([cor]);
-  while (opts.size < 4) { const c = cor + Math.floor(Math.random() * 9) - 4; if (c > 0 && c !== cor) opts.add(c); }
-  const arr = [...opts].sort(() => Math.random() - 0.5).map(String);
-  return { question: `<b>${q} = ?</b>`, answer: a, kb: rows2(arr, n => ({ text: n, callback_data: `v:${n}` })) };
-}
+// ─── KV Store ────────────────────────────────────────────────────────────────
+class KVStore {
+  constructor(kv) { this.kv = kv; }
 
-function randId() {
-  return [...crypto.getRandomValues(new Uint8Array(12))].map(b => b.toString(16).padStart(2, '0')).join('');
-}
-
-// ── Rate limit ────────────────────────────────────────────────────────────────
-const rateMap = new Map();
-function rateCheck(uid, max) {
-  const now = Date.now();
-  const ts  = (rateMap.get(uid) || []).filter(t => now - t < 60000);
-  ts.push(now); rateMap.set(uid, ts);
-  return ts.length > max;
-}
-
-// ── Thread management ─────────────────────────────────────────────────────────
-async function getOrCreateThread(tg, db, user, groupId, kv) {
-  // Atomic-ish lock to prevent duplicate topics
-  const lockKey = `lock:thread:${user.id}`;
-  const existing = await db.getUser(user.id);
-  if (existing?.thread_id) return existing.thread_id;
-
-  const locked = await kv.get(lockKey);
-  if (locked) {
-    // Wait briefly then retry
-    await new Promise(r => setTimeout(r, 1500));
-    const u2 = await db.getUser(user.id);
-    if (u2?.thread_id) return u2.thread_id;
+  // Settings
+  async getSetting(key) { return this.kv.get(`setting:${key}`); }
+  async setSetting(key, value) { await this.kv.put(`setting:${key}`, String(value)); }
+  async getAllSettings() {
+    const s = { ...DEFAULT_SETTINGS };
+    await Promise.all(Object.keys(s).map(async k => {
+      const v = await this.kv.get(`setting:${k}`);
+      if (v !== null) s[k] = v;
+    }));
+    return s;
   }
 
-  await kv.put(lockKey, '1', { expirationTtl: 60 }); // CF KV minimum TTL is 60s
-  try {
-    const topicName = (name(user) || `User ${user.id}`).slice(0, 128);
-    const res = await tg.createTopic({ chatId: groupId, name: topicName });
-    if (!res.ok) { console.error('createTopic failed:', res); return null; }
-    const tid = res.result.message_thread_id;
-    await db.setUserThread(user.id, tid);
-    await sendCard(tg, db, user, groupId, tid);
-    return tid;
-  } finally {
-    await kv.delete(lockKey).catch(() => {});
+  // Users
+  async getUser(userId) {
+    const d = await this.kv.get(`user:${userId}`);
+    return d ? JSON.parse(d) : null;
   }
-}
-
-async function sendCard(tg, db, user, groupId, tid) {
-  const u    = await db.getUser(user.id);
-  const kb   = fullUserKb(user.id, u);
-  const text = buildCardText(user, u);
-
-  try {
-    const photos = await tg.getUserProfilePhotos({ userId: user.id, limit: 1 });
-    if (photos.ok && photos.result.total_count > 0) {
-      const fileId = photos.result.photos[0][0].file_id;
-      const r = await tg.sendPhoto({ chatId: groupId, fileId, caption: text, threadId: tid, kb });
-      if (r.ok) return;
+  async upsertUser(u) {
+    const ex = await this.getUser(u.user_id);
+    const rec = { ...ex, ...u, created_at: ex?.created_at || new Date().toISOString() };
+    await this.kv.put(`user:${u.user_id}`, JSON.stringify(rec));
+    if (u.username) await this.kv.put(`username:${u.username.toLowerCase()}`, String(u.user_id));
+  }
+  async setUserThread(userId, threadId) {
+    const u = await this.getUser(userId);
+    if (u) { u.thread_id = threadId; await this.kv.put(`user:${userId}`, JSON.stringify(u)); }
+    await this.kv.put(`thread:${threadId}`, String(userId));
+  }
+  async getUserByThread(threadId) {
+    const uid = await this.kv.get(`thread:${threadId}`);
+    return uid ? this.getUser(parseInt(uid, 10)) : null;
+  }
+  async setUserVerified(userId, v) {
+    const u = await this.getUser(userId);
+    if (u) { u.is_verified = v ? 1 : 0; await this.kv.put(`user:${userId}`, JSON.stringify(u)); }
+  }
+  async blockUser(userId, reason, blockedBy, permanent) {
+    const u = await this.getUser(userId);
+    if (u) {
+      Object.assign(u, { is_blocked: 1, is_permanent_block: permanent ? 1 : 0, block_reason: reason, blocked_by: blockedBy });
+      await this.kv.put(`user:${userId}`, JSON.stringify(u));
     }
-  } catch { /* no photo */ }
-
-  await tg.sendMsg({ chatId: groupId, text, threadId: tid, kb });
-}
-
-function buildCardText(user, u) {
-  return `👤 <b>用户信息</b>\n\n` +
-    `姓名：${esc(name(user))}\n` +
-    `用户名：${user.username ? '@' + esc(user.username) : '无'}\n` +
-    `ID：<code>${user.id}</code>\n` +
-    `语言：${user.language_code || '未知'}\n` +
-    `首次联系：${fmtUtc8(u?.created_at)}\n` +
-    `状态：${u?.is_blocked ? '⛔ 已封禁' : (u?.is_verified ? '✅ 已验证' : '🟡 未验证')}`;
-}
-
-// ── Keyboards ─────────────────────────────────────────────────────────────────
-function fullUserKb(uid, u) {
-  return [
-    [
-      { text: u?.is_blocked ? '✅ 解封' : '🚫 封禁', callback_data: u?.is_blocked ? `ub:${uid}` : `bl:${uid}` },
-      { text: u?.is_blocked ? '♾️ 永封' : '📋 详情', callback_data: u?.is_blocked ? `pb:${uid}` : `ui:${uid}` },
-    ],
-    [
-      { text: '⚪ 白名单', callback_data: `wl:${uid}` },
-      { text: '📨 消息记录', callback_data: `ml:${uid}:1` },
-    ],
-    [
-      { text: '🔄 刷新', callback_data: `rf:${uid}` },
-    ],
-  ];
-}
-
-function adminPanelKb(s) {
-  const capLabel = s.CAPTCHA_TYPE === 'image_numeric'
-    ? '图片数字'
-    : (s.CAPTCHA_TYPE === 'image_alphanumeric' ? '图片字母数字' : '数学题');
-  return [
-    [
-      { text: `✅ 验证: ${s.VERIFICATION_ENABLED === 'true' ? '开' : '关'}`, callback_data: 'adm:tv' },
-      { text: `🔓 申诉: ${s.AUTO_UNBLOCK_ENABLED === 'true' ? '开' : '关'}`, callback_data: 'adm:ta' },
-    ],
-    [
-      { text: `⚪ 白名单: ${s.WHITELIST_ENABLED === 'true' ? '开' : '关'}`, callback_data: 'adm:tw' },
-      { text: `🤖 过滤指令: ${s.BOT_COMMAND_FILTER === 'true' ? '开' : '关'}`, callback_data: 'adm:tf' },
-    ],
-    [
-      { text: `🧩 验证类型: ${capLabel}`, callback_data: 'adm:ct' },
-      { text: `⏱ 超时: ${s.VERIFICATION_TIMEOUT || '300'}s`, callback_data: 'adm:to' },
-    ],
-    [
-      { text: `🔁 尝试: ${s.MAX_VERIFICATION_ATTEMPTS || '3'}`, callback_data: 'adm:ma' },
-      { text: `📩 管理私聊: ${s.ADMIN_NOTIFY_ENABLED === 'true' ? '开' : '关'}`, callback_data: 'adm:tn' },
-    ],
-    [
-      { text: '📊 统计', callback_data: 'adm:st' },
-      { text: '🚫 黑名单', callback_data: 'adm:bk:1' },
-    ],
-    [{ text: '👥 用户列表', callback_data: 'adm:ul:1' }],
-  ];
-}
-
-// ── Commands setup ────────────────────────────────────────────────────────────
-export async function setupCommands(tg) {
-  const userCmds = [
-    { command: 'start', description: '开始使用 / 查看欢迎信息' },
-    { command: 'help',  description: '查看帮助' },
-    { command: 'status', description: '查看当前状态' },
-  ];
-  const adminCmds = [
-    ...userCmds,
-    { command: 'stats',  description: '[管理] 查看统计信息' },
-    { command: 'ban',    description: '[管理] 封禁用户 /ban <uid>' },
-    { command: 'unban',  description: '[管理] 解封用户 /unban <uid>' },
-    { command: 'wl',     description: '[管理] 加入白名单 /wl <uid>' },
-    { command: 'unwl',   description: '[管理] 移出白名单 /unwl <uid>' },
-    { command: 'info',   description: '[管理] 用户信息 /info <uid>' },
-    { command: 'panel',  description: '[管理] 打开控制台' },
-  ];
-  await tg.setMyCommands({ commands: userCmds });
-  await tg.setMyCommands({ commands: adminCmds, scope: { type: 'all_private_chats' } });
-  await tg.setChatMenuButton({ menuButton: { type: 'commands' } });
-}
-
-// ── Entry point ───────────────────────────────────────────────────────────────
-export async function processUpdate(update, env) {
-  if (!env?.KV) { console.error('KV not bound'); return; }
-  const db  = env._db;
-  try {
-    const settings = await db.getAllSettings();
-    if (!settings.BOT_TOKEN)      { console.error('BOT_TOKEN missing'); return; }
-    if (!settings.FORUM_GROUP_ID) { console.error('FORUM_GROUP_ID missing'); return; }
-    const tg  = new TG(settings.BOT_TOKEN);
-    const ctx = { tg, db, kv: env.KV, settings, baseUrl: env.baseUrl || '' };
-    if (update.message)              await handleMsg(update.message, ctx);
-    else if (update.callback_query)  await handleCb(update.callback_query, ctx);
-  } catch (e) { console.error('processUpdate:', e); }
-}
-
-// ── Message handler ───────────────────────────────────────────────────────────
-async function handleMsg(msg, { tg, db, kv, settings, baseUrl }) {
-  if (!msg) return;
-  const user = msg.from;
-  if (!user || user.is_bot) return;
-
-  const groupId  = parseInt(settings.FORUM_GROUP_ID, 10);
-  const adminIds = parseAdminIds(settings.ADMIN_IDS);
-
-  // ── Group topic: admin → user forwarding ──────────────────────────────────
-  if (msg.chat.id === groupId && msg.is_topic_message) {
-    if (!adminIds.includes(user.id)) return; // only admins' replies get forwarded
-    const target = await db.getUserByThread(msg.message_thread_id);
-    if (!target) return;
-    // Use copyMessage to preserve ALL formatting (code, monospace, quotes, media)
-    await tg.copyMsg({ chatId: target.user_id, fromChatId: msg.chat.id, msgId: msg.message_id });
-    await db.addMsg({ userId: target.user_id, direction: 'outgoing', content: msg.text || msg.caption || '[媒体]', messageType: msgType(msg) });
-    return;
   }
-
-  if (msg.chat.type !== 'private') return;
-
-  // Upsert user info
-  await db.upsertUser({
-    user_id: user.id, username: user.username,
-    first_name: user.first_name, last_name: user.last_name, language_code: user.language_code,
-  });
-
-  // ── Admin private chat: control panel or command processing ───────────────
-  if (adminIds.includes(user.id)) {
-    await handleAdminPrivateMsg(msg, user, { tg, db, kv, settings, groupId });
-    return;
-  }
-
-  // ── Command filter ────────────────────────────────────────────────────────
-  if (msg.text?.startsWith('/')) {
-    const [cmdFull] = msg.text.split(' ');
-    const cmd = cmdFull.split('@')[0].slice(1).toLowerCase();
-
-    if (cmd === 'start' || cmd === 'help') {
-      const welcomeText = settings.WELCOME_MESSAGE ||
-        '👋 欢迎使用双向消息机器人！\n\n请直接发送您的问题，管理员将尽快回复。';
-      const kb = [[
-        { text: '📨 发送消息', callback_data: 'user:msg' },
-        { text: '🆘 帮助', callback_data: 'user:help' },
-      ]];
-      await tg.sendMsg({ chatId: user.id, text: welcomeText, kb });
-      return;
+  async unblockUser(userId) {
+    const u = await this.getUser(userId);
+    if (u) {
+      Object.assign(u, { is_blocked: 0, is_permanent_block: 0, block_reason: null, blocked_by: null });
+      await this.kv.put(`user:${userId}`, JSON.stringify(u));
     }
-    if (cmd === 'status') {
-      const u = await db.getUser(user.id);
-      await tg.sendMsg({ chatId: user.id, text: `📋 <b>状态</b>\n\n验证：${u?.is_verified ? '✅ 已通过' : '❌ 未通过'}\n封禁：${u?.is_blocked ? '⛔ 是' : '✅ 否'}` });
-      return;
+  }
+  async updateUsername(userId, newUsername) {
+    const u = await this.getUser(userId);
+    if (u) {
+      if (u.username) await this.kv.delete(`username:${u.username.toLowerCase()}`);
+      u.username = newUsername;
+      await this.kv.put(`user:${userId}`, JSON.stringify(u));
+      if (newUsername) await this.kv.put(`username:${newUsername.toLowerCase()}`, String(userId));
     }
-    if (settings.BOT_COMMAND_FILTER === 'true') return; // swallow unknown commands
+  }
+  async searchUsers(query, limit = 10) {
+    const results = [];
+    const q = query.toLowerCase();
+    for (const key of await kvListAll(this.kv, 'user:')) {
+      if (results.length >= limit) break;
+      const d = await this.kv.get(key.name);
+      if (!d) continue;
+      const u = JSON.parse(d);
+      if (String(u.user_id).includes(q) || (u.username?.toLowerCase().includes(q)) || (u.first_name?.toLowerCase().includes(q)))
+        results.push(u);
+    }
+    return results;
+  }
+  async getAllUsers(page = 1, pageSize = 20) {
+    const all = (await Promise.all((await kvListAll(this.kv, 'user:')).map(k => this.kv.get(k.name).then(d => d ? JSON.parse(d) : null)))).filter(Boolean);
+    all.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    return { users: all.slice((page - 1) * pageSize, page * pageSize), total: all.length };
+  }
+  async getBlockedUsers(page = 1, pageSize = 10) {
+    const all = (await Promise.all((await kvListAll(this.kv, 'user:')).map(k => this.kv.get(k.name).then(d => d ? JSON.parse(d) : null)))).filter(u => u?.is_blocked);
+    const start = (page - 1) * pageSize;
+    return { users: all.slice(start, start + pageSize), total: all.length };
+  }
+  async getAllUsersRaw() {
+    return (await Promise.all((await kvListAll(this.kv, 'user:')).map(k => this.kv.get(k.name).then(d => d ? JSON.parse(d) : null)))).filter(Boolean);
   }
 
-  // ── Block check ───────────────────────────────────────────────────────────
-  const dbUser = await db.getUser(user.id);
-  if (dbUser?.is_blocked) {
-    const pendingAppeal = await kv.get(`pending_appeal:${user.id}`);
-    if (pendingAppeal && msg.text && !msg.text.startsWith('/')) {
-      const appealText = msg.text.trim();
-      if (appealText) {
-        const who = `${name(user)} (${user.id})`;
-        const text = `📝 <b>用户申诉</b>\n\n用户：${esc(who)}\n内容：\n${esc(appealText)}`;
-        if (dbUser.thread_id) {
-          await tg.sendMsg({
-            chatId: groupId,
-            threadId: dbUser.thread_id,
-            text,
-            kb: [[
-              { text: '✅ 通过申诉(解封)', callback_data: `apu:${user.id}` },
-              { text: '❌ 拒绝申诉', callback_data: `apr:${user.id}` },
-            ]],
-          }).catch(() => {});
-        }
-        for (const aid of adminIds) {
-          await tg.sendMsg({
-            chatId: aid,
-            text,
-            kb: [[
-              { text: '✅ 通过申诉(解封)', callback_data: `apu:${user.id}` },
-              { text: '❌ 拒绝申诉', callback_data: `apr:${user.id}` },
-            ]],
-          }).catch(() => {});
-        }
-        await kv.delete(`pending_appeal:${user.id}`);
-        await tg.sendMsg({ chatId: user.id, text: '✅ 申诉已提交，请等待管理员处理。' });
+  // Whitelist
+  async isWhitelisted(userId) { return !!(await this.kv.get(`whitelist:${userId}`)); }
+  async addToWhitelist(userId, reason, addedBy) {
+    await this.kv.put(`whitelist:${userId}`, JSON.stringify({ user_id: userId, reason, added_by: addedBy, created_at: new Date().toISOString() }));
+  }
+  async removeFromWhitelist(userId) { await this.kv.delete(`whitelist:${userId}`); }
+  async getWhitelist(page = 1, pageSize = 20) {
+    const entries = (await Promise.all((await kvListAll(this.kv, 'whitelist:')).map(async k => {
+      const d = await this.kv.get(k.name);
+      if (!d) return null;
+      const wl = JSON.parse(d);
+      const u  = await this.getUser(wl.user_id);
+      return { ...wl, ...(u || {}) };
+    }))).filter(Boolean);
+    entries.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    return { users: entries.slice((page - 1) * pageSize, page * pageSize), total: entries.length };
+  }
+  async getWhitelistRaw() {
+    return (await Promise.all((await kvListAll(this.kv, 'whitelist:')).map(k => this.kv.get(k.name).then(d => d ? JSON.parse(d) : null)))).filter(Boolean);
+  }
+
+  // Messages
+  async addMsg({ userId, direction, content, messageType = 'text', telegramMessageId }) {
+    const id  = `${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+    const msg = { id, user_id: userId, direction, content: content || '', message_type: messageType, telegram_message_id: telegramMessageId, created_at: new Date().toISOString() };
+    await this.kv.put(`msg:${userId}:${id}`, JSON.stringify(msg));
+    await this.kv.put(`recent:${userId}`, JSON.stringify({ user_id: userId, last_message: content, last_direction: direction, last_at: msg.created_at }));
+  }
+  async getMsgs(userId, limit = 50, offset = 0) {
+    const msgs = (await Promise.all((await kvListAll(this.kv, `msg:${userId}:`)).map(k => this.kv.get(k.name).then(d => d ? JSON.parse(d) : null)))).filter(Boolean);
+    msgs.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+    return msgs.slice(offset, offset + limit);
+  }
+  async getRecentConvs(limit = 40) {
+    const convs = (await Promise.all((await kvListAll(this.kv, 'recent:')).map(async k => {
+      const d = await this.kv.get(k.name);
+      if (!d) return null;
+      const c = JSON.parse(d);
+      const u = await this.getUser(c.user_id);
+      return { ...c, ...(u || {}) };
+    }))).filter(Boolean);
+    convs.sort((a, b) => new Date(b.last_at) - new Date(a.last_at));
+    return convs.slice(0, limit);
+  }
+  async getAllMsgsRaw() {
+    return (await Promise.all((await kvListAll(this.kv, 'msg:')).map(k => this.kv.get(k.name).then(d => d ? JSON.parse(d) : null)))).filter(Boolean);
+  }
+  async deleteUserMsgs(userId) {
+    const keys = await kvListAll(this.kv, `msg:${userId}:`);
+    await Promise.all(keys.map(k => this.kv.delete(k.name)));
+    await this.kv.delete(`recent:${userId}`);
+  }
+  async clearUserThread(userId) {
+    const u = await this.getUser(userId);
+    if (u) {
+      if (u.thread_id) await this.kv.delete(`thread:${u.thread_id}`);
+      u.thread_id = null;
+      await this.kv.put(`user:${userId}`, JSON.stringify(u));
+    }
+  }
+  async getAllRecentRaw() {
+    return (await Promise.all((await kvListAll(this.kv, 'recent:')).map(k => this.kv.get(k.name).then(d => d ? JSON.parse(d) : null)))).filter(Boolean);
+  }
+
+  // Verification
+  async setVerify(userId, data, ttlSeconds = 300) {
+    const ttl = Math.max(60, ttlSeconds); // CF KV minimum TTL is 60s
+    const rec = { user_id: userId, attempts: 0, expires_at: Date.now() + ttl * 1000, ...data };
+    await this.kv.put(`verify:${userId}`, JSON.stringify(rec), { expirationTtl: ttl });
+  }
+  async getVerify(userId) { const d = await this.kv.get(`verify:${userId}`); return d ? JSON.parse(d) : null; }
+  async incVerify(userId) {
+    const v = await this.getVerify(userId);
+    if (v) {
+      v.attempts++;
+      const ttl = Math.max(60, Math.floor((v.expires_at - Date.now()) / 1000));
+      await this.kv.put(`verify:${userId}`, JSON.stringify(v), { expirationTtl: ttl });
+    }
+  }
+  async delVerify(userId) { await this.kv.delete(`verify:${userId}`).catch(() => {}); }
+
+  // Stats
+  async getStats() {
+    const [userKeys, msgKeys] = await Promise.all([kvListAll(this.kv, 'user:'), kvListAll(this.kv, 'msg:')]);
+    const userData = await Promise.all(userKeys.map(k => this.kv.get(k.name)));
+    const blockedCount = userData.reduce((n, d) => n + (d && JSON.parse(d).is_blocked ? 1 : 0), 0);
+    const today = new Date().toISOString().slice(0, 10);
+    let todayMsgs = 0;
+    for (const k of msgKeys) {
+      const ts = parseInt(k.name.split(':')[2]?.split('_')[0], 10);
+      if (!isNaN(ts) && new Date(ts).toISOString().slice(0, 10) === today) todayMsgs++;
+    }
+    return { totalUsers: userKeys.length, blockedUsers: blockedCount, totalMessages: msgKeys.length, todayMessages: todayMsgs };
+  }
+
+  // Web users
+  async webUserCount() { return (await kvListAll(this.kv, 'webuser:')).length; }
+  async createWebUser(username, passwordHash) {
+    const id   = `${Date.now()}_${Math.random().toString(36).substr(2, 8)}`;
+    const user = { id, username, password_hash: passwordHash, totp_secret: null, totp_enabled: 0, is_admin: 1, created_at: new Date().toISOString() };
+    await this.kv.put(`webuser:${username.toLowerCase()}`, JSON.stringify(user));
+    await this.kv.put(`webuser_id:${id}`, JSON.stringify(user));
+    return user;
+  }
+  async getWebUser(username) { const d = await this.kv.get(`webuser:${username.toLowerCase()}`); return d ? JSON.parse(d) : null; }
+  async getWebUserById(id) { const d = await this.kv.get(`webuser_id:${id}`); return d ? JSON.parse(d) : null; }
+  async updateWebUserPassword(id, hash) {
+    const u = await this.getWebUserById(id);
+    if (u) { u.password_hash = hash; await this._saveWebUser(u); }
+  }
+  async updateWebUserUsername(id, newUsername) {
+    const u = await this.getWebUserById(id);
+    if (!u) return;
+    await this.kv.delete(`webuser:${u.username.toLowerCase()}`);
+    u.username = newUsername;
+    await this._saveWebUser(u);
+  }
+  async setWebUserTotp(id, secret, enabled) {
+    const u = await this.getWebUserById(id);
+    if (u) { u.totp_secret = secret; u.totp_enabled = enabled ? 1 : 0; await this._saveWebUser(u); }
+  }
+  async _saveWebUser(u) {
+    await this.kv.put(`webuser:${u.username.toLowerCase()}`, JSON.stringify(u));
+    await this.kv.put(`webuser_id:${u.id}`, JSON.stringify(u));
+  }
+  async getAllWebUsersRaw() {
+    return (await Promise.all((await kvListAll(this.kv, 'webuser_id:')).map(k => this.kv.get(k.name).then(d => d ? JSON.parse(d) : null)))).filter(Boolean);
+  }
+}
+
+// ─── D1 Store ────────────────────────────────────────────────────────────────
+const D1_SCHEMA = `
+CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS users (
+  user_id INTEGER PRIMARY KEY, username TEXT, first_name TEXT, last_name TEXT,
+  language_code TEXT, thread_id INTEGER, is_verified INTEGER DEFAULT 0,
+  is_blocked INTEGER DEFAULT 0, is_permanent_block INTEGER DEFAULT 0,
+  block_reason TEXT, blocked_by TEXT, created_at TEXT
+);
+CREATE TABLE IF NOT EXISTS thread_map (thread_id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS messages (
+  id TEXT PRIMARY KEY, user_id INTEGER NOT NULL, direction TEXT,
+  content TEXT, message_type TEXT, telegram_message_id INTEGER, created_at TEXT
+);
+CREATE TABLE IF NOT EXISTS recent_convs (
+  user_id INTEGER PRIMARY KEY, last_message TEXT, last_direction TEXT, last_at TEXT
+);
+CREATE TABLE IF NOT EXISTS whitelist (
+  user_id INTEGER PRIMARY KEY, reason TEXT, added_by TEXT, created_at TEXT
+);
+CREATE TABLE IF NOT EXISTS web_users (
+  id TEXT PRIMARY KEY, username TEXT UNIQUE NOT NULL, password_hash TEXT,
+  totp_secret TEXT, totp_enabled INTEGER DEFAULT 0, is_admin INTEGER DEFAULT 1, created_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_messages_user ON messages(user_id);
+CREATE INDEX IF NOT EXISTS idx_messages_created ON messages(created_at);
+`;
+
+class D1Store {
+  constructor(d1) { this.d1 = d1; }
+
+  async exec(sql, ...params) {
+    const stmt = this.d1.prepare(sql);
+    return params.length ? stmt.bind(...params).run() : stmt.run();
+  }
+  async first(sql, ...params) {
+    const stmt = this.d1.prepare(sql);
+    return params.length ? stmt.bind(...params).first() : stmt.first();
+  }
+  async all(sql, ...params) {
+    const stmt = this.d1.prepare(sql);
+    const res  = await (params.length ? stmt.bind(...params).all() : stmt.all());
+    return res.results || [];
+  }
+
+  // Settings
+  async getSetting(key) { const r = await this.first('SELECT value FROM settings WHERE key=?', key); return r?.value ?? null; }
+  async setSetting(key, value) { await this.exec('INSERT OR REPLACE INTO settings(key,value) VALUES(?,?)', key, value); }
+  async getAllSettings() {
+    const rows = await this.all('SELECT key,value FROM settings');
+    const s    = { ...DEFAULT_SETTINGS };
+    for (const r of rows) s[r.key] = r.value;
+    return s;
+  }
+
+  // Users
+  async getUser(userId) { return this.first('SELECT * FROM users WHERE user_id=?', userId); }
+  async upsertUser(u) {
+    await this.exec(
+      `INSERT INTO users(user_id,username,first_name,last_name,language_code,thread_id,is_verified,is_blocked,is_permanent_block,block_reason,blocked_by,created_at)
+       VALUES(?,?,?,?,?,?,0,0,0,NULL,NULL,?)
+       ON CONFLICT(user_id) DO UPDATE SET
+         username=COALESCE(excluded.username,username),
+         first_name=COALESCE(excluded.first_name,first_name),
+         last_name=COALESCE(excluded.last_name,last_name),
+         language_code=COALESCE(excluded.language_code,language_code)`,
+      u.user_id, u.username||null, u.first_name||null, u.last_name||null,
+      u.language_code||null, u.thread_id||null, u.created_at||new Date().toISOString()
+    );
+  }
+  async setUserThread(userId, threadId) {
+    await this.exec('UPDATE users SET thread_id=? WHERE user_id=?', threadId, userId);
+    await this.exec('INSERT OR REPLACE INTO thread_map(thread_id,user_id) VALUES(?,?)', threadId, userId);
+  }
+  async getUserByThread(threadId) {
+    const r = await this.first('SELECT user_id FROM thread_map WHERE thread_id=?', threadId);
+    return r ? this.getUser(r.user_id) : null;
+  }
+  async setUserVerified(userId, v) { await this.exec('UPDATE users SET is_verified=? WHERE user_id=?', v ? 1 : 0, userId); }
+  async blockUser(userId, reason, blockedBy, permanent) {
+    await this.exec('UPDATE users SET is_blocked=1,is_permanent_block=?,block_reason=?,blocked_by=? WHERE user_id=?', permanent ? 1 : 0, reason, blockedBy, userId);
+  }
+  async unblockUser(userId) {
+    await this.exec('UPDATE users SET is_blocked=0,is_permanent_block=0,block_reason=NULL,blocked_by=NULL WHERE user_id=?', userId);
+  }
+  async updateUsername(userId, newUsername) {
+    await this.exec('UPDATE users SET username=? WHERE user_id=?', newUsername, userId);
+  }
+  async searchUsers(query, limit = 10) {
+    const q = `%${query}%`;
+    return this.all('SELECT * FROM users WHERE CAST(user_id AS TEXT) LIKE ? OR username LIKE ? OR first_name LIKE ? LIMIT ?', q, q, q, limit);
+  }
+  async getAllUsers(page = 1, pageSize = 20) {
+    const offset = (page - 1) * pageSize;
+    const [users, countRow] = await Promise.all([
+      this.all('SELECT * FROM users ORDER BY created_at DESC LIMIT ? OFFSET ?', pageSize, offset),
+      this.first('SELECT COUNT(*) as cnt FROM users'),
+    ]);
+    return { users, total: countRow?.cnt || 0 };
+  }
+  async getBlockedUsers(page = 1, pageSize = 10) {
+    const offset = (page - 1) * pageSize;
+    const [users, countRow] = await Promise.all([
+      this.all('SELECT * FROM users WHERE is_blocked=1 ORDER BY user_id DESC LIMIT ? OFFSET ?', pageSize, offset),
+      this.first('SELECT COUNT(*) as cnt FROM users WHERE is_blocked=1'),
+    ]);
+    return { users, total: countRow?.cnt || 0 };
+  }
+  async getAllUsersRaw() { return this.all('SELECT * FROM users'); }
+
+  // Whitelist
+  async isWhitelisted(userId) { return !!(await this.first('SELECT 1 FROM whitelist WHERE user_id=?', userId)); }
+  async addToWhitelist(userId, reason, addedBy) {
+    await this.exec('INSERT OR REPLACE INTO whitelist(user_id,reason,added_by,created_at) VALUES(?,?,?,?)', userId, reason, addedBy, new Date().toISOString());
+  }
+  async removeFromWhitelist(userId) { await this.exec('DELETE FROM whitelist WHERE user_id=?', userId); }
+  async getWhitelist(page = 1, pageSize = 20) {
+    const offset = (page - 1) * pageSize;
+    const [entries, countRow] = await Promise.all([
+      this.all(`SELECT w.*, u.username, u.first_name, u.last_name FROM whitelist w LEFT JOIN users u ON w.user_id=u.user_id ORDER BY w.created_at DESC LIMIT ? OFFSET ?`, pageSize, offset),
+      this.first('SELECT COUNT(*) as cnt FROM whitelist'),
+    ]);
+    return { users: entries, total: countRow?.cnt || 0 };
+  }
+  async getWhitelistRaw() { return this.all('SELECT * FROM whitelist'); }
+
+  // Messages
+  async addMsg({ userId, direction, content, messageType = 'text', telegramMessageId }) {
+    const id = `${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+    const ts = new Date().toISOString();
+    await this.exec('INSERT INTO messages(id,user_id,direction,content,message_type,telegram_message_id,created_at) VALUES(?,?,?,?,?,?,?)', id, userId, direction, content||'', messageType, telegramMessageId||null, ts);
+    await this.exec('INSERT OR REPLACE INTO recent_convs(user_id,last_message,last_direction,last_at) VALUES(?,?,?,?)', userId, content, direction, ts);
+  }
+  async getMsgs(userId, limit = 50, offset = 0) {
+    return this.all('SELECT * FROM messages WHERE user_id=? ORDER BY created_at ASC LIMIT ? OFFSET ?', userId, limit, offset);
+  }
+  async getRecentConvs(limit = 40) {
+    return this.all(`SELECT r.*, u.username, u.first_name, u.last_name, u.is_blocked FROM recent_convs r LEFT JOIN users u ON r.user_id=u.user_id ORDER BY r.last_at DESC LIMIT ?`, limit);
+  }
+  async getAllMsgsRaw() { return this.all('SELECT * FROM messages'); }
+  async getAllRecentRaw() { return this.all('SELECT * FROM recent_convs'); }
+  async deleteUserMsgs(userId) {
+    await this.exec('DELETE FROM messages WHERE user_id=?', userId);
+    await this.exec('DELETE FROM recent_convs WHERE user_id=?', userId);
+  }
+  async clearUserThread(userId) {
+    const u = await this.getUser(userId);
+    if (u?.thread_id) await this.exec('DELETE FROM thread_map WHERE thread_id=?', u.thread_id);
+    await this.exec('UPDATE users SET thread_id=NULL WHERE user_id=?', userId);
+  }
+
+  // Verification (always in KV since it's ephemeral — D1Store delegates)
+  // These will be overridden at DB level to always use KV
+
+  // Stats
+  async getStats() {
+    const [totalRow, blockedRow, msgRow, todayRow] = await Promise.all([
+      this.first('SELECT COUNT(*) as cnt FROM users'),
+      this.first('SELECT COUNT(*) as cnt FROM users WHERE is_blocked=1'),
+      this.first('SELECT COUNT(*) as cnt FROM messages'),
+      this.first(`SELECT COUNT(*) as cnt FROM messages WHERE created_at LIKE ?`, `${new Date().toISOString().slice(0, 10)}%`),
+    ]);
+    return { totalUsers: totalRow?.cnt || 0, blockedUsers: blockedRow?.cnt || 0, totalMessages: msgRow?.cnt || 0, todayMessages: todayRow?.cnt || 0 };
+  }
+
+  // Web users
+  async webUserCount() { const r = await this.first('SELECT COUNT(*) as cnt FROM web_users'); return r?.cnt || 0; }
+  async createWebUser(username, passwordHash) {
+    const id = `${Date.now()}_${Math.random().toString(36).substr(2, 8)}`;
+    const ts = new Date().toISOString();
+    await this.exec('INSERT INTO web_users(id,username,password_hash,totp_secret,totp_enabled,is_admin,created_at) VALUES(?,?,?,NULL,0,1,?)', id, username, passwordHash, ts);
+    return this.getWebUser(username);
+  }
+  async getWebUser(username) { return this.first('SELECT * FROM web_users WHERE LOWER(username)=LOWER(?)', username); }
+  async getWebUserById(id) { return this.first('SELECT * FROM web_users WHERE id=?', id); }
+  async updateWebUserPassword(id, hash) { await this.exec('UPDATE web_users SET password_hash=? WHERE id=?', hash, id); }
+  async updateWebUserUsername(id, newUsername) { await this.exec('UPDATE web_users SET username=? WHERE id=?', newUsername, id); }
+  async setWebUserTotp(id, secret, enabled) { await this.exec('UPDATE web_users SET totp_secret=?,totp_enabled=? WHERE id=?', secret, enabled ? 1 : 0, id); }
+  async getAllWebUsersRaw() { return this.all('SELECT * FROM web_users'); }
+
+  async initSchema() {
+    for (const stmt of D1_SCHEMA.split(';').map(s => s.trim()).filter(Boolean)) {
+      await this.exec(stmt);
+    }
+  }
+}
+
+// ─── Main DB class ────────────────────────────────────────────────────────────
+export class DB {
+  constructor(kv, d1 = null) {
+    this.kv  = kv;
+    this.d1  = d1;
+    this._kv = new KVStore(kv);
+    this._d1 = d1 ? new D1Store(d1) : null;
+    this._activeStore = null;
+  }
+
+  async _store() {
+    if (this._activeStore) return this._activeStore;
+    const active = (await this.kv.get('config:active_db')) || 'kv';
+    this._activeStore = (active === 'd1' && this._d1) ? this._d1 : this._kv;
+    return this._activeStore;
+  }
+
+  // Verification always uses KV (ephemeral data, TTL support)
+  async setVerify(userId, data, ttlSeconds = 300) { return this._kv.setVerify(userId, data, ttlSeconds); }
+  async getVerify(userId)  { return this._kv.getVerify(userId); }
+  async incVerify(userId)  { return this._kv.incVerify(userId); }
+  async delVerify(userId)  { return this._kv.delVerify(userId); }
+
+  // All other methods delegate to active store
+  async getSetting(key)             { return (await this._store()).getSetting(key); }
+  async setSetting(key, val)        { return (await this._store()).setSetting(key, val); }
+  async getAllSettings()            { return (await this._store()).getAllSettings(); }
+
+  async getUser(id)                        { return (await this._store()).getUser(id); }
+  async upsertUser(u)                      { return (await this._store()).upsertUser(u); }
+  async setUserThread(uid, tid)            { return (await this._store()).setUserThread(uid, tid); }
+  async getUserByThread(tid)               { return (await this._store()).getUserByThread(tid); }
+  async setUserVerified(uid, v)            { return (await this._store()).setUserVerified(uid, v); }
+  async blockUser(uid, r, by, perm)        { return (await this._store()).blockUser(uid, r, by, perm); }
+  async unblockUser(uid)                   { return (await this._store()).unblockUser(uid); }
+  async updateUsername(uid, name)          { return (await this._store()).updateUsername(uid, name); }
+  async searchUsers(q, lim)               { return (await this._store()).searchUsers(q, lim); }
+  async getAllUsers(p, ps)                 { return (await this._store()).getAllUsers(p, ps); }
+  async getBlockedUsers(p, ps)            { return (await this._store()).getBlockedUsers(p, ps); }
+
+  async isWhitelisted(uid)                { return (await this._store()).isWhitelisted(uid); }
+  async addToWhitelist(uid, r, by)        { return (await this._store()).addToWhitelist(uid, r, by); }
+  async removeFromWhitelist(uid)          { return (await this._store()).removeFromWhitelist(uid); }
+  async getWhitelist(p, ps)              { return (await this._store()).getWhitelist(p, ps); }
+
+  async addMsg(opts)                       { return (await this._store()).addMsg(opts); }
+  async getMsgs(uid, lim, off)            { return (await this._store()).getMsgs(uid, lim, off); }
+  async getRecentConvs(lim)              { return (await this._store()).getRecentConvs(lim); }
+  async deleteUserMsgs(uid)              { return (await this._store()).deleteUserMsgs(uid); }
+  async clearUserThread(uid)             { return (await this._store()).clearUserThread(uid); }
+  async getStats()                        { return (await this._store()).getStats(); }
+
+  async webUserCount()                    { return (await this._store()).webUserCount(); }
+  async createWebUser(u, h)              { return (await this._store()).createWebUser(u, h); }
+  async getWebUser(u)                    { return (await this._store()).getWebUser(u); }
+  async getWebUserById(id)              { return (await this._store()).getWebUserById(id); }
+  async updateWebUserPassword(id, h)    { return (await this._store()).updateWebUserPassword(id, h); }
+  async updateWebUserUsername(id, u)    { return (await this._store()).updateWebUserUsername(id, u); }
+  async setWebUserTotp(id, s, e)        { return (await this._store()).setWebUserTotp(id, s, e); }
+
+  /** Switch active DB and optionally sync data. */
+  async switchDb(target) {
+    if (target !== 'kv' && target !== 'd1') throw new Error('Invalid target');
+    if (target === 'd1' && !this._d1) throw new Error('D1 not bound');
+    await this.kv.put('config:active_db', target);
+    this._activeStore = null; // reset cache
+  }
+
+  /** Full sync from KV → D1 or D1 → KV. Idempotent — safe to call multiple times. */
+  async syncData(from, to) {
+    const src = from === 'kv' ? this._kv : this._d1;
+    const dst = to   === 'kv' ? this._kv : this._d1;
+    if (!src || !dst) throw new Error('Store not available');
+
+    if (to === 'd1') await this._d1.initSchema();
+
+    // Settings
+    const settings = await src.getAllSettings();
+    for (const [k, v] of Object.entries(settings)) await dst.setSetting(k, v);
+
+    // Users (upsertUser uses ON CONFLICT / overwrite — safe)
+    for (const u of await src.getAllUsersRaw()) await dst.upsertUser(u);
+
+    // Whitelist: use INSERT OR REPLACE in D1, overwrite in KV
+    const wl = await src.getWhitelistRaw();
+    if (to === 'd1') {
+      for (const e of wl) {
+        await this._d1.exec(
+          'INSERT OR REPLACE INTO whitelist(user_id,reason,added_by,created_at) VALUES(?,?,?,?)',
+          e.user_id, e.reason || '', e.added_by || '', e.created_at || new Date().toISOString()
+        );
       }
-      return;
-    }
-
-    if (dbUser.is_permanent_block) {
-      await tg.sendMsg({ chatId: user.id, text: '⛔ <b>您已被永久封禁</b>，如有疑问请联系管理员。' });
-    } else if (settings.AUTO_UNBLOCK_ENABLED === 'true') {
-      await tg.sendMsg({ chatId: user.id, text: '⛔ <b>您已被封禁</b>\n可发起申诉：', kb: [[{ text: '📝 发起申诉', callback_data: 'appeal:start' }]] });
     } else {
-      await tg.sendMsg({ chatId: user.id, text: '⛔ <b>您已被封禁</b>，请联系管理员。' });
-    }
-    return;
-  }
-
-  // ── Whitelist bypass ──────────────────────────────────────────────────────
-  const whitelisted = settings.WHITELIST_ENABLED === 'true' && await db.isWhitelisted(user.id);
-
-  if (!whitelisted) {
-    const maxRate = parseInt(settings.MAX_MESSAGES_PER_MINUTE || '30', 10);
-    if (rateCheck(user.id, maxRate)) {
-      await tg.sendMsg({ chatId: user.id, text: `⚠️ 发送过于频繁，请稍候再试。` });
-      return;
+      for (const e of wl) await this._kv.addToWhitelist(e.user_id, e.reason, e.added_by);
     }
 
-    // ── Verification ──────────────────────────────────────────────────────
-    if (settings.VERIFICATION_ENABLED === 'true' && !dbUser?.is_verified) {
-      const timeout     = Math.max(60, parseInt(settings.VERIFICATION_TIMEOUT || '300', 10)); // CF KV minimum TTL is 60s
-      const captchaType = settings.CAPTCHA_TYPE || 'math';
-      const existing    = await db.getVerify(user.id);
-      if (existing && existing.expires_at > Date.now()) {
-        await tg.sendMsg({ chatId: user.id, text: '请先完成上方的人机验证 ☝️' });
-        return;
+    // Messages: INSERT OR IGNORE in D1 (keyed by id), overwrite in KV
+    const msgs = await src.getAllMsgsRaw();
+    if (to === 'd1') {
+      for (const m of msgs) {
+        await this._d1.exec(
+          `INSERT OR IGNORE INTO messages(id,user_id,direction,content,message_type,telegram_message_id,created_at)
+           VALUES(?,?,?,?,?,?,?)`,
+          m.id, m.user_id, m.direction, m.content || '', m.message_type || 'text',
+          m.telegram_message_id || null, m.created_at || new Date().toISOString()
+        );
       }
-
-      await kv.put(`pending:${user.id}`, JSON.stringify({ msgId: msg.message_id, type: msgType(msg) }), { expirationTtl: timeout });
-
-      if (captchaType === 'math') {
-        const { question, answer, kb } = mkMathVerify();
-        await db.setVerify(user.id, { answer, captcha_type: 'math' }, timeout);
-        await tg.sendMsg({ chatId: user.id, text: `🔐 <b>人机验证</b>\n\n请选择正确答案：\n\n${question}`, kb });
-      } else {
-        const siteUrl = settings.CAPTCHA_SITE_URL || baseUrl;
-        if (!siteUrl) {
-          // Fallback to math
-          const { question, answer, kb } = mkMathVerify();
-          await db.setVerify(user.id, { answer, captcha_type: 'math' }, timeout);
-          await tg.sendMsg({ chatId: user.id, text: `🔐 <b>人机验证</b>\n\n请选择正确答案：\n\n${question}`, kb });
-        } else {
-          const captchaId  = randId();
-          const code       = generateCode(captchaType);
-          await kv.put(`captcha_render:${captchaId}`, code, { expirationTtl: timeout + 60 });
-          const wrongs     = generateWrongOptions(code, captchaType);
-          const opts       = [code, ...wrongs].sort(() => Math.random() - 0.5);
-          const kb         = rows2(opts, o => ({ text: o, callback_data: `iv:${o}:${captchaId}` }));
-          await db.setVerify(user.id, { answer: code, captcha_id: captchaId, captcha_type: captchaType }, timeout);
-          const typeLabel  = captchaType === 'image_alphanumeric' ? '5位字母+数字' : '4位数字';
-          const caption    = `🔐 <b>图片验证码</b>\n\n请识别图中的 ${typeLabel} 验证码：`;
-          const imgUrl     = `${siteUrl}/api/captcha/${captchaId}`;
-          const r          = await tg.sendPhoto({ chatId: user.id, url: imgUrl, caption, kb });
-          if (!r.ok) {
-            const { question, answer, kb: mathKb } = mkMathVerify();
-            await db.setVerify(user.id, { answer, captcha_type: 'math' }, timeout);
-            await tg.sendMsg({ chatId: user.id, text: `🔐 <b>人机验证</b>\n\n请选择正确答案：\n\n${question}`, kb: mathKb });
-          }
-        }
-      }
-      return;
-    }
-  }
-
-  if (!groupId || isNaN(groupId)) {
-    await tg.sendMsg({ chatId: user.id, text: '⚙️ 机器人未正确配置，请联系管理员。' });
-    return;
-  }
-
-  const tid = await getOrCreateThread(tg, db, user, groupId, kv);
-  if (!tid) { await tg.sendMsg({ chatId: user.id, text: '❌ 发送失败，请稍后再试。' }); return; }
-
-  // Use copyMessage to forward ALL content types with full formatting preserved
-  const res = await tg.copyMsg({ chatId: groupId, fromChatId: msg.chat.id, msgId: msg.message_id, threadId: tid });
-  if (res.ok) {
-    await db.addMsg({ userId: user.id, direction: 'incoming', content: msg.text || msg.caption || '[媒体]', messageType: msgType(msg), telegramMessageId: msg.message_id });
-    await tg.sendMsg({ chatId: user.id, text: '✅ 消息已发送，管理员将尽快回复。' });
-  } else {
-    console.error('copyMsg failed:', res);
-    await tg.sendMsg({ chatId: user.id, text: '❌ 发送失败，请稍后再试。' });
-  }
-}
-
-async function handleAdminPrivateMsg(msg, user, { tg, db, kv, settings, groupId }) {
-  if (msg.text?.startsWith('/')) {
-    const parts = msg.text.trim().split(/\s+/);
-    const cmd   = parts[0].split('@')[0].slice(1).toLowerCase();
-    const arg   = parts[1];
-
-    if (cmd === 'stats') {
-      const s = await db.getStats();
-      await tg.sendMsg({ chatId: user.id, text: `📊 <b>统计</b>\n\n👥 总用户：${s.totalUsers}\n⛔ 封禁：${s.blockedUsers}\n💬 消息：${s.totalMessages}\n📅 今日：${s.todayMessages}` });
-      return;
-    }
-    if (cmd === 'ban' && arg) {
-      await db.blockUser(parseInt(arg, 10), '管理员指令封禁', user.id, true);
-      await tg.sendMsg({ chatId: user.id, text: `✅ 已封禁用户 ${arg}` });
-      return;
-    }
-    if (cmd === 'unban' && arg) {
-      await db.unblockUser(parseInt(arg, 10));
-      await tg.sendMsg({ chatId: user.id, text: `✅ 已解封用户 ${arg}` });
-      return;
-    }
-    if (cmd === 'wl' && arg) {
-      await db.addToWhitelist(parseInt(arg, 10), '管理员指令添加', String(user.id));
-      await tg.sendMsg({ chatId: user.id, text: `✅ 用户 ${arg} 已加入白名单` });
-      return;
-    }
-    if (cmd === 'unwl' && arg) {
-      await db.removeFromWhitelist(parseInt(arg, 10));
-      await tg.sendMsg({ chatId: user.id, text: `✅ 用户 ${arg} 已移出白名单` });
-      return;
-    }
-    if (cmd === 'info' && arg) {
-      const u = await db.getUser(parseInt(arg, 10));
-      if (!u) { await tg.sendMsg({ chatId: user.id, text: '用户不存在' }); return; }
-      await tg.sendMsg({ chatId: user.id, text: buildDetailText(u), kb: fullUserKb(u.user_id, u) });
-      return;
-    }
-  }
-
-  if (msg.text?.startsWith('/panel')) {
-    const s = await db.getStats();
-    await tg.sendMsg({
-      chatId: user.id,
-      text: `🤖 <b>管理员控制台</b>\n\n👥 ${s.totalUsers} 用户  ⛔ ${s.blockedUsers} 封禁\n💬 ${s.totalMessages} 消息  📅 今日 ${s.todayMessages}`,
-      kb: adminPanelKb(settings),
-    });
-    return;
-  }
-
-  if (settings.ADMIN_NOTIFY_ENABLED !== 'true') return;
-
-  // Default: show admin control panel
-  const s  = await db.getStats();
-  await tg.sendMsg({
-    chatId: user.id,
-    text: `🤖 <b>管理员控制台</b>\n\n👥 ${s.totalUsers} 用户  ⛔ ${s.blockedUsers} 封禁\n💬 ${s.totalMessages} 消息  📅 今日 ${s.todayMessages}`,
-    kb: adminPanelKb(settings),
-  });
-}
-
-// ── Callback handler ──────────────────────────────────────────────────────────
-async function handleCb(q, { tg, db, kv, settings }) {
-  const { data, from: user, message } = q;
-  const chatId  = message.chat.id;
-  const msgId   = message.message_id;
-  const groupId = parseInt(settings.FORUM_GROUP_ID, 10);
-  const adminIds = parseAdminIds(settings.ADMIN_IDS);
-  const isAdmin  = adminIds.includes(user.id);
-
-  try {
-    // ── User callbacks ────────────────────────────────────────────────────────
-    if (data === 'user:msg') { await tg.answerCb({ id: q.id, text: '请直接发送文字消息' }); return; }
-    if (data === 'user:help') {
-      await tg.editText({ chatId, msgId, text: '❓ <b>帮助</b>\n\n直接发送消息即可联系管理员。\n发送 /start 返回主页。', kb: [[{ text: '← 返回', callback_data: 'user:back' }]] });
-      await tg.answerCb({ id: q.id });
-      return;
-    }
-    if (data === 'user:back') {
-      const s = await db.getAllSettings();
-      await tg.editText({ chatId, msgId, text: s.WELCOME_MESSAGE || '欢迎！', kb: [[{ text: '📨 发送消息', callback_data: 'user:msg' }, { text: '🆘 帮助', callback_data: 'user:help' }]] });
-      await tg.answerCb({ id: q.id });
-      return;
-    }
-
-    // ── Math verification ─────────────────────────────────────────────────────
-    if (data.startsWith('v:')) {
-      const sel = data.slice(2);
-      await handleVerifyAnswer(q, tg, db, kv, user, chatId, msgId, settings, groupId, sel, null);
-      return;
-    }
-
-    // ── Image verification ────────────────────────────────────────────────────
-    if (data.startsWith('iv:')) {
-      const [, sel, captchaId] = data.split(':');
-      await handleVerifyAnswer(q, tg, db, kv, user, chatId, msgId, settings, groupId, sel, captchaId);
-      return;
-    }
-
-    // ── Appeal ────────────────────────────────────────────────────────────────
-    if (data.startsWith('appeal:')) {
-      const isStart = data === 'appeal:start';
-      if (isStart) await kv.put(`pending_appeal:${user.id}`, '1', { expirationTtl: 900 });
-      else await kv.delete(`pending_appeal:${user.id}`);
-      await tg.editText({
-        chatId, msgId,
-        text: isStart ? '📝 <b>申诉</b>\n\n请直接发送申诉内容，管理员会审核。' : '⛔ <b>您已被封禁</b>',
-        kb:   isStart ? [[{ text: '❌ 取消', callback_data: 'appeal:cancel' }]] : [[{ text: '📝 申诉', callback_data: 'appeal:start' }]],
-      });
-      await tg.answerCb({ id: q.id });
-      return;
-    }
-
-    if (!isAdmin) { await tg.answerCb({ id: q.id, text: '⛔ 无权限', alert: true }); return; }
-
-    // ── Admin callbacks ───────────────────────────────────────────────────────
-    if (data.startsWith('bl:')) {
-      const uid = parseInt(data.slice(3), 10);
-      await db.blockUser(uid, '管理员操作', user.id, false);
-      await refreshCard(tg, db, chatId, msgId, uid, message);
-      await tg.sendMsg({ chatId: uid, text: '⛔ 您已被封禁。' }).catch(() => {});
-      await tg.answerCb({ id: q.id, text: '✅ 已封禁' });
-      return;
-    }
-    if (data.startsWith('pb:')) {
-      const uid = parseInt(data.slice(3), 10);
-      await db.blockUser(uid, '永久封禁', user.id, true);
-      await refreshCard(tg, db, chatId, msgId, uid, message);
-      await tg.sendMsg({ chatId: uid, text: '⛔ 您已被永久封禁。' }).catch(() => {});
-      await tg.answerCb({ id: q.id, text: '✅ 已永久封禁' });
-      return;
-    }
-    if (data.startsWith('ub:')) {
-      const uid = parseInt(data.slice(3), 10);
-      await db.unblockUser(uid);
-      await refreshCard(tg, db, chatId, msgId, uid, message);
-      await tg.sendMsg({ chatId: uid, text: '✅ 您已被解封，可继续发送消息。' }).catch(() => {});
-      await tg.answerCb({ id: q.id, text: '✅ 已解封' });
-      return;
-    }
-    if (data.startsWith('wl:')) {
-      const uid = parseInt(data.slice(3), 10);
-      const isWl = await db.isWhitelisted(uid);
-      if (isWl) {
-        await db.removeFromWhitelist(uid);
-        await tg.answerCb({ id: q.id, text: '✅ 已移出白名单' });
-      } else {
-        await db.addToWhitelist(uid, '管理员手动添加', String(user.id));
-        await tg.answerCb({ id: q.id, text: '✅ 已加入白名单' });
-      }
-      await refreshCard(tg, db, chatId, msgId, uid, message);
-      return;
-    }
-    if (data.startsWith('ui:')) {
-      const uid = parseInt(data.slice(3), 10);
-      const u   = await db.getUser(uid);
-      if (!u) { await tg.answerCb({ id: q.id, text: '用户不存在' }); return; }
-      const isWl = await db.isWhitelisted(uid);
-      await editCard(tg, chatId, msgId, message, buildDetailText(u, isWl), [...fullUserKb(uid, u), [{ text: '🔙 收起', callback_data: `rf:${uid}` }]]);
-      await tg.answerCb({ id: q.id });
-      return;
-    }
-    if (data.startsWith('rf:')) {
-      const uid = parseInt(data.slice(3), 10);
-      const u   = await db.getUser(uid);
-      await refreshCard(tg, db, chatId, msgId, uid, message);
-      await tg.answerCb({ id: q.id, text: '已刷新' });
-      return;
-    }
-    if (data.startsWith('ml:')) {
-      const [, uid, pg] = data.split(':');
-      const page = parseInt(pg || '1', 10), ps = 8;
-      const msgs = await db.getMsgs(parseInt(uid, 10), ps, (page - 1) * ps);
-      if (!msgs.length) { await tg.answerCb({ id: q.id, text: '暂无记录' }); return; }
-      const lines = msgs.map(m => `[${fmtMsgTime(m.created_at)}] ${m.direction === 'incoming' ? '→' : '←'} ${esc((m.content || '').slice(0, 36))}`).join('\n');
-      const nav = [];
-      if (page > 1)           nav.push({ text: '◀', callback_data: `ml:${uid}:${page - 1}` });
-      if (msgs.length === ps) nav.push({ text: '▶', callback_data: `ml:${uid}:${page + 1}` });
-      await editCard(tg, chatId, msgId, message, `📨 <b>消息记录 (第${page}页)</b>\n\n<code>${lines}</code>`, [nav, [{ text: '← 返回', callback_data: `ui:${uid}` }]]);
-      await tg.answerCb({ id: q.id });
-      return;
-    }
-    if (data.startsWith('apu:')) {
-      const uid = parseInt(data.slice(4), 10);
-      await db.unblockUser(uid);
-      await tg.sendMsg({ chatId: uid, text: '✅ 您的申诉已通过，账号已解封。' }).catch(() => {});
-      await tg.answerCb({ id: q.id, text: '已通过申诉并解封' });
-      return;
-    }
-    if (data.startsWith('apr:')) {
-      const uid = parseInt(data.slice(4), 10);
-      await tg.sendMsg({ chatId: uid, text: '❌ 您的申诉未通过，请稍后再试或联系管理员。' }).catch(() => {});
-      await tg.answerCb({ id: q.id, text: '已拒绝申诉' });
-      return;
-    }
-
-    // ── Admin panel callbacks ─────────────────────────────────────────────────
-    if (data.startsWith('adm:')) await handleAdmCb(q, data.slice(4), { tg, db, settings, chatId, msgId });
-    else await tg.answerCb({ id: q.id });
-  } catch (e) {
-    console.error('handleCb:', e);
-    await tg.answerCb({ id: q.id }).catch(() => {});
-  }
-}
-
-async function handleVerifyAnswer(q, tg, db, kv, user, chatId, msgId, settings, groupId, sel, captchaId) {
-  const v = await db.getVerify(user.id);
-  if (!v || v.expires_at < Date.now()) {
-    await db.delVerify(user.id);
-    await tg.answerCb({ id: q.id, text: '验证已过期，请重新发送消息', alert: true });
-    return;
-  }
-  if (captchaId && v.captcha_id !== captchaId) {
-    await tg.answerCb({ id: q.id, text: '验证码不匹配，请重新发送消息', alert: true });
-    return;
-  }
-  const maxAtt = parseInt(settings.MAX_VERIFICATION_ATTEMPTS || '3', 10);
-  if (sel === v.answer) {
-    await db.setUserVerified(user.id, true);
-    await db.delVerify(user.id);
-    if (captchaId) await kv.delete(`captcha_render:${captchaId}`);
-    await tg.editText({ chatId, msgId, text: '✅ <b>验证成功！</b>\n\n现在可以发送消息了。', kb: [] }).catch(() => {});
-    // Forward pending message
-    const pr = await kv.get(`pending:${user.id}`);
-    if (pr && groupId) {
-      await kv.delete(`pending:${user.id}`);
-      const p = JSON.parse(pr);
-      const u = await db.getUser(user.id);
-      const tid = await getOrCreateThread(tg, db, user, groupId, kv);
-      if (tid && p.msgId) {
-        await tg.copyMsg({ chatId: groupId, fromChatId: chatId, msgId: p.msgId, threadId: tid });
-        await db.addMsg({ userId: user.id, direction: 'incoming', content: '[已验证，消息已转发]' });
-        await tg.sendMsg({ chatId: user.id, text: '✅ 消息已发送给管理员。' });
-      }
-    }
-    await tg.answerCb({ id: q.id }).catch(() => {});
-  } else {
-    await db.incVerify(user.id);
-    const att = v.attempts + 1;
-    if (att >= maxAtt) {
-      await db.delVerify(user.id);
-      if (captchaId) await kv.delete(`captcha_render:${captchaId}`);
-      await tg.editText({ chatId, msgId, text: '❌ <b>验证失败次数过多</b>\n请重新发送消息获取新验证。', kb: [] }).catch(() => {});
-      await tg.answerCb({ id: q.id }).catch(() => {});
     } else {
-      await tg.answerCb({ id: q.id, text: `❌ 错误，还剩 ${maxAtt - att} 次`, alert: true });
+      for (const m of msgs) await this._kv.addMsg(m);
+    }
+
+    // Web users — preserve original ID to avoid UNIQUE re-insert on repeated sync
+    const wu = await src.getAllWebUsersRaw();
+    if (to === 'd1') {
+      for (const u of wu) {
+        // INSERT OR REPLACE keeps the row idempotent on both username and id
+        await this._d1.exec(
+          `INSERT OR REPLACE INTO web_users(id,username,password_hash,totp_secret,totp_enabled,is_admin,created_at)
+           VALUES(?,?,?,?,?,?,?)`,
+          u.id, u.username, u.password_hash,
+          u.totp_secret || null, u.totp_enabled ? 1 : 0,
+          u.is_admin ? 1 : 0, u.created_at || new Date().toISOString()
+        );
+      }
+    } else {
+      for (const u of wu) {
+        await this._kv.kv.put(`webuser:${u.username.toLowerCase()}`, JSON.stringify(u));
+        await this._kv.kv.put(`webuser_id:${u.id}`, JSON.stringify(u));
+      }
     }
   }
-}
 
-async function handleAdmCb(q, action, { tg, db, settings, chatId, msgId }) {
-  const toggle = async (key, label) => {
-    const cur = settings[key] === 'true';
-    await db.setSetting(key, cur ? 'false' : 'true');
-    const ns = await db.getAllSettings();
-    await tg.editKb({ chatId, msgId, kb: adminPanelKb(ns) });
-    await tg.answerCb({ id: q.id, text: `${label}已${cur ? '关闭' : '开启'}` });
-  };
+  /**
+   * On first boot, create the fallback admin/admins account.
+   * Once a real user registers (registerWebUser is called), we disable the
+   * fallback account so it can never be used again.
+   */
+  async ensureDefaultAdmin() {
+    try {
+      // Always init D1 schema so tables exist before any query
+      if (this._d1) await this._d1.initSchema().catch(e => console.error('D1 initSchema:', e));
 
-  if (action === 'tv') return toggle('VERIFICATION_ENABLED', '验证');
-  if (action === 'ta') return toggle('AUTO_UNBLOCK_ENABLED', '申诉');
-  if (action === 'tw') return toggle('WHITELIST_ENABLED', '白名单');
-  if (action === 'tf') return toggle('BOT_COMMAND_FILTER', '指令过滤');
-  if (action === 'tn') return toggle('ADMIN_NOTIFY_ENABLED', '管理私聊提示');
-
-  if (action === 'ct') {
-    const all = ['math', 'image_numeric', 'image_alphanumeric'];
-    const cur = all.indexOf(settings.CAPTCHA_TYPE || 'math');
-    const next = all[(cur + 1) % all.length];
-    await db.setSetting('CAPTCHA_TYPE', next);
-    const ns = await db.getAllSettings();
-    await tg.editKb({ chatId, msgId, kb: adminPanelKb(ns) });
-    await tg.answerCb({ id: q.id, text: '验证类型已切换' });
-    return;
+      // Only create default if no real admin exists yet
+      const count = await this.webUserCount();
+      if (count === 0) {
+        await this.createWebUser('admin', await hashPw('admins'));
+        // Mark as "default" so we can disable it after real registration
+        await this.kv.put('auth:has_default_admin', '1');
+        console.log('Default admin created: admin / admins');
+      }
+    } catch (e) { console.error('ensureDefaultAdmin:', e); }
   }
 
-  if (action === 'to') {
-    const cur = Math.max(60, parseInt(settings.VERIFICATION_TIMEOUT || '300', 10));
-    const next = cur >= 900 ? 60 : cur + 60;
-    await db.setSetting('VERIFICATION_TIMEOUT', String(next));
-    const ns = await db.getAllSettings();
-    await tg.editKb({ chatId, msgId, kb: adminPanelKb(ns) });
-    await tg.answerCb({ id: q.id, text: `验证超时已设为 ${next}s` });
-    return;
+  /**
+   * Called after a real admin registers. Disables the default admin/admins
+   * account so it cannot be used to log in anymore.
+   */
+  async disableDefaultAdmin() {
+    try {
+      const hasDefault = await this.kv.get('auth:has_default_admin');
+      if (!hasDefault) return;
+      const u = await this.getWebUser('admin');
+      if (u) {
+        // Overwrite the password hash with a random irreversible value
+        const { genToken } = await import('./auth.js');
+        await this.updateWebUserPassword(u.id, '!!disabled:' + genToken(32));
+        console.log('Default admin account disabled after real registration');
+      }
+      await this.kv.delete('auth:has_default_admin');
+    } catch (e) { console.error('disableDefaultAdmin:', e); }
   }
-
-  if (action === 'ma') {
-    const cur = Math.max(1, parseInt(settings.MAX_VERIFICATION_ATTEMPTS || '3', 10));
-    const next = cur >= 10 ? 1 : cur + 1;
-    await db.setSetting('MAX_VERIFICATION_ATTEMPTS', String(next));
-    const ns = await db.getAllSettings();
-    await tg.editKb({ chatId, msgId, kb: adminPanelKb(ns) });
-    await tg.answerCb({ id: q.id, text: `尝试次数已设为 ${next}` });
-    return;
-  }
-
-  if (action === 'st') {
-    const s = await db.getStats();
-    await tg.editText({ chatId, msgId, text: `📊 <b>统计</b>\n\n👥 总用户：${s.totalUsers}\n⛔ 封禁：${s.blockedUsers}\n💬 消息：${s.totalMessages}\n📅 今日：${s.todayMessages}`, kb: [[{ text: '← 返回', callback_data: 'adm:bk' }]] });
-  } else if (action === 'bk') {
-    const s = await db.getAllSettings(), st = await db.getStats();
-    await tg.editText({ chatId, msgId, text: `🤖 <b>管理员控制台</b>\n\n👥 ${st.totalUsers}  ⛔ ${st.blockedUsers}  💬 ${st.totalMessages}`, kb: adminPanelKb(s) });
-  } else if (action.startsWith('bk:')) {
-    const page = parseInt(action.split(':')[1] || '1', 10), ps = 8;
-    const { users, total } = await db.getBlockedUsers(page, ps);
-    const tp = Math.ceil(total / ps) || 1;
-    const lines = users.map(u => `• <code>${u.user_id}</code> ${esc(name(u))} — ${esc(u.block_reason || '无')}`).join('\n') || '暂无';
-    const nav = [];
-    if (page > 1)  nav.push({ text: '◀', callback_data: `adm:bk:${page - 1}` });
-    if (page < tp) nav.push({ text: '▶', callback_data: `adm:bk:${page + 1}` });
-    await tg.editText({ chatId, msgId, text: `🚫 <b>黑名单 (${total}人 第${page}/${tp}页)</b>\n\n${lines}`, kb: [nav, [{ text: '← 返回', callback_data: 'adm:bk' }]] });
-  } else if (action.startsWith('ul:')) {
-    const page = parseInt(action.split(':')[1] || '1', 10), ps = 8;
-    const { users, total } = await db.getAllUsers(page, ps);
-    const tp = Math.ceil(total / ps) || 1;
-    const lines = users.map(u => `• <code>${u.user_id}</code> ${esc(name(u))} ${u.is_blocked ? '⛔' : '✅'}`).join('\n') || '暂无';
-    const nav = [];
-    if (page > 1)  nav.push({ text: '◀', callback_data: `adm:ul:${page - 1}` });
-    if (page < tp) nav.push({ text: '▶', callback_data: `adm:ul:${page + 1}` });
-    await tg.editText({ chatId, msgId, text: `👥 <b>用户列表 (${total}人 第${page}/${tp}页)</b>\n\n${lines}`, kb: [nav, [{ text: '← 返回', callback_data: 'adm:bk' }]] });
-  }
-  await tg.answerCb({ id: q.id }).catch(() => {});
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-function parseAdminIds(str) {
-  return (str || '').split(',').map(s => parseInt(s.trim(), 10)).filter(Boolean);
-}
-
-function buildDetailText(u, isWl = false) {
-  return `👤 <b>用户详情</b>\n\n` +
-    `ID: <code>${u.user_id}</code>\n` +
-    `姓名: ${esc(name(u))}\n` +
-    `用户名: ${u.username ? '@' + esc(u.username) : '无'}\n` +
-    `语言: ${u.language_code || '未知'}\n` +
-    `状态: ${u.is_blocked ? (u.is_permanent_block ? '♾️ 永久封禁' : '⛔ 封禁') : '✅ 正常'}\n` +
-    (u.is_blocked ? `原因: ${esc(u.block_reason || '无')}\n` : '') +
-    `白名单: ${isWl ? '⚪ 是' : '否'}\n` +
-    `验证: ${u.is_verified ? '✅ 已验证' : '未验证'}\n` +
-    `首次联系: ${fmtUtc8(u.created_at)}`;
-}
-
-/** Edit existing card — handles both text and photo (caption) messages. */
-async function editCard(tg, chatId, msgId, message, text, kb) {
-  if (message.photo || message.video) {
-    await tg.editCaption({ chatId, msgId, caption: text, kb }).catch(() =>
-      tg.editText({ chatId, msgId, text, kb })
-    );
-  } else {
-    await tg.editText({ chatId, msgId, text, kb });
-  }
-}
-
-async function refreshCard(tg, db, chatId, msgId, uid, message) {
-  const u  = await db.getUser(uid);
-  const kb = fullUserKb(uid, u);
-  if (message.photo || message.video) {
-    await tg.editCaption({ chatId, msgId, caption: buildCardText(u, u), kb }).catch(() =>
-      tg.editKb({ chatId, msgId, kb })
-    );
-  } else {
-    await tg.editText({ chatId, msgId, text: buildCardText(u, u), kb }).catch(() =>
-      tg.editKb({ chatId, msgId, kb })
-    );
-  }
-}
-
-function fmtUtc8(ts) {
-  if (!ts) return '未知';
-  const d = new Date(new Date(ts).getTime() + 8 * 3600000);
-  const pad = n => String(n).padStart(2, '0');
-  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
-}
-
-function fmtMsgTime(ts) {
-  if (!ts) return '--';
-  const d = new Date(new Date(ts).getTime() + 8 * 3600000);
-  const pad = n => String(n).padStart(2, '0');
-  return `${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
 }
