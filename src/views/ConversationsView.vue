@@ -47,6 +47,7 @@
           <span class="badge" :class="selUser.is_blocked ? 'badge-danger' : 'badge-success'">{{ selUser.is_blocked ? '⛔ 封禁' : '✅ 正常' }}</span>
           <button v-if="!selUser.is_blocked" class="btn-danger btn-sm hide-mobile" @click="blockUser">🚫</button>
           <button v-else class="btn-success btn-sm hide-mobile" @click="unblockUser">✅</button>
+          <button class="btn-ghost btn-sm hide-mobile" @click="deleteConv" title="删除对话并关闭话题">🗑️</button>
         </div>
 
         <div class="msg-list" ref="msgRef">
@@ -119,6 +120,23 @@ async function selectUser(c) {
   } finally { loadingMsgs.value = false }
 }
 
+async function deleteConv() {
+  if (!selUser.value) return
+  const uid = selUser.value.user_id
+  const name = selUser.value.first_name || uid
+  if (!confirm(`确认删除与「${name}」的全部对话记录并关闭话题群组中的话题？
+白名单用户外均需重新验证。`)) return
+  try {
+    const r = await api.delete(`/api/conversations/${uid}`)
+    // Remove from list
+    convs.value = convs.value.filter(c => c.user_id !== uid)
+    selUser.value = null; selId.value = null; msgs.value = []
+    mobileView.value = 'list'
+    if (r.reVerifyRequired) alert('✅ 对话已删除，用户下次发消息需重新验证。')
+    else alert('✅ 对话已删除（用户在白名单，无需重新验证）。')
+  } catch (e) { alert('❌ 删除失败：' + e.message) }
+}
+
 async function blockUser() {
   const r = prompt('封禁原因（可留空）：') ?? ''; if (r === null) return
   await api.put(`/api/users/${selUser.value.user_id}/block`, { reason: r, permanent: true })
@@ -145,7 +163,9 @@ function fmtShort(ts) {
 }
 function fmtFull(ts) {
   if (!ts) return ''
-  return new Date(ts).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+  const d = new Date(new Date(ts).getTime() + 8 * 3600000)
+  const pad = n => String(n).padStart(2, '0')
+  return `${pad(d.getUTCMonth()+1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`
 }
 function typeLabel(t) {
   return { photo: '📷 图片', video: '🎥 视频', audio: '🎵 音频', voice: '🎤 语音', document: '📄 文件', sticker: '🎭 贴纸', animation: '🎞️ GIF', video_note: '📹 圆视频', contact: '📞 联系人', location: '📍 位置', poll: '📊 投票', dice: '🎲 骰子' }[t] || t

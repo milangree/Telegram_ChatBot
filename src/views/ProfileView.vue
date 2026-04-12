@@ -158,5 +158,5 @@ onMounted(async () => {
 <style scoped>
 .page{max-width:540px;margin:0 auto}
 .qr-wrap{display:flex;justify-content:center}
-.qr-wrap img{border-radius:8px;border:4px solid #fff}
+.qr-wrap img{border-radius:8px;border:4px solid var(--bg2)}
 </style>

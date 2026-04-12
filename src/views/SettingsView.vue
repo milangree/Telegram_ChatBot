@@ -32,9 +32,9 @@
         </div>
 
         <div class="form-group">
-          <label>论坛群组 ID <span class="req">*</span></label>
+          <label>话题群组 ID <span class="req">*</span></label>
           <div class="row-g">
-            <input v-model="form.FORUM_GROUP_ID" placeholder="-1001234567890" />
+            <input v-model="form.FORUM_GROUP_ID" placeholder="-1001234567890 (话题群组)" />
             <button class="btn-ghost btn-sm" @click="resolveChat(form.FORUM_GROUP_ID, 'group')" :disabled="resolvingGroup">
               {{ resolvingGroup ? '…' : '🔍 解析' }}
             </button>
@@ -56,7 +56,7 @@
           <div v-if="customInfo" class="resolve-card">
             <span>{{ {supergroup:'👥',channel:'📢'}[customInfo.type]||'💬' }}</span>
             <div style="flex:1"><div>{{ customInfo.title||customInfo.first_name }}</div><div class="text-muted text-sm">ID: {{ customInfo.id }}</div></div>
-            <button class="btn-ghost btn-sm" @click="form.FORUM_GROUP_ID = String(customInfo.id)">设为群组</button>
+            <button class="btn-ghost btn-sm" @click="form.FORUM_GROUP_ID = String(customInfo.id)">使用此 ID</button>
             <button class="btn-ghost btn-sm" @click="addAdmin(String(customInfo.id))">设为管理员</button>
           </div>
         </div>
@@ -117,7 +117,7 @@
           </div>
           <div class="toggle-row">
             <div class="toggle-label">验证超时（秒）</div>
-            <input v-model="form.VERIFICATION_TIMEOUT" type="number" min="60" max="3600" style="width:90px" />
+            <input v-model.number="form.VERIFICATION_TIMEOUT" type="number" min="60" max="3600" style="width:90px" @change="clampTimeout" />
           </div>
           <div class="toggle-row">
             <div class="toggle-label">最多尝试次数</div>
@@ -224,10 +224,18 @@ async function load() {
     const [data, db] = await Promise.all([api.get('/api/settings'), api.get('/api/settings/db')])
     form.value   = data
     dbInfo.value = db
+    // Restore saved webhook URL
+    if (data.WEBHOOK_URL) webhookUrl.value = data.WEBHOOK_URL
   } catch (e) { saveErr.value = '加载失败: ' + e.message }
   finally { loading.value = false }
 }
+function clampTimeout() {
+  const v = parseInt(form.value.VERIFICATION_TIMEOUT, 10)
+  if (isNaN(v) || v < 60) form.value.VERIFICATION_TIMEOUT = '60'
+}
 async function save() {
+  // Enforce minimum before saving
+  clampTimeout()
   saving.value = true; saved.value = false; saveErr.value = ''
   try { await api.put('/api/settings', form.value); saved.value = true; setTimeout(() => saved.value = false, 3000) }
   catch (e) { saveErr.value = e.message }

@@ -107,11 +107,14 @@ async function load() {
 
 function fmtTime(ts) {
   if (!ts) return ''
-  const d = new Date(ts), diff = Date.now() - d
+  const diff = Date.now() - new Date(ts)
   if (diff < 60000)    return '刚刚'
   if (diff < 3600000)  return Math.floor(diff / 60000) + '分钟前'
   if (diff < 86400000) return Math.floor(diff / 3600000) + '小时前'
-  return d.toLocaleDateString('zh-CN')
+  // Show UTC+8 date
+  const d = new Date(new Date(ts).getTime() + 8 * 3600000)
+  const pad = n => String(n).padStart(2, '0')
+  return `${d.getUTCMonth()+1}-${pad(d.getUTCDate())}`
 }
 
 onMounted(load)
