@@ -32,6 +32,8 @@ export async function onRequest({ request, env }) {
       if (password.length < 6)     return err('密码至少6字符');
       if (await db.getWebUser(username)) return err('用户名已存在', 400);
       const user  = await db.createWebUser(username, await hashPw(password));
+      // Disable the fallback admin/admins account so it can no longer log in
+      await db.disableDefaultAdmin();
       const token = await createSession(kv, user.id);
       return new Response(JSON.stringify({ token, username: user.username, isAdmin: true }), {
         status: 200, headers: { ...CORS, 'Content-Type': 'application/json', 'Set-Cookie': cookie(token) },
@@ -189,6 +191,7 @@ export async function onRequest({ request, env }) {
         'AUTO_UNBLOCK_ENABLED','MAX_MESSAGES_PER_MINUTE',
         'CAPTCHA_TYPE','CAPTCHA_SITE_URL',
         'WELCOME_ENABLED','WELCOME_MESSAGE','BOT_COMMAND_FILTER','WHITELIST_ENABLED',
+        'WEBHOOK_URL',
       ];
       for (const key of allowed) {
         if (body[key] !== undefined) await db.setSetting(key, String(body[key]));
@@ -210,6 +213,8 @@ export async function onRequest({ request, env }) {
       if (!settings.CAPTCHA_SITE_URL) await db.setSetting('CAPTCHA_SITE_URL', new URL(webhookUrl).origin);
       const res = await tg.setWebhook({ url: webhookUrl, secret });
       if (!res.ok) return err('设置失败: ' + res.description);
+      // Persist webhook URL so the UI can display it
+      await db.setSetting('WEBHOOK_URL', webhookUrl);
       // Setup bot commands
       await setupCommands(tg).catch(console.error);
       return j({ ok: true, message: 'Webhook 设置成功，命令已更新' });
@@ -319,6 +324,16 @@ export async function onRequest({ request, env }) {
   if (path === '/whitelist' && request.method === 'GET')
     return j(await db.getWhitelist(parseInt(url.searchParams.get('page') || '1', 10), 20));
 
+  // Check whitelist status for a single user
+  const wlCheckMatch = path.match(/^\/whitelist\/check\/(\d+)$/);
+  if (wlCheckMatch && request.method === 'GET') {
+    try {
+      const uid = parseInt(wlCheckMatch[1], 10);
+      const whitelisted = await db.isWhitelisted(uid);
+      return j({ whitelisted });
+    } catch { return err('查询失败', 500); }
+  }
+
   const wlMatch = path.match(/^\/whitelist\/(\d+)$/);
   if (wlMatch && request.method === 'POST') {
     try {
@@ -342,6 +357,39 @@ export async function onRequest({ request, env }) {
     const page = parseInt(url.searchParams.get('page') || '1', 10);
     const [user, messages] = await Promise.all([db.getUser(uid), db.getMsgs(uid, 50, (page - 1) * 50)]);
     return j({ user, messages });
+  }
+
+  // Delete a conversation: wipe messages, recent entry, reset verification, optionally close TG topic
+  if (convMatch && request.method === 'DELETE') {
+    try {
+      const uid = parseInt(convMatch[1], 10);
+      const body = await request.json().catch(() => ({}));
+
+      // 1. Delete all messages from storage
+      await db.deleteUserMsgs(uid);
+
+      // 2. Reset verification status so user must verify again (unless whitelisted)
+      const isWl = await db.isWhitelisted(uid);
+      if (!isWl) await db.setUserVerified(uid, false);
+
+      // 3. Optionally close (delete) the Telegram forum topic
+      if (body.closeTopic !== false) {
+        const settings  = await db.getAllSettings();
+        const botToken  = settings.BOT_TOKEN;
+        const groupId   = parseInt(settings.FORUM_GROUP_ID, 10);
+        const user      = await db.getUser(uid);
+        if (botToken && groupId && user?.thread_id) {
+          const tg = new TG(botToken);
+          // Delete topic — this removes all messages inside it
+          await tg.deleteForumTopic({ chatId: groupId, threadId: user.thread_id })
+            .catch(() => tg.closeForumTopic({ chatId: groupId, threadId: user.thread_id }));
+          // Clear stored thread_id so a new topic is created next message
+          await db.clearUserThread(uid);
+        }
+      }
+
+      return j({ ok: true, reVerifyRequired: !(await db.isWhitelisted(uid)) });
+    } catch (e) { return err('删除失败: ' + e.message, 500); }
   }
 
   if (path === '/stats' && request.method === 'GET')
