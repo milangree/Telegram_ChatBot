@@ -153,6 +153,14 @@
           <div class="toggle-label">每分钟最大消息数</div>
           <input v-model="form.MAX_MESSAGES_PER_MINUTE" type="number" min="1" max="300" style="width:90px" />
         </div>
+        <div class="divider"></div>
+        <div class="toggle-row">
+          <div>
+            <div class="toggle-label">带按钮消息自动撤回（秒）</div>
+            <div class="form-hint">仅对带内联按钮消息生效，0 表示关闭；管理员私聊 /panel 也可调整</div>
+          </div>
+          <input v-model.number="form.INLINE_KB_MSG_DELETE_SECONDS" type="number" min="0" max="600" style="width:90px" @change="clampInlineKbDelete" />
+        </div>
       </div>
 
       <!-- 欢迎消息 -->
@@ -239,9 +247,17 @@ function clampTimeout() {
   const v = parseInt(form.value.VERIFICATION_TIMEOUT, 10)
   if (isNaN(v) || v < 60) form.value.VERIFICATION_TIMEOUT = '60'
 }
+
+function clampInlineKbDelete() {
+  const v = parseInt(form.value.INLINE_KB_MSG_DELETE_SECONDS, 10)
+  if (isNaN(v) || v < 0) form.value.INLINE_KB_MSG_DELETE_SECONDS = '30'
+  else if (v > 600) form.value.INLINE_KB_MSG_DELETE_SECONDS = '600'
+  else form.value.INLINE_KB_MSG_DELETE_SECONDS = String(v)
+}
 async function save() {
   // Enforce minimum before saving
   clampTimeout()
+  clampInlineKbDelete()
   saving.value = true; saved.value = false; saveErr.value = ''
   try { await api.put('/api/settings', form.value); saved.value = true; setTimeout(() => saved.value = false, 3000) }
   catch (e) { saveErr.value = e.message }

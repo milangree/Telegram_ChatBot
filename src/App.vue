@@ -26,9 +26,9 @@
           <span class="user-name">{{ auth.username }}</span>
         </div>
         <!-- Theme toggle -->
-        <button class="btn-icon lang-btn" @click="toggleLocale" :title="t('app.language')">
-          {{ currentLocaleLabel }}
-        </button>
+        <select class="lang-select" v-model="selectedLocale" :title="t('app.language')">
+          <option v-for="opt in localeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+        </select>
         <button class="btn-icon" @click="toggleTheme" :title="isDark ? t('app.toggleLight') : t('app.toggleDark')">
           {{ isDark ? '☀️' : '🌙' }}
         </button>
@@ -40,9 +40,9 @@
     <div class="mobile-header mobile-only">
       <button class="btn-icon" @click="sidebarOpen = true" :title="t('app.menu')">☰</button>
       <span class="mobile-title">🤖 {{ t('app.title') }}</span>
-      <button class="btn-icon lang-btn" @click="toggleLocale" :title="t('app.language')" style="margin-left:auto">
-        {{ currentLocaleLabel }}
-      </button>
+      <select class="lang-select" v-model="selectedLocale" :title="t('app.language')" style="margin-left:auto">
+        <option v-for="opt in localeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+      </select>
       <button class="btn-icon" @click="toggleTheme" :title="t('app.toggleTheme')">{{ isDark ? '☀️' : '🌙' }}</button>
       <button class="btn-icon" @click="handleLogout" :title="t('app.logoutLogin')" style="color:var(--danger)">🚪</button>
     </div>
@@ -55,9 +55,9 @@
   <!-- Auth pages (login/register etc.) -->
   <div v-else class="main-content no-sidebar">
     <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
-      <button class="btn-ghost btn-sm" @click="toggleLocale" :title="t('app.language')">
-        {{ currentLocaleLabel }}
-      </button>
+      <select class="lang-select auth-lang-select" v-model="selectedLocale" :title="t('app.language')">
+        <option v-for="opt in localeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+      </select>
     </div>
     <RouterView />
   </div>
@@ -79,10 +79,15 @@ const isDark      = ref(true)
 
 const t = i18n.t
 
-const currentLocaleLabel = computed(() => {
-  if (i18n.locale === 'zh-hant') return t('app.lang.zhHant')
-  if (i18n.locale === 'en') return t('app.lang.en')
-  return t('app.lang.zhHans')
+const localeOptions = computed(() => i18n.localeOptions.map((locale) => {
+  if (locale === 'zh-hant') return { value: locale, label: t('app.lang.zhHant') }
+  if (locale === 'en') return { value: locale, label: t('app.lang.en') }
+  return { value: locale, label: t('app.lang.zhHans') }
+}))
+
+const selectedLocale = computed({
+  get: () => i18n.locale,
+  set: (next) => i18n.setLocale(next),
 })
 
 const navItems = computed(() => [
@@ -109,10 +114,6 @@ async function syncLocaleToBackend() {
   try {
     await api.put('/api/settings', { BOT_LOCALE: i18n.locale })
   } catch {}
-}
-
-function toggleLocale() {
-  i18n.toggleLocale()
 }
 
 async function handleLogout() {

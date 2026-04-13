@@ -28,7 +28,7 @@ export async function onRequestPost(context) {
     console.log(`[webhook] ${updateType} from user ${userId}`);
 
     const baseUrl = new URL(request.url).origin;
-    const ctx     = { _db: db, KV: env.KV, baseUrl };
+    const ctx     = { _db: db, KV: env.KV, baseUrl, waitUntil };
 
     waitUntil(processUpdate(update, ctx).catch(e => console.error('[processUpdate]', e)));
     return new Response('OK');

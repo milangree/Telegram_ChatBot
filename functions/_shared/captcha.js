@@ -41,12 +41,62 @@ export function generateWrongOptions(correct, type) {
   const pool = type === 'image_alphanumeric' ? ALPHA_CHARS : NUMERIC_CHARS;
   const len  = correct.length;
   const wrongs = new Set();
+
+  const seed = new Uint8Array(8);
+  crypto.getRandomValues(seed);
+  const rng = lcg(`${correct}:${type}:${Array.from(seed).join(',')}`);
+  const rint = max => Math.floor(rng() * max);
+
+  const similarity = (a, b) => {
+    let same = 0;
+    for (let i = 0; i < a.length; i++) if (a[i] === b[i]) same++;
+    return same;
+  };
+
+  const mutateOne = (src) => {
+    const arr = src.split('');
+    const i = rint(len);
+    const idx = pool.indexOf(arr[i]);
+    if (idx >= 0) {
+      const delta = rint(2) === 0 ? -1 : 1;
+      arr[i] = pool[(idx + delta + pool.length) % pool.length];
+    } else {
+      arr[i] = pool[rint(pool.length)];
+    }
+    return arr.join('');
+  };
+
+  const mutateTwo = (src) => mutateOne(mutateOne(src));
+
+  const swapAdj = (src) => {
+    if (src.length < 2) return mutateOne(src);
+    const i = rint(src.length - 1);
+    const arr = src.split('');
+    [arr[i], arr[i + 1]] = [arr[i + 1], arr[i]];
+    return arr.join('');
+  };
+
+  const minSim = Math.max(2, len - 2);
+  let tries = 0;
+  while (wrongs.size < 3 && tries < 120) {
+    tries++;
+    let candidate;
+    if (tries % 3 === 0) candidate = mutateTwo(correct);
+    else if (tries % 5 === 0) candidate = swapAdj(correct);
+    else candidate = mutateOne(correct);
+
+    if (candidate === correct) continue;
+    if (similarity(candidate, correct) < minSim) continue;
+    wrongs.add(candidate);
+  }
+
   while (wrongs.size < 3) {
     const buf = new Uint8Array(len);
     crypto.getRandomValues(buf);
     const w = Array.from(buf, b => pool[b % pool.length]).join('');
     if (w !== correct) wrongs.add(w);
   }
+
   return [...wrongs];
 }
 
@@ -59,54 +109,65 @@ const CW = 5, CH = 7;
 
 export async function renderCaptchaPNG(text, seed = text) {
   const W = PADDING * 2 + text.length * (CW + SPACING) * SCALE - SPACING * SCALE;
-  const H = PADDING * 2 + CH * SCALE + 6; // +6 vertical jitter room
+  const H = PADDING * 2 + CH * SCALE + 10; // extra room for jitter/distortion
 
   const rgb = new Uint8Array(W * H * 3);
+  const rng = lcg(seed);
 
-  // Background: soft gradient
+  // Background: gradient + subtle texture
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < W; x++) {
       const i = (y * W + x) * 3;
-      rgb[i]   = 238 + Math.round((x / W) * 10);
-      rgb[i+1] = 243 + Math.round((y / H) * 8);
-      rgb[i+2] = 255;
+      const tone = Math.floor(2 + 3 * Math.sin((x + y) * 0.08));
+      rgb[i]   = 236 + Math.round((x / W) * 12) + tone;
+      rgb[i+1] = 241 + Math.round((y / H) * 10) + tone;
+      rgb[i+2] = 253 + tone;
     }
   }
 
-  // Deterministic PRNG from seed for reproducible images
-  const rng = lcg(seed);
-
-  // Noise lines (drawn before text so text is readable on top)
-  const lineColors = [[180,190,220],[160,180,210],[170,185,215],[175,188,218]];
-  for (let n = 0; n < 4; n++) {
+  // Pre-text interference curves
+  for (let n = 0; n < 5; n++) {
     const x1 = Math.floor(rng() * W), y1 = Math.floor(rng() * H);
     const x2 = Math.floor(rng() * W), y2 = Math.floor(rng() * H);
-    drawLine(rgb, W, H, x1, y1, x2, y2, lineColors[n % lineColors.length]);
+    const c = [150 + Math.floor(rng() * 40), 160 + Math.floor(rng() * 45), 185 + Math.floor(rng() * 45)];
+    drawWavyLine(rgb, W, H, x1, y1, x2, y2, c, 1 + Math.floor(rng() * 3), 1 + Math.floor(rng() * 2), rng() * Math.PI * 2);
   }
 
-  // Characters with per-char vertical jitter and alternating colors
-  const charColors = [[25,50,120],[120,30,30],[30,100,30],[80,30,120]];
+  // Characters: jitter + skew + noisy strokes
   for (let ci = 0; ci < text.length; ci++) {
     const glyph = FONT[text[ci]];
     if (!glyph) continue;
-    const cx    = PADDING + ci * (CW + SPACING) * SCALE;
-    const yOff  = Math.floor(rng() * 6); // 0–5 px jitter
-    const color = charColors[ci % charColors.length];
+
+    const baseX = PADDING + ci * (CW + SPACING) * SCALE;
+    const xOff = Math.floor(rng() * 5) - 2;      // -2..2
+    const yOff = Math.floor(rng() * 7) - 2;      // -2..4
+    const skew = (rng() - 0.5) * 0.9;            // shear
+    const color = [20 + Math.floor(rng() * 120), 25 + Math.floor(rng() * 95), 30 + Math.floor(rng() * 120)];
 
     for (let gy = 0; gy < CH; gy++) {
       const row = glyph[gy];
+      const rowShift = Math.round((gy - CH / 2) * skew);
       for (let gx = 0; gx < CW; gx++) {
-        if (row & (1 << (CW - 1 - gx))) {
-          for (let sy = 0; sy < SCALE; sy++) {
-            for (let sx = 0; sx < SCALE; sx++) {
-              const px = cx + gx * SCALE + sx;
-              const py = PADDING + yOff + gy * SCALE + sy;
-              if (px >= 0 && px < W && py >= 0 && py < H) {
-                const idx = (py * W + px) * 3;
-                rgb[idx]   = color[0];
-                rgb[idx+1] = color[1];
-                rgb[idx+2] = color[2];
-              }
+        if (!(row & (1 << (CW - 1 - gx)))) continue;
+        if (rng() < 0.05) continue; // tiny dropout to hinder OCR templates
+
+        for (let sy = 0; sy < SCALE; sy++) {
+          for (let sx = 0; sx < SCALE; sx++) {
+            const px = baseX + xOff + rowShift + gx * SCALE + sx;
+            const py = PADDING + yOff + gy * SCALE + sy;
+            if (px < 0 || px >= W || py < 0 || py >= H) continue;
+            const idx = (py * W + px) * 3;
+            const jitter = Math.floor(rng() * 26) - 13;
+            rgb[idx]   = clamp8(color[0] + jitter);
+            rgb[idx+1] = clamp8(color[1] + jitter);
+            rgb[idx+2] = clamp8(color[2] + jitter);
+
+            // occasional neighboring blur pixel
+            if (rng() < 0.07 && px + 1 < W) {
+              const nb = idx + 3;
+              rgb[nb]   = clamp8(rgb[nb] + 18);
+              rgb[nb+1] = clamp8(rgb[nb+1] + 18);
+              rgb[nb+2] = clamp8(rgb[nb+2] + 18);
             }
           }
         }
@@ -114,16 +175,33 @@ export async function renderCaptchaPNG(text, seed = text) {
     }
   }
 
-  // Noise dots on top
-  for (let n = 0; n < 70; n++) {
-    const nx = Math.floor(rng() * W);
-    const ny = Math.floor(rng() * H);
-    const nv = 130 + Math.floor(rng() * 100);
-    const idx = (ny * W + nx) * 3;
-    rgb[idx] = nv; rgb[idx+1] = nv; rgb[idx+2] = nv;
+  // Post-text crossing lines
+  for (let n = 0; n < 4; n++) {
+    const x1 = Math.floor(rng() * W), y1 = Math.floor(rng() * H);
+    const x2 = Math.floor(rng() * W), y2 = Math.floor(rng() * H);
+    const c = [80 + Math.floor(rng() * 80), 70 + Math.floor(rng() * 90), 85 + Math.floor(rng() * 85)];
+    drawLine(rgb, W, H, x1, y1, x2, y2, c);
   }
 
-  return encodePNG(W, H, rgb);
+  // Global wave distortion
+  const distorted = waveDistort(rgb, W, H, rng, 2, 1);
+
+  // Dense salt-pepper noise
+  const dots = Math.floor(W * H * 0.02);
+  for (let n = 0; n < dots; n++) {
+    const nx = Math.floor(rng() * W);
+    const ny = Math.floor(rng() * H);
+    const idx = (ny * W + nx) * 3;
+    if (rng() < 0.55) {
+      const d = 60 + Math.floor(rng() * 70);
+      distorted[idx] = d; distorted[idx+1] = d; distorted[idx+2] = d;
+    } else {
+      const l = 200 + Math.floor(rng() * 45);
+      distorted[idx] = l; distorted[idx+1] = l; distorted[idx+2] = l;
+    }
+  }
+
+  return encodePNG(W, H, distorted);
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -152,6 +230,58 @@ function drawLine(rgb, W, H, x1, y1, x2, y2, color) {
     if (e2 > -dy) { err -= dy; x += sx; }
     if (e2 <  dx) { err += dx; y += sy; }
   }
+}
+
+function drawWavyLine(rgb, W, H, x1, y1, x2, y2, color, amp = 2, thickness = 1, phase = 0) {
+  const steps = Math.max(Math.abs(x2 - x1), Math.abs(y2 - y1)) * 2 + 1;
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const bx = x1 + (x2 - x1) * t;
+    const by = y1 + (y2 - y1) * t;
+    const wobble = Math.sin(t * Math.PI * 6 + phase) * amp;
+    const x = Math.round(bx + wobble);
+    const y = Math.round(by + wobble * 0.5);
+    for (let oy = -thickness; oy <= thickness; oy++) {
+      for (let ox = -thickness; ox <= thickness; ox++) {
+        const px = x + ox, py = y + oy;
+        if (px < 0 || px >= W || py < 0 || py >= H) continue;
+        const idx = (py * W + px) * 3;
+        rgb[idx] = color[0]; rgb[idx+1] = color[1]; rgb[idx+2] = color[2];
+      }
+    }
+  }
+}
+
+function waveDistort(rgb, W, H, rng, ampX = 2, ampY = 1) {
+  const out = new Uint8Array(rgb.length);
+  const p1 = rng() * Math.PI * 2;
+  const p2 = rng() * Math.PI * 2;
+  const fx = 6 + Math.floor(rng() * 4);
+  const fy = 7 + Math.floor(rng() * 4);
+
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const sx = x + Math.round(Math.sin((y / fy) + p1) * ampX);
+      const sy = y + Math.round(Math.sin((x / fx) + p2) * ampY);
+      const dst = (y * W + x) * 3;
+      if (sx >= 0 && sx < W && sy >= 0 && sy < H) {
+        const src = (sy * W + sx) * 3;
+        out[dst] = rgb[src];
+        out[dst + 1] = rgb[src + 1];
+        out[dst + 2] = rgb[src + 2];
+      } else {
+        out[dst] = rgb[dst];
+        out[dst + 1] = rgb[dst + 1];
+        out[dst + 2] = rgb[dst + 2];
+      }
+    }
+  }
+
+  return out;
+}
+
+function clamp8(v) {
+  return v < 0 ? 0 : (v > 255 ? 255 : v | 0);
 }
 
 // ── PNG encoder ──────────────────────────────────────────────────────────────

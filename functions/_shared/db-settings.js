@@ -8,6 +8,8 @@ export const DEFAULT_SETTINGS = {
   MAX_VERIFICATION_ATTEMPTS: '3',
   AUTO_UNBLOCK_ENABLED: 'true',
   MAX_MESSAGES_PER_MINUTE: '30',
+  USER_MSG_DELETE_SECONDS: '30',
+  INLINE_KB_MSG_DELETE_SECONDS: '30',
   WEBHOOK_SECRET: '',
   CAPTCHA_TYPE: 'math', // math | image_numeric | image_alphanumeric
   CAPTCHA_SITE_URL: '',

@@ -38,6 +38,119 @@ function rateCheck(uid, max) {
   return ts.length > max;
 }
 
+function parseBoundedInt(raw, fallback, min, max) {
+  const n = parseInt(raw, 10);
+  if (Number.isNaN(n)) return fallback;
+  return Math.min(max, Math.max(min, n));
+}
+
+function getUserMsgDeleteSeconds(settings) {
+  return parseBoundedInt(settings?.USER_MSG_DELETE_SECONDS || '30', 30, 0, 600);
+}
+
+function getInlineKbMsgDeleteSeconds(settings) {
+  return parseBoundedInt(settings?.INLINE_KB_MSG_DELETE_SECONDS || settings?.USER_MSG_DELETE_SECONDS || '30', 30, 0, 600);
+}
+
+function hasInlineKeyboard(kb) {
+  return Array.isArray(kb) && kb.some(row => Array.isArray(row) && row.length > 0);
+}
+
+function isPrivateChatId(chatId) {
+  const n = Number(chatId);
+  return Number.isFinite(n) && n > 0;
+}
+
+function scheduleUserMsgDelete({ tg, settings, waitUntil, chatId, msgId }) {
+  const seconds = getUserMsgDeleteSeconds(settings);
+  if (!seconds || !waitUntil || !msgId || !isPrivateChatId(chatId)) return;
+  waitUntil((async () => {
+    await new Promise(r => setTimeout(r, seconds * 1000));
+    await tg.deleteMsg({ chatId, msgId }).catch(() => {});
+  })());
+}
+
+function scheduleInlineKbMsgDelete({ tg, settings, waitUntil, chatId, msgId }) {
+  const seconds = getInlineKbMsgDeleteSeconds(settings);
+  if (!seconds || !waitUntil || !msgId || !isPrivateChatId(chatId)) return;
+  waitUntil((async () => {
+    await new Promise(r => setTimeout(r, seconds * 1000));
+    await tg.deleteMsg({ chatId, msgId }).catch(() => {});
+  })());
+}
+
+async function sendUserMsg({ tg, settings, waitUntil, chatId, text, kb, parseMode = 'HTML', replyToMsgId, threadId }) {
+  const r = await tg.sendMsg({ chatId, text, kb, parseMode, replyToMsgId, threadId });
+  if (r?.ok && hasInlineKeyboard(kb)) {
+    scheduleInlineKbMsgDelete({ tg, settings, waitUntil, chatId, msgId: r.result?.message_id });
+  }
+  return r;
+}
+
+async function sendUserPhoto({ tg, settings, waitUntil, chatId, fileId, url, caption, kb, parseMode = 'HTML', threadId }) {
+  const r = await tg.sendPhoto({ chatId, fileId, url, caption, kb, parseMode, threadId });
+  if (r?.ok && hasInlineKeyboard(kb)) {
+    scheduleInlineKbMsgDelete({ tg, settings, waitUntil, chatId, msgId: r.result?.message_id });
+  }
+  return r;
+}
+
+function scheduleEditedUserMsgDelete({ tg, settings, waitUntil, chatId, msgId, kb }) {
+  if (!hasInlineKeyboard(kb)) return;
+  scheduleInlineKbMsgDelete({ tg, settings, waitUntil, chatId, msgId });
+}
+
+async function editUserText({ tg, settings, waitUntil, chatId, msgId, text, kb, parseMode = 'HTML' }) {
+  const r = await tg.editText({ chatId, msgId, text, kb, parseMode });
+  if (r?.ok) scheduleEditedUserMsgDelete({ tg, settings, waitUntil, chatId, msgId, kb });
+  return r;
+}
+
+async function editUserCaption({ tg, settings, waitUntil, chatId, msgId, caption, kb, parseMode = 'HTML' }) {
+  const r = await tg.editCaption({ chatId, msgId, caption, kb, parseMode });
+  if (r?.ok) scheduleEditedUserMsgDelete({ tg, settings, waitUntil, chatId, msgId, kb });
+  return r;
+}
+
+async function editUserKb({ tg, settings, waitUntil, chatId, msgId, kb }) {
+  const r = await tg.editKb({ chatId, msgId, kb });
+  if (r?.ok) scheduleEditedUserMsgDelete({ tg, settings, waitUntil, chatId, msgId, kb });
+  return r;
+}
+
+async function withUserLock(kv, userLockId, fn, { ttlSeconds = 60, retries = 8, waitMs = 120 } = {}) {
+  const lockKey = `lock:user:${userLockId}`;
+  const ttl = Math.max(60, ttlSeconds);
+  let token = null;
+
+  for (let i = 0; i < retries; i++) {
+    const existing = await kv.get(lockKey);
+    if (!existing) {
+      const candidate = randId();
+      await kv.put(lockKey, candidate, { expirationTtl: ttl });
+      const holder = await kv.get(lockKey);
+      if (holder === candidate) {
+        token = candidate;
+        break;
+      }
+    }
+    if (i < retries - 1) {
+      await new Promise(r => setTimeout(r, waitMs + Math.floor(Math.random() * 80)));
+    }
+  }
+
+  if (!token) return { acquired: false, value: null };
+
+  try {
+    return { acquired: true, value: await fn() };
+  } finally {
+    const holder = await kv.get(lockKey);
+    if (holder === token) {
+      await kv.delete(lockKey).catch(() => {});
+    }
+  }
+}
+
 // ── Thread management ─────────────────────────────────────────────────────────
 async function getOrCreateThread(tg, db, user, groupId, kv, t) {
   // Atomic-ish lock to prevent duplicate topics
@@ -94,7 +207,7 @@ function buildCardText(user, u, t) {
     `${t('card.status')}：${u?.is_blocked ? t('status.blocked') : (u?.is_verified ? t('status.verified') : t('status.unverified'))}`;
 }
 
-async function sendToUserThreadOrAdminDm({ tg, db, groupId, adminIds, userId, text, kb }) {
+async function sendToUserThreadOrAdminDm({ tg, db, settings, waitUntil, groupId, adminIds, userId, text, kb }) {
   const u = await db.getUser(userId);
   const tid = u?.thread_id;
 
@@ -105,7 +218,7 @@ async function sendToUserThreadOrAdminDm({ tg, db, groupId, adminIds, userId, te
 
   let dmCount = 0;
   for (const aid of adminIds) {
-    const r = await tg.sendMsg({ chatId: aid, text, kb }).catch(() => null);
+    const r = await sendUserMsg({ tg, settings, waitUntil, chatId: aid, text, kb }).catch(() => null);
     if (r?.ok) dmCount++;
   }
   return { sent: dmCount > 0, via: dmCount > 0 ? 'admin_dm' : 'none' };
@@ -132,6 +245,7 @@ function adminPanelKb(s, t) {
   const capLabel = s.CAPTCHA_TYPE === 'image_numeric'
     ? t('panel.cap.imageNumeric')
     : (s.CAPTCHA_TYPE === 'image_alphanumeric' ? t('panel.cap.imageAlnum') : t('panel.cap.math'));
+  const inlineKbDeleteSec = parseBoundedInt(s.INLINE_KB_MSG_DELETE_SECONDS || '30', 30, 0, 600);
   return [
     [
       { text: `✅ ${t('panel.verify')}: ${s.VERIFICATION_ENABLED === 'true' ? t('panel.on') : t('panel.off')}`, callback_data: 'adm:tv' },
@@ -148,6 +262,9 @@ function adminPanelKb(s, t) {
     [
       { text: `🔁 ${t('panel.attempts')}: ${s.MAX_VERIFICATION_ATTEMPTS || '3'}`, callback_data: 'adm:ma' },
       { text: `📩 ${t('panel.adminNotify')}: ${s.ADMIN_NOTIFY_ENABLED === 'true' ? t('panel.on') : t('panel.off')}`, callback_data: 'adm:tn' },
+    ],
+    [
+      { text: `🧹 ${t('panel.inlineKbDelete')}: ${inlineKbDeleteSec}s`, callback_data: 'adm:ik' },
     ],
     [
       { text: t('kb.stats'), callback_data: 'adm:st' },
@@ -177,14 +294,14 @@ export async function processUpdate(update, env) {
     const locale = normalizeBotLocale(settings.BOT_LOCALE);
     const t = createBotT(locale);
     const tg  = new TG(settings.BOT_TOKEN);
-    const ctx = { tg, db, kv: env.KV, settings, baseUrl: env.baseUrl || '', t };
+    const ctx = { tg, db, kv: env.KV, settings, baseUrl: env.baseUrl || '', t, waitUntil: env.waitUntil };
     if (update.message)              await handleMsg(update.message, ctx);
     else if (update.callback_query)  await handleCb(update.callback_query, ctx);
   } catch (e) { console.error('processUpdate:', e); }
 }
 
 // ── Message handler ───────────────────────────────────────────────────────────
-async function handleMsg(msg, { tg, db, kv, settings, baseUrl, t }) {
+async function handleMsg(msg, { tg, db, kv, settings, baseUrl, t, waitUntil }) {
   if (!msg) return;
   const user = msg.from;
   if (!user || user.is_bot) return;
@@ -214,7 +331,7 @@ async function handleMsg(msg, { tg, db, kv, settings, baseUrl, t }) {
 
   // ── Admin private chat: control panel or command processing ───────────────
   if (adminIds.includes(user.id)) {
-    await handleAdminPrivateMsg(msg, user, { tg, db, kv, settings, groupId, t });
+    await handleAdminPrivateMsg(msg, user, { tg, db, kv, settings, groupId, t, waitUntil });
     return;
   }
 
@@ -229,7 +346,7 @@ async function handleMsg(msg, { tg, db, kv, settings, baseUrl, t }) {
         { text: t('user.sendMsg'), callback_data: 'user:msg' },
         { text: t('user.help'), callback_data: 'user:help' },
       ]];
-      await tg.sendMsg({ chatId: user.id, text: welcomeText, kb });
+      await sendUserMsg({ tg, settings, waitUntil, chatId: user.id, text: welcomeText, kb });
       return;
     }
     if (cmd === 'status') {
@@ -267,7 +384,17 @@ async function handleMsg(msg, { tg, db, kv, settings, baseUrl, t }) {
           { text: t('appeal.reject'), callback_data: `apr:${user.id}` },
         ]];
 
-        const delivery = await sendToUserThreadOrAdminDm({ tg, db, groupId, adminIds, userId: user.id, text, kb });
+        const delivery = await sendToUserThreadOrAdminDm({
+          tg,
+          db,
+          settings,
+          waitUntil,
+          groupId,
+          adminIds,
+          userId: user.id,
+          text,
+          kb,
+        });
         await kv.delete(`pending_appeal:${user.id}`).catch(() => {});
 
         if (delivery.sent) {
@@ -282,7 +409,14 @@ async function handleMsg(msg, { tg, db, kv, settings, baseUrl, t }) {
     if (isPermanentBlock) {
       await tg.sendMsg({ chatId: user.id, text: t('appeal.blockedPermanent') });
     } else if (canAppeal) {
-      await tg.sendMsg({ chatId: user.id, text: t('appeal.blockedCan'), kb: [[{ text: t('appeal.start'), callback_data: 'appeal:start' }]] });
+      await sendUserMsg({
+        tg,
+        settings,
+        waitUntil,
+        chatId: user.id,
+        text: t('appeal.blockedCan'),
+        kb: [[{ text: t('appeal.start'), callback_data: 'appeal:start' }]],
+      });
     } else {
       await tg.sendMsg({ chatId: user.id, text: t('appeal.blocked') });
     }
@@ -301,28 +435,40 @@ async function handleMsg(msg, { tg, db, kv, settings, baseUrl, t }) {
 
     // ── Verification ──────────────────────────────────────────────────────
     if (settings.VERIFICATION_ENABLED === 'true' && !dbUser?.is_verified) {
-      const timeout     = Math.max(60, parseInt(settings.VERIFICATION_TIMEOUT || '300', 10)); // CF KV minimum TTL is 60s
-      const captchaType = settings.CAPTCHA_TYPE || 'math';
-      const existing    = await db.getVerify(user.id);
-      if (existing && existing.expires_at > Date.now()) {
-        await tg.sendMsg({ chatId: user.id, text: t('verify.completeFirst') });
-        return;
-      }
+      const lock = await withUserLock(
+        kv,
+        `verify-flow:${user.id}`,
+        async () => {
+          const latestUser = await db.getUser(user.id);
+          if (latestUser?.is_verified) return { done: true };
 
-      await kv.put(`pending:${user.id}`, JSON.stringify({ msgId: msg.message_id, type: msgType(msg) }), { expirationTtl: timeout });
+          const timeout = Math.max(60, parseInt(settings.VERIFICATION_TIMEOUT || '300', 10)); // CF KV minimum TTL is 60s
+          const captchaType = settings.CAPTCHA_TYPE || 'math';
+          const existing = await db.getVerify(user.id);
 
-      if (captchaType === 'math') {
-        const { question, answer, kb } = mkMathVerify();
-        await db.setVerify(user.id, { answer, captcha_type: 'math' }, timeout);
-        await tg.sendMsg({ chatId: user.id, text: t('verify.title', { question }), kb });
-      } else {
-        const siteUrl = settings.CAPTCHA_SITE_URL || baseUrl;
-        if (!siteUrl) {
-          // Fallback to math
-          const { question, answer, kb } = mkMathVerify();
-          await db.setVerify(user.id, { answer, captcha_type: 'math' }, timeout);
-          await tg.sendMsg({ chatId: user.id, text: t('verify.title', { question }), kb });
-        } else {
+          if (existing && existing.expires_at > Date.now()) {
+            await sendUserMsg({ tg, settings, waitUntil, chatId: user.id, text: t('verify.completeFirst') });
+            return { done: true };
+          }
+
+          await kv.put(`pending:${user.id}`, JSON.stringify({ msgId: msg.message_id, type: msgType(msg) }), { expirationTtl: timeout });
+
+          if (captchaType === 'math') {
+            const { question, answer, kb } = mkMathVerify();
+            await db.setVerify(user.id, { answer, captcha_type: 'math' }, timeout);
+            await sendUserMsg({ tg, settings, waitUntil, chatId: user.id, text: t('verify.title', { question }), kb });
+            return { done: true };
+          }
+
+          const siteUrl = settings.CAPTCHA_SITE_URL || baseUrl;
+          if (!siteUrl) {
+            // Fallback to math
+            const { question, answer, kb } = mkMathVerify();
+            await db.setVerify(user.id, { answer, captcha_type: 'math' }, timeout);
+            await sendUserMsg({ tg, settings, waitUntil, chatId: user.id, text: t('verify.title', { question }), kb });
+            return { done: true };
+          }
+
           const captchaId  = randId();
           const code       = generateCode(captchaType);
           await kv.put(`captcha_render:${captchaId}`, code, { expirationTtl: timeout + 60 });
@@ -333,13 +479,19 @@ async function handleMsg(msg, { tg, db, kv, settings, baseUrl, t }) {
           const typeLabel  = captchaType === 'image_alphanumeric' ? t('verify.imgAlpha') : t('verify.imgNum');
           const caption    = t('verify.image', { typeLabel });
           const imgUrl     = `${siteUrl}/api/captcha/${captchaId}`;
-          const r          = await tg.sendPhoto({ chatId: user.id, url: imgUrl, caption, kb });
+          const r          = await sendUserPhoto({ tg, settings, waitUntil, chatId: user.id, url: imgUrl, caption, kb });
           if (!r.ok) {
             const { question, answer, kb: mathKb } = mkMathVerify();
             await db.setVerify(user.id, { answer, captcha_type: 'math' }, timeout);
-            await tg.sendMsg({ chatId: user.id, text: t('verify.title', { question }), kb: mathKb });
+            await sendUserMsg({ tg, settings, waitUntil, chatId: user.id, text: t('verify.title', { question }), kb: mathKb });
           }
-        }
+          return { done: true };
+        },
+        { ttlSeconds: 90, retries: 6, waitMs: 100 },
+      );
+
+      if (!lock.acquired) {
+        await sendUserMsg({ tg, settings, waitUntil, chatId: user.id, text: t('verify.completeFirst') });
       }
       return;
     }
@@ -376,15 +528,19 @@ async function handleMsg(msg, { tg, db, kv, settings, baseUrl, t }) {
   }
 }
 
-async function handleAdminPrivateMsg(msg, user, { tg, db, kv, settings, groupId, t }) {
+async function handleAdminPrivateMsg(msg, user, { tg, db, kv, settings, groupId, t, waitUntil }) {
   const protectedAdminIds = new Set(parseAdminIds(settings.ADMIN_IDS).map(Number));
 
   const sendPanel = async () => {
     const s = await db.getStats();
-    await tg.sendMsg({
+    const latest = await db.getAllSettings();
+    await sendUserMsg({
+      tg,
+      settings: latest,
+      waitUntil,
       chatId: user.id,
       text: t('admin.panel', s),
-      kb: adminPanelKb(settings, t),
+      kb: adminPanelKb(latest, t),
     });
   };
 
@@ -430,7 +586,14 @@ async function handleAdminPrivateMsg(msg, user, { tg, db, kv, settings, groupId,
     if (cmd === 'info' && arg) {
       const u = await db.getUser(parseInt(arg, 10));
       if (!u) { await tg.sendMsg({ chatId: user.id, text: t('admin.userNotFound') }); return; }
-      await tg.sendMsg({ chatId: user.id, text: buildDetailText(u, false, t), kb: fullUserKb(u.user_id, u, t) });
+      await sendUserMsg({
+        tg,
+        settings,
+        waitUntil,
+        chatId: user.id,
+        text: buildDetailText(u, false, t),
+        kb: fullUserKb(u.user_id, u, t),
+      });
       return;
     }
 
@@ -452,7 +615,7 @@ async function handleAdminPrivateMsg(msg, user, { tg, db, kv, settings, groupId,
 }
 
 // ── Callback handler ──────────────────────────────────────────────────────────
-async function handleCb(q, { tg, db, kv, settings, t }) {
+async function handleCb(q, { tg, db, kv, settings, t, waitUntil }) {
   const { data, from: user, message } = q;
   const chatId  = message.chat.id;
   const msgId   = message.message_id;
@@ -464,13 +627,29 @@ async function handleCb(q, { tg, db, kv, settings, t }) {
     // ── User callbacks ────────────────────────────────────────────────────────
     if (data === 'user:msg') { await tg.answerCb({ id: q.id, text: t('cb.sendText') }); return; }
     if (data === 'user:help') {
-      await tg.editText({ chatId, msgId, text: t('cb.help'), kb: [[{ text: t('cb.back'), callback_data: 'user:back' }]] });
+      await editUserText({
+        tg,
+        settings,
+        waitUntil,
+        chatId,
+        msgId,
+        text: t('cb.help'),
+        kb: [[{ text: t('cb.back'), callback_data: 'user:back' }]],
+      });
       await tg.answerCb({ id: q.id });
       return;
     }
     if (data === 'user:back') {
       const s = await db.getAllSettings();
-      await tg.editText({ chatId, msgId, text: s.WELCOME_MESSAGE || t('cb.welcomeFallback'), kb: [[{ text: t('user.sendMsg'), callback_data: 'user:msg' }, { text: t('user.help'), callback_data: 'user:help' }]] });
+      await editUserText({
+        tg,
+        settings: s,
+        waitUntil,
+        chatId,
+        msgId,
+        text: s.WELCOME_MESSAGE || t('cb.welcomeFallback'),
+        kb: [[{ text: t('user.sendMsg'), callback_data: 'user:msg' }, { text: t('user.help'), callback_data: 'user:help' }]],
+      });
       await tg.answerCb({ id: q.id });
       return;
     }
@@ -507,10 +686,14 @@ async function handleCb(q, { tg, db, kv, settings, t }) {
       const isStart = data === 'appeal:start';
       if (isStart) await kv.put(`pending_appeal:${user.id}`, '1', { expirationTtl: 900 });
       else await kv.delete(`pending_appeal:${user.id}`);
-      await tg.editText({
-        chatId, msgId,
+      await editUserText({
+        tg,
+        settings,
+        waitUntil,
+        chatId,
+        msgId,
         text: isStart ? t('appeal.enter') : t('appeal.blocked'),
-        kb:   isStart ? [[{ text: t('appeal.cancel'), callback_data: 'appeal:cancel' }]] : [[{ text: t('appeal.short'), callback_data: 'appeal:start' }]],
+        kb: isStart ? [[{ text: t('appeal.cancel'), callback_data: 'appeal:cancel' }]] : [[{ text: t('appeal.short'), callback_data: 'appeal:start' }]],
       });
       await tg.answerCb({ id: q.id });
       return;
@@ -608,7 +791,7 @@ async function handleCb(q, { tg, db, kv, settings, t }) {
     }
 
     // ── Admin panel callbacks ─────────────────────────────────────────────────
-    if (data.startsWith('adm:')) await handleAdmCb(q, data.slice(4), { tg, db, settings, chatId, msgId, t });
+    if (data.startsWith('adm:')) await handleAdmCb(q, data.slice(4), { tg, db, settings, chatId, msgId, t, waitUntil });
     else await tg.answerCb({ id: q.id });
   } catch (e) {
     console.error('handleCb:', e);
@@ -617,56 +800,67 @@ async function handleCb(q, { tg, db, kv, settings, t }) {
 }
 
 async function handleVerifyAnswer(q, tg, db, kv, user, chatId, msgId, settings, groupId, sel, captchaId, t) {
-  const v = await db.getVerify(user.id);
-  if (!v || v.expires_at < Date.now()) {
-    await db.delVerify(user.id);
-    await tg.answerCb({ id: q.id, text: t('verify.expired'), alert: true });
-    return;
-  }
-  if (captchaId && v.captcha_id !== captchaId) {
-    await tg.answerCb({ id: q.id, text: t('verify.mismatch'), alert: true });
-    return;
-  }
-  const maxAtt = parseInt(settings.MAX_VERIFICATION_ATTEMPTS || '3', 10);
-  if (sel === v.answer) {
-    await db.setUserVerified(user.id, true);
-    await db.delVerify(user.id);
-    if (captchaId) await kv.delete(`captcha_render:${captchaId}`);
-    await tg.editText({ chatId, msgId, text: t('verify.success'), kb: [] }).catch(() => {});
-    // Forward pending message
-    const pr = await kv.get(`pending:${user.id}`);
-    if (pr && groupId) {
-      await kv.delete(`pending:${user.id}`);
-      const p = JSON.parse(pr);
-      const u = await db.getUser(user.id);
-      const tid = await getOrCreateThread(tg, db, user, groupId, kv, t);
-      if (tid && p.msgId) {
-        await tg.copyMsg({ chatId: groupId, fromChatId: chatId, msgId: p.msgId, threadId: tid });
-        await db.addMsg({ userId: user.id, direction: 'incoming', content: '[已验证，消息已转发]' });
-        await tg.sendMsg({ chatId: user.id, text: t('sentAfterVerify') });
+  const locked = await withUserLock(
+    kv,
+    `verify-answer:${user.id}`,
+    async () => {
+      const v = await db.getVerify(user.id);
+      if (!v || v.expires_at < Date.now()) {
+        await db.delVerify(user.id);
+        await tg.answerCb({ id: q.id, text: t('verify.expired'), alert: true });
+        return;
       }
-    }
-    await tg.answerCb({ id: q.id }).catch(() => {});
-  } else {
-    await db.incVerify(user.id);
-    const att = v.attempts + 1;
-    if (att >= maxAtt) {
-      await db.delVerify(user.id);
-      if (captchaId) await kv.delete(`captcha_render:${captchaId}`);
-      await tg.editText({ chatId, msgId, text: t('verify.tooMany'), kb: [] }).catch(() => {});
-      await tg.answerCb({ id: q.id }).catch(() => {});
-    } else {
-      await tg.answerCb({ id: q.id, text: t('verify.wrongLeft', { left: maxAtt - att }), alert: true });
-    }
+      if (captchaId && v.captcha_id !== captchaId) {
+        await tg.answerCb({ id: q.id, text: t('verify.mismatch'), alert: true });
+        return;
+      }
+
+      const maxAtt = parseInt(settings.MAX_VERIFICATION_ATTEMPTS || '3', 10);
+      if (sel === v.answer) {
+        await db.setUserVerified(user.id, true);
+        await db.delVerify(user.id);
+        if (captchaId) await kv.delete(`captcha_render:${captchaId}`);
+        await tg.editText({ chatId, msgId, text: t('verify.success'), kb: [] }).catch(() => {});
+
+        const pr = await kv.get(`pending:${user.id}`);
+        if (pr && groupId) {
+          await kv.delete(`pending:${user.id}`);
+          const p = JSON.parse(pr);
+          const tid = await getOrCreateThread(tg, db, user, groupId, kv, t);
+          if (tid && p.msgId) {
+            await tg.copyMsg({ chatId: groupId, fromChatId: chatId, msgId: p.msgId, threadId: tid });
+            await db.addMsg({ userId: user.id, direction: 'incoming', content: '[已验证，消息已转发]' });
+            await tg.sendMsg({ chatId: user.id, text: t('sentAfterVerify') });
+          }
+        }
+        await tg.answerCb({ id: q.id }).catch(() => {});
+      } else {
+        await db.incVerify(user.id);
+        const att = v.attempts + 1;
+        if (att >= maxAtt) {
+          await db.delVerify(user.id);
+          if (captchaId) await kv.delete(`captcha_render:${captchaId}`);
+          await tg.editText({ chatId, msgId, text: t('verify.tooMany'), kb: [] }).catch(() => {});
+          await tg.answerCb({ id: q.id }).catch(() => {});
+        } else {
+          await tg.answerCb({ id: q.id, text: t('verify.wrongLeft', { left: maxAtt - att }), alert: true });
+        }
+      }
+    },
+    { ttlSeconds: 60, retries: 4, waitMs: 80 },
+  );
+
+  if (!locked.acquired) {
+    await tg.answerCb({ id: q.id, text: t('verify.completeFirst') }).catch(() => {});
   }
 }
 
-async function handleAdmCb(q, action, { tg, db, settings, chatId, msgId, t }) {
+async function handleAdmCb(q, action, { tg, db, settings, chatId, msgId, t, waitUntil }) {
   const toggle = async (key, label) => {
     const cur = settings[key] === 'true';
     await db.setSetting(key, cur ? 'false' : 'true');
     const ns = await db.getAllSettings();
-    await tg.editKb({ chatId, msgId, kb: adminPanelKb(ns, t) });
+    await editUserKb({ tg, settings: ns, waitUntil, chatId, msgId, kb: adminPanelKb(ns, t) });
     await tg.answerCb({ id: q.id, text: t('toggleResult', { label, state: cur ? t('panel.off') : t('panel.on') }) });
   };
 
@@ -682,7 +876,7 @@ async function handleAdmCb(q, action, { tg, db, settings, chatId, msgId, t }) {
     const next = all[(cur + 1) % all.length];
     await db.setSetting('CAPTCHA_TYPE', next);
     const ns = await db.getAllSettings();
-    await tg.editKb({ chatId, msgId, kb: adminPanelKb(ns, t) });
+    await editUserKb({ tg, settings: ns, waitUntil, chatId, msgId, kb: adminPanelKb(ns, t) });
     await tg.answerCb({ id: q.id, text: t('captchaTypeSwitched') });
     return;
   }
@@ -692,7 +886,7 @@ async function handleAdmCb(q, action, { tg, db, settings, chatId, msgId, t }) {
     const next = cur >= 900 ? 60 : cur + 60;
     await db.setSetting('VERIFICATION_TIMEOUT', String(next));
     const ns = await db.getAllSettings();
-    await tg.editKb({ chatId, msgId, kb: adminPanelKb(ns, t) });
+    await editUserKb({ tg, settings: ns, waitUntil, chatId, msgId, kb: adminPanelKb(ns, t) });
     await tg.answerCb({ id: q.id, text: t('timeoutSet', { next }) });
     return;
   }
@@ -702,17 +896,29 @@ async function handleAdmCb(q, action, { tg, db, settings, chatId, msgId, t }) {
     const next = cur >= 10 ? 1 : cur + 1;
     await db.setSetting('MAX_VERIFICATION_ATTEMPTS', String(next));
     const ns = await db.getAllSettings();
-    await tg.editKb({ chatId, msgId, kb: adminPanelKb(ns, t) });
+    await editUserKb({ tg, settings: ns, waitUntil, chatId, msgId, kb: adminPanelKb(ns, t) });
     await tg.answerCb({ id: q.id, text: t('attemptsSet', { next }) });
+    return;
+  }
+
+  if (action === 'ik') {
+    const steps = [0, 15, 30, 60, 120, 300, 600];
+    const cur = parseBoundedInt(settings.INLINE_KB_MSG_DELETE_SECONDS || '30', 30, 0, 600);
+    const idx = steps.indexOf(cur);
+    const next = steps[(idx + 1 + steps.length) % steps.length];
+    await db.setSetting('INLINE_KB_MSG_DELETE_SECONDS', String(next));
+    const ns = await db.getAllSettings();
+    await editUserKb({ tg, settings: ns, waitUntil, chatId, msgId, kb: adminPanelKb(ns, t) });
+    await tg.answerCb({ id: q.id, text: t('inlineKbDeleteSet', { next: next === 0 ? t('panel.off') : `${next}s` }) });
     return;
   }
 
   if (action === 'st') {
     const s = await db.getStats();
-    await tg.editText({ chatId, msgId, text: t('admin.stats', s), kb: [[{ text: t('cb.back'), callback_data: 'adm:bk' }]] });
+    await editUserText({ tg, settings, waitUntil, chatId, msgId, text: t('admin.stats', s), kb: [[{ text: t('cb.back'), callback_data: 'adm:bk' }]] });
   } else if (action === 'bk') {
     const s = await db.getAllSettings(), st = await db.getStats();
-    await tg.editText({ chatId, msgId, text: t('admin.panelCompact', st), kb: adminPanelKb(s, t) });
+    await editUserText({ tg, settings: s, waitUntil, chatId, msgId, text: t('admin.panelCompact', st), kb: adminPanelKb(s, t) });
   } else if (action.startsWith('bk:')) {
     const page = parseInt(action.split(':')[1] || '1', 10), ps = 8;
     const { users, total } = await db.getBlockedUsers(page, ps);
@@ -721,7 +927,15 @@ async function handleAdmCb(q, action, { tg, db, settings, chatId, msgId, t }) {
     const nav = [];
     if (page > 1)  nav.push({ text: '◀', callback_data: `adm:bk:${page - 1}` });
     if (page < tp) nav.push({ text: '▶', callback_data: `adm:bk:${page + 1}` });
-    await tg.editText({ chatId, msgId, text: `🚫 <b>${t('blacklistTitle', { total, page, tp })}</b>\n\n${lines}`, kb: [nav, [{ text: t('cb.back'), callback_data: 'adm:bk' }]] });
+    await editUserText({
+      tg,
+      settings,
+      waitUntil,
+      chatId,
+      msgId,
+      text: `🚫 <b>${t('blacklistTitle', { total, page, tp })}</b>\n\n${lines}`,
+      kb: [nav, [{ text: t('cb.back'), callback_data: 'adm:bk' }]],
+    });
   } else if (action.startsWith('ul:')) {
     const page = parseInt(action.split(':')[1] || '1', 10), ps = 8;
     const { users, total } = await db.getAllUsers(page, ps);
@@ -730,7 +944,15 @@ async function handleAdmCb(q, action, { tg, db, settings, chatId, msgId, t }) {
     const nav = [];
     if (page > 1)  nav.push({ text: '◀', callback_data: `adm:ul:${page - 1}` });
     if (page < tp) nav.push({ text: '▶', callback_data: `adm:ul:${page + 1}` });
-    await tg.editText({ chatId, msgId, text: `👥 <b>${t('userListTitle', { total, page, tp })}</b>\n\n${lines}`, kb: [nav, [{ text: t('cb.back'), callback_data: 'adm:bk' }]] });
+    await editUserText({
+      tg,
+      settings,
+      waitUntil,
+      chatId,
+      msgId,
+      text: `👥 <b>${t('userListTitle', { total, page, tp })}</b>\n\n${lines}`,
+      kb: [nav, [{ text: t('cb.back'), callback_data: 'adm:bk' }]],
+    });
   }
   await tg.answerCb({ id: q.id }).catch(() => {});
 }
