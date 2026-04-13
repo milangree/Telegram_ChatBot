@@ -1,316 +1,189 @@
-# Telegram 双向消息桥接机器人（Cloudflare Pages Functions）
+# 🤖 Telegram 反骚扰双向聊天机器人
 
-基于 **Cloudflare Pages + Pages Functions + KV（可选 D1）** 的 Telegram 双向消息系统。  
-该项目将“用户私聊 Bot”与“管理员话题群组”打通，并提供完整的 Web 管理后台，用于配置、审计与日常运维。
-
-默认界面语言为 **简体中文（zh-hans）**，同时支持 **繁體中文（zh-hant）** 与 **English（en）**。
+> 基于 **Cloudflare Pages + Pages Functions + KV**，通过 GitHub 仓库一键部署，完全无服务器，永久免费。
 
 ---
 
-## 目录
+## ✨ 功能特性
 
-- [项目定位](#项目定位)
-- [功能概览](#功能概览)
-- [多语言与 i18n](#多语言与-i18n)
-- [部署说明（Cloudflare）](#部署说明cloudflare)
-- [初始化配置](#初始化配置)
-- [Bot 指令](#bot-指令)
-- [项目结构](#项目结构)
-- [数据与存储](#数据与存储)
-- [安全设计](#安全设计)
-- [常见问题](#常见问题)
-- [License](#license)
+- 📨 **双向消息转发**：用户私聊 Bot → 自动在论坛群组创建话题 → 管理员回复 → 实时转发给用户
+- 🔐 **人机验证**：支持数学题 / 图片验证码（数字、字母数字），降低机器人骚扰
+- 🚫 **封禁管理**：支持封禁 / 解封 / 永久封禁 / 用户自助申诉
+- 📊 **数据统计**：总用户数、今日消息量、封禁人数实时展示
+- 🖥 **Vue 3 管理后台**：对话记录、用户管理、系统设置、Bot 配置一站式管理
+- 🌐 **多语言 i18n**：简体中文 / 繁體中文 / English（前后端统一文案）
+- 🔒 **安全认证**：首次部署自动初始化管理员，支持 TOTP 两步验证（2FA）
+- 🔑 **密码找回**：通过 2FA 验证码重置密码，无需联系服务商
+- 🔄 **自动同步上游**：内置 GitHub Actions 定时同步上游仓库更新
 
 ---
 
-## 项目定位
+## 🚀 部署教程（GitHub → Cloudflare Pages）
 
-本项目用于构建一条稳定的双向沟通链路：
+### 第 1 步：Fork 本仓库
 
-1. 用户向 Bot 私聊发送消息  
-2. 系统按用户维度自动创建或复用话题群组中的对应话题并转发消息  
-3. 管理员在对应话题内回复，消息自动回传至用户私聊  
-4. 管理后台提供用户管理、白名单、封禁、验证、Webhook、存储切换等能力
-
-核心组件：
-
-- `functions/webhook.js`：Telegram Webhook 入口
-- `functions/api/[[path]].js`：Web 管理后台 API
-- `src/`：Vue 3 管理后台前端
-- `shared/i18n.js`：前后端共享国际化词典
+点击 GitHub 右上角 **Fork**，将仓库复制到你自己的账号下。
 
 ---
 
-## 功能概览
+### 第 2 步：准备 Cloudflare KV 命名空间
 
-### 1) 双向消息转发（话题群组模式）
+登录 [Cloudflare Dashboard](https://dash.cloudflare.com)。
 
-- 用户首次私聊后，系统为其分配专属话题
-- 转发采用 `copyMessage`，尽量保留 Telegram 原始消息实体
-- 管理员在话题内回复后，自动映射回对应用户私聊
+1. 左侧菜单 → **Workers & Pages** → **KV**
+2. 点击 **Create a namespace**，名称随意（例如 `tg-bot-kv`）
+3. 记录创建后显示的命名空间 **ID**（备用）
 
-### 2) 消息类型覆盖
-
-支持文本、图片、视频、语音、音频、文件、贴纸、联系人、位置、投票等常见消息类型。
-
-### 3) 用户验证与并发控制
-
-- 验证类型：
-  - 数学题按钮
-  - 图片验证码（4 位数字）
-  - 图片验证码（5 位字母+数字）
-- 支持验证超时和最大尝试次数
-- 针对同一用户采用并发锁，避免重复触发验证流程
-
-### 4) 封禁与申诉流程
-
-- 支持临时封禁与永久封禁
-- 支持自动解封申诉（可配置开关）
-- 管理员可通过 Bot 内联按钮快速处理申诉请求
-
-### 5) 白名单与流量治理
-
-- 白名单用户可跳过验证及频率限制
-- 普通用户支持每分钟消息频率限制
-
-### 6) Web 管理后台
-
-- 登录、首次注册、密码找回（2FA）
-- 仪表盘统计
-- 对话记录与会话删除（可触发重新验证）
-- 用户与白名单管理
-- 系统设置（Bot、Webhook、验证、功能开关、欢迎语）
-- 数据存储切换（KV / D1）及自动同步
-
-### 7) 管理员 Bot 控制面板
-
-管理员私聊 Bot 可执行以下操作：
-
-- 启停验证、申诉、白名单、指令过滤、管理员私聊通知
-- 切换验证码类型
-- 调整超时与尝试次数
-- 调整带内联按钮消息自动撤回时间
-- 查看统计、黑名单、用户详情与消息记录
+> 默认使用 KV。项目也支持可选 D1（在设置页可进行 KV / D1 切换与同步），但首次部署只配置 KV 即可运行。
 
 ---
 
-## 多语言与 i18n
+### 第 3 步：在 Cloudflare Pages 中部署
 
-项目默认语言：`zh-hans`
+1. 左侧菜单 → **Workers & Pages** → **Create**
+2. 点击 **Pages** 标签 → **Connect to Git**
+3. 授权 GitHub，选择你 Fork 的仓库
+4. 构建配置如下：
 
-支持语言（定义于 `shared/i18n.js`）：
+   | 字段 | 值 |
+   |---|---|
+   | Framework preset | `Vue` |
+   | Build command | `npm run build` |
+   | Build output directory | `dist` |
 
-| Locale | 显示名称 |
+5. 点击 **Save and Deploy**
+
+部署完成后你会得到一个访问地址，例如：
+
+```
+https://tg-bot.pages.dev
+```
+
+> ⚠️ **第一次部署可能失败**，因为 KV 绑定还未添加。继续下一步即可。
+
+---
+
+### 第 4 步：添加 KV 绑定
+
+1. Pages 项目 → **Settings** → **Bindings**
+2. 点击 **Add binding** → 选择 **KV namespace**
+3. 填写：
+   - **Variable name**：`KV`（必须大写，不可修改）
+   - **KV namespace**：选择第 2 步创建的命名空间
+4. 点击 **Save**
+
+---
+
+### 第 5 步：重新部署
+
+Pages → **Deployments** → 点击最近一次部署旁的 **⋯** → **Retry deployment**
+
+成功后即可访问 WebUI。
+
+---
+
+## ⚙️ 初始化配置
+
+### 获取管理员密码
+
+首次部署后，系统会自动在 KV 中生成管理员账号 `admin`，初始密码存储于 KV 键 `init:default_admin_pw`（1 小时后自动删除）。
+
+在 Cloudflare Dashboard → **KV** → 选择你的命名空间 → 搜索键 `init:default_admin_pw`，即可查看初始密码。
+
+登录后请立即在「个人设置」中修改密码。
+
+---
+
+### 配置 Bot
+
+打开 Pages 地址并登录，进入 **⚙️ 系统设置**：
+
+1. **Bot Token**：在 [@BotFather](https://t.me/BotFather) 创建 Bot 后粘贴 Token，点击「**测试**」验证
+2. **论坛群组 ID**：填入群组 ID，点击「**🔍 解析**」确认后点「使用此 ID」
+3. **管理员 ID**：搜索已发过消息的用户直接添加，或手动输入 Telegram ID
+4. 按需调整验证、限速等选项
+5. 点击「**💾 保存设置**」
+
+---
+
+### 设置 Webhook
+
+在「🔗 Webhook」区域填入：
+
+```
+https://你的Pages地址/webhook
+```
+
+点击「**设置 Webhook**」，出现成功提示即完成。
+
+---
+
+## 🔍 如何获取群组 / 用户 ID
+
+| 方法 | 说明 |
 |---|---|
-| `zh-hans` | 简体中文 |
-| `zh-hant` | 繁體中文 |
-| `en` | English |
-
-说明：
-
-- 前端语言可在界面右上角下拉框直接选择
-- 机器人语言由 `BOT_LOCALE` 控制
-- 更新 `BOT_LOCALE` 或 `BOT_TOKEN` 后，会自动刷新 Bot 命令列表
-- 词典采用共享键机制：`zh-hans` 为基础，`zh-hant` / `en` 按键覆盖
+| WebUI 设置页「查询群组/频道 ID」 | 输入 `@username` 自动解析，一键填入 |
+| WebUI 用户管理搜索框 | 搜索已发过消息的用户，直接点击添加为管理员 |
+| [@userinfobot](https://t.me/userinfobot) | 获取自己的 Telegram ID |
+| 将 Bot 加入群组后发消息 | Bot 会在话题卡片中显示用户 ID |
 
 ---
 
-## 部署说明（Cloudflare）
+## 📁 项目结构
 
-### 1. Fork 仓库
-
-将本仓库 Fork 到你的 GitHub 账号。
-
-### 2. 创建 Cloudflare Pages 项目
-
-1. 进入 **Cloudflare Dashboard → Workers & Pages**
-2. 选择 **Create → Pages → Connect to Git**
-3. 绑定你 Fork 的仓库
-4. 构建配置：
-
-| 项目 | 值 |
-|---|---|
-| Framework preset | Vue |
-| Build command | `npm run build` |
-| Build output directory | `dist` |
-
-### 3. 绑定 KV（必需）
-
-1. Cloudflare Dashboard → **Workers & Pages → KV**
-2. 创建命名空间（例如 `tg-bot-kv`）
-3. 在 Pages 项目 **Settings → Bindings** 中添加：
-
-| 类型 | 变量名 | 说明 |
-|---|---|---|
-| KV namespace | `KV` | 必需 |
-
-### 4. 绑定 D1（可选）
-
-如需 SQL 存储能力，可额外绑定：
-
-| 类型 | 变量名 | 说明 |
-|---|---|---|
-| D1 database | `D1` | 可选 |
-
-> 未绑定 D1 时系统默认使用 KV。  
-> 绑定后可在后台的“数据存储”页面进行切换与同步。
-
-### 5. 触发部署
-
-保存绑定后，重新部署项目（Retry deployment）。
-
----
-
-## 初始化配置
-
-部署完成后，按以下顺序初始化：
-
-1. 首次访问站点，完成管理员账号初始化
-2. 进入“系统设置”
-3. 配置关键参数：
-   - `BOT_TOKEN`（从 @BotFather 获取）
-   - `FORUM_GROUP_ID`（已启用话题功能的群组 ID，通常为 `-100...`）
-   - `ADMIN_IDS`（管理员 Telegram ID，多个以逗号分隔）
-4. 配置 Webhook：
-   - `https://你的域名.pages.dev/webhook`
-5. 验证 Bot 在线状态并完成消息链路测试
-
----
-
-## Bot 指令
-
-### 用户指令
-
-- `/start`
-- `/help`
-- `/status`
-
-### 管理员指令（私聊 Bot）
-
-- `/panel`
-- `/stats`
-- `/ban <uid>`
-- `/unban <uid>`
-- `/wl <uid>`
-- `/unwl <uid>`
-- `/info <uid>`
-
----
-
-## 项目结构
-
-```text
-.
-├─ functions/
-│  ├─ webhook.js                  # Telegram Webhook 入口
-│  ├─ api/
-│  │  └─ [[path]].js              # Web 管理 API
-│  └─ _shared/
-│     ├─ bot.js                   # Bot 业务逻辑（转发、验证、申诉、面板）
-│     ├─ bot-i18n.js              # Bot i18n 适配
-│     ├─ tg.js                    # Telegram API 封装
-│     ├─ auth.js                  # Web 认证与会话
-│     ├─ captcha.js               # 验证码生成
-│     ├─ totp.js                  # 2FA (TOTP)
-│     ├─ db.js                    # 存储路由聚合层（KV / D1）
-│     ├─ db-kv.js                 # KV 实现
-│     ├─ db-d1.js                 # D1 实现
-│     ├─ db-routing.js            # 存储切换与同步
-│     └─ db-settings.js           # 默认设置
-├─ shared/
-│  ├─ i18n.js                     # 前后端共享 i18n
-│  └─ locales/
-│     ├─ zh-hans.js
-│     ├─ zh-hant.js
-│     └─ en.js
-├─ src/
-│  ├─ App.vue
-│  ├─ main.js
-│  ├─ router/index.js
-│  ├─ stores/
-│  │  ├─ api.js
-│  │  ├─ auth.js
-│  │  └─ i18n.js
-│  ├─ views/
-│  │  ├─ DashboardView.vue
-│  │  ├─ ConversationsView.vue
-│  │  ├─ UsersView.vue
-│  │  ├─ WhitelistView.vue
-│  │  ├─ SettingsView.vue
-│  │  ├─ ProfileView.vue
-│  │  ├─ LoginView.vue
-│  │  ├─ RegisterView.vue
-│  │  └─ RecoverView.vue
-│  └─ components/
-│     ├─ NavBar.vue
-│     └─ UserSearchPicker.vue
-├─ vite.config.js
-├─ package.json
-└─ README.md
+```
+├── functions/                      # Cloudflare Pages Functions（后端）
+│   ├── webhook.js                  # Telegram Webhook 入口
+│   ├── api/[[path]].js             # WebUI REST API
+│   └── _shared/
+│       ├── bot.js                  # Bot 核心业务逻辑（含 i18n）
+│       ├── bot-i18n.js             # Bot i18n 封装
+│       ├── db.js                   # KV / D1 路由数据库层
+│       ├── auth.js                 # 会话认证 & 工具函数
+│       ├── tg.js                   # Telegram Bot API 封装
+│       └── totp.js                 # RFC 6238 TOTP 两步验证
+├── shared/                         # 前后端共享 i18n 资源
+│   ├── i18n.js
+│   └── locales/
+├── src/                            # Vue 3 前端
+│   ├── views/                      # 页面组件
+│   ├── components/                 # 通用组件
+│   ├── stores/                     # Pinia 状态管理
+│   └── router/                     # 路由配置
+├── .github/workflows/
+│   └── sync-upstream.yml           # 定时同步上游工作流
+├── index.html
+├── vite.config.js
+└── package.json
 ```
 
 ---
 
-## 数据与存储
+## 🔧 常见问题
 
-- 默认存储：KV
-- 可选存储：D1
-- 后台支持在线切换：
-  - `kv -> d1`
-  - `d1 -> kv`
-- 支持切换前全量同步，降低迁移风险
+**Q：WebUI 打不开 / 返回 500？**
+A：检查 KV 绑定是否已添加，变量名必须是 `KV`（大写）。在 Pages → Settings → Bindings 中确认。
 
-主要数据包括：
+**Q：Webhook 设置失败？**
+A：请先在设置页填写并保存 Bot Token，再填写 Webhook URL（格式：`https://xxx.pages.dev/webhook`）。
 
-- 系统配置
-- 用户资料与状态
-- 白名单
-- 消息记录与最近会话
-- Web 管理员账户
-- 验证状态
+**Q：用户发消息，群组里没有出现新话题？**
+A：请依次检查：① 群组已开启「话题功能」；② Bot 已设为群组管理员并拥有「管理话题」权限；③ `FORUM_GROUP_ID` 填写的是负数 ID（超级群组 ID 以 `-100` 开头）。
 
----
+**Q：如何找回密码？**
+A：若已启用 2FA，可在登录页点击「找回密码」，通过 TOTP 验证码重置。若未启用 2FA，需在 Cloudflare KV 中手动删除对应的 `webuser:` 键后重新注册。
 
-## 安全设计
+**Q：如何更新代码？**
+A：仓库已内置 `.github/workflows/sync-upstream.yml`，默认每 6 小时自动尝试 fast-forward 同步上游 `milangree/Telegram_ChatBot` 的 `main` 分支；同步成功后 Cloudflare Pages 会自动触发重部署。也可在 Actions 页面手动运行并指定上游仓库/分支。
 
-- Webhook Secret 校验：`X-Telegram-Bot-Api-Secret-Token`
-- 管理员凭据不以明文持久化，仅保存不可逆的密码学派生结果与随机化参数
-- 会话 Token 存储于 KV，支持主动失效（登出）
-- TOTP 双因素认证（RFC 6238）
-- 验证码 TTL 与尝试次数限制
-- 管理员身份保护，避免被普通封禁流程误处理
+**Q：免费套餐够用吗？**
+A：完全够用。Pages Functions 每天 10 万次调用，KV 每天 10 万次读取 / 1000 次写入，存储上限 1GB。
 
 ---
 
-## 常见问题
+## 🛡 安全说明
 
-### 1) 页面提示 `KV 未绑定`
-
-请在 Pages 项目 **Bindings** 中确认已绑定 `KV`，且变量名必须为 `KV`。
-
-### 2) 设置 Webhook 失败
-
-请先确认 `BOT_TOKEN` 已保存，且 Webhook URL 为公网可访问的 HTTPS 地址。
-
-### 3) 用户发消息后未创建话题
-
-请检查：
-
-- 群组已启用话题功能
-- Bot 在群组中拥有管理员权限
-- `FORUM_GROUP_ID` 填写正确（通常为 `-100...`）
-
-### 4) 无法切换到 D1
-
-请先在 Pages **Bindings** 中绑定 `D1`，并重新部署。
-
-### 5) 需要切换 Bot 文案语言
-
-在系统设置中修改 `BOT_LOCALE`（`zh-hans` / `zh-hant` / `en`），保存后命令会自动刷新。
-
----
-
-## License
-
-本项目采用 **GNU General Public License v3.0 (GPL-3.0)**。  
-详见仓库根目录 `LICENSE` 文件。
+- Webhook 请求通过 `X-Telegram-Bot-Api-Secret-Token` 头验证，防止伪造请求
+- 密码使用随机 salt + SHA-256 hash 存储，不可逆
+- 会话 Token 存储于 KV，TTL 24 小时，登出时立即销毁
+- 2FA 基于标准 RFC 6238 TOTP 实现，兼容 Google Authenticator 等主流应用

@@ -3,7 +3,7 @@
     <div class="sidebar-header">
       <RouterLink to="/" class="logo-link">
         <span class="logo">🤖</span>
-        <span class="logo-text">Bot 管理</span>
+        <span class="logo-text">{{ t('app.title') }}</span>
       </RouterLink>
     </div>
     <div class="nav-links">
@@ -16,20 +16,25 @@
         <div class="user-ava">{{ auth.username[0]?.toUpperCase() }}</div>
         <span class="user-name">{{ auth.username }}</span>
       </div>
-      <RouterLink to="/profile" class="profile-btn" title="个人设置">⚙️</RouterLink>
-      <button class="logout-btn" @click="logout" title="退出">🚪</button>
+      <RouterLink to="/profile" class="profile-btn" :title="t('nav.profile')">⚙️</RouterLink>
+      <button class="logout-btn" @click="logout" :title="t('app.logout')">🚪</button>
     </div>
   </nav>
 </template>
 <script setup>
 import { RouterLink, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth.js'
+import { useI18nStore } from '../stores/i18n.js'
+
 const auth = useAuthStore(), router = useRouter()
+const i18n = useI18nStore()
+const t = i18n.t
+
 const nav = [
-  { to:'/',              icon:'📊', label:'仪表盘' },
-  { to:'/conversations', icon:'💬', label:'对话记录' },
-  { to:'/users',         icon:'👥', label:'用户管理' },
-  { to:'/settings',      icon:'⚙️', label:'系统设置' },
+  { to:'/',              icon:'📊', label: t('nav.dashboard') },
+  { to:'/conversations', icon:'💬', label: t('nav.conversations') },
+  { to:'/users',         icon:'👥', label: t('nav.users') },
+  { to:'/settings',      icon:'⚙️', label: t('nav.settings') },
 ]
 async function logout() { await auth.logout(); router.push('/login') }
 </script>

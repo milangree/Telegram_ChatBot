@@ -49,7 +49,57 @@ function getUserMsgDeleteSeconds(settings) {
 }
 
 function getInlineKbMsgDeleteSeconds(settings) {
-  return parseBoundedInt(settings?.INLINE_KB_MSG_DELETE_SECONDS || settings?.USER_MSG_DELETE_SECONDS || '30', 30, 0, 600);
+  // Cloudflare Pages Functions background tasks are short-lived; keeping this <=25s improves reliability.
+  return parseBoundedInt(settings?.INLINE_KB_MSG_DELETE_SECONDS || settings?.USER_MSG_DELETE_SECONDS || '15', 15, 0, 25);
+}
+
+const ADMIN_NUMERIC_INPUT_FIELDS = {
+  VERIFICATION_TIMEOUT: { min: 60, max: 900, unit: 's', labelKey: 'panel.timeout', defaultValue: 300 },
+  MAX_VERIFICATION_ATTEMPTS: { min: 1, max: 10, unit: '', labelKey: 'panel.attempts', defaultValue: 3 },
+  INLINE_KB_MSG_DELETE_SECONDS: { min: 0, max: 25, unit: 's', labelKey: 'panel.inlineKbDelete', defaultValue: 15 },
+};
+
+function getAdminNumericFieldConfig(field) {
+  return ADMIN_NUMERIC_INPUT_FIELDS[field] || null;
+}
+
+function getAdminNumericInputKey(adminId) {
+  return `pending:admin_numeric:${adminId}`;
+}
+
+async function setAdminNumericInput(kv, adminId, field) {
+  if (!kv) return;
+  await kv.put(getAdminNumericInputKey(adminId), JSON.stringify({ field }), { expirationTtl: 300 });
+}
+
+async function getAdminNumericInput(kv, adminId) {
+  if (!kv) return null;
+  const raw = await kv.get(getAdminNumericInputKey(adminId));
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed?.field ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+async function clearAdminNumericInput(kv, adminId) {
+  if (!kv) return;
+  await kv.delete(getAdminNumericInputKey(adminId)).catch(() => {});
+}
+
+function parseStrictInt(raw) {
+  const v = String(raw || '').trim();
+  if (!/^-?\d+$/.test(v)) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function buildAdminNumericPromptText(t, cfg) {
+  const label = t(cfg.labelKey);
+  const unit = cfg.unit || '';
+  return t('admin.numericPrompt', { label, min: cfg.min, max: cfg.max, unit });
 }
 
 function hasInlineKeyboard(kb) {
@@ -63,20 +113,24 @@ function isPrivateChatId(chatId) {
 
 function scheduleUserMsgDelete({ tg, settings, waitUntil, chatId, msgId }) {
   const seconds = getUserMsgDeleteSeconds(settings);
-  if (!seconds || !waitUntil || !msgId || !isPrivateChatId(chatId)) return;
-  waitUntil((async () => {
+  if (!seconds || !msgId || !isPrivateChatId(chatId)) return;
+  const task = (async () => {
     await new Promise(r => setTimeout(r, seconds * 1000));
     await tg.deleteMsg({ chatId, msgId }).catch(() => {});
-  })());
+  })();
+  if (waitUntil) waitUntil(task);
+  else task.catch(() => {});
 }
 
 function scheduleInlineKbMsgDelete({ tg, settings, waitUntil, chatId, msgId }) {
   const seconds = getInlineKbMsgDeleteSeconds(settings);
-  if (!seconds || !waitUntil || !msgId || !isPrivateChatId(chatId)) return;
-  waitUntil((async () => {
+  if (!seconds || !msgId || !isPrivateChatId(chatId)) return;
+  const task = (async () => {
     await new Promise(r => setTimeout(r, seconds * 1000));
     await tg.deleteMsg({ chatId, msgId }).catch(() => {});
-  })());
+  })();
+  if (waitUntil) waitUntil(task);
+  else task.catch(() => {});
 }
 
 async function sendUserMsg({ tg, settings, waitUntil, chatId, text, kb, parseMode = 'HTML', replyToMsgId, threadId }) {
@@ -168,7 +222,7 @@ async function getOrCreateThread(tg, db, user, groupId, kv, t) {
 
   await kv.put(lockKey, '1', { expirationTtl: 60 }); // CF KV minimum TTL is 60s
   try {
-    const topicName = (name(user) || `User ${user.id}`).slice(0, 128);
+    const topicName = (name(user) || t('thread.userTopic', { id: user.id })).slice(0, 128);
     const res = await tg.createTopic({ chatId: groupId, name: topicName });
     if (!res.ok) { console.error('createTopic failed:', res); return null; }
     const tid = res.result.message_thread_id;
@@ -245,7 +299,7 @@ function adminPanelKb(s, t) {
   const capLabel = s.CAPTCHA_TYPE === 'image_numeric'
     ? t('panel.cap.imageNumeric')
     : (s.CAPTCHA_TYPE === 'image_alphanumeric' ? t('panel.cap.imageAlnum') : t('panel.cap.math'));
-  const inlineKbDeleteSec = parseBoundedInt(s.INLINE_KB_MSG_DELETE_SECONDS || '30', 30, 0, 600);
+  const inlineKbDeleteSec = parseBoundedInt(s.INLINE_KB_MSG_DELETE_SECONDS || '15', 15, 0, 25);
   return [
     [
       { text: `✅ ${t('panel.verify')}: ${s.VERIFICATION_ENABLED === 'true' ? t('panel.on') : t('panel.off')}`, callback_data: 'adm:tv' },
@@ -317,7 +371,7 @@ async function handleMsg(msg, { tg, db, kv, settings, baseUrl, t, waitUntil }) {
     if (!target) return;
     // Use copyMessage to preserve ALL formatting (code, monospace, quotes, media)
     await tg.copyMsg({ chatId: target.user_id, fromChatId: msg.chat.id, msgId: msg.message_id });
-    await db.addMsg({ userId: target.user_id, direction: 'outgoing', content: msg.text || msg.caption || '[媒体]', messageType: msgType(msg) });
+    await db.addMsg({ userId: target.user_id, direction: 'outgoing', content: msg.text || msg.caption || t('content.media'), messageType: msgType(msg) });
     return;
   }
 
@@ -508,7 +562,7 @@ async function handleMsg(msg, { tg, db, kv, settings, baseUrl, t, waitUntil }) {
   // Use copyMessage to forward ALL content types with full formatting preserved
   const res = await tg.copyMsg({ chatId: groupId, fromChatId: msg.chat.id, msgId: msg.message_id, threadId: tid });
   if (res.ok) {
-    await db.addMsg({ userId: user.id, direction: 'incoming', content: msg.text || msg.caption || '[媒体]', messageType: msgType(msg), telegramMessageId: msg.message_id });
+    await db.addMsg({ userId: user.id, direction: 'incoming', content: msg.text || msg.caption || t('content.media'), messageType: msgType(msg), telegramMessageId: msg.message_id });
     await tg.sendMsg({ chatId: user.id, text: t('sentToAdmin') });
   } else {
     // Topic may have been deleted — clear stale thread, recreate, and retry once
@@ -518,7 +572,7 @@ async function handleMsg(msg, { tg, db, kv, settings, baseUrl, t, waitUntil }) {
     if (newTid) {
       const retry = await tg.copyMsg({ chatId: groupId, fromChatId: msg.chat.id, msgId: msg.message_id, threadId: newTid });
       if (retry.ok) {
-        await db.addMsg({ userId: user.id, direction: 'incoming', content: msg.text || msg.caption || '[媒体]', messageType: msgType(msg), telegramMessageId: msg.message_id });
+        await db.addMsg({ userId: user.id, direction: 'incoming', content: msg.text || msg.caption || t('content.media'), messageType: msgType(msg), telegramMessageId: msg.message_id });
         await tg.sendMsg({ chatId: user.id, text: t('sentToAdmin') });
         return;
       }
@@ -544,6 +598,43 @@ async function handleAdminPrivateMsg(msg, user, { tg, db, kv, settings, groupId,
     });
   };
 
+  const pendingNumeric = await getAdminNumericInput(kv, user.id);
+  if (pendingNumeric) {
+    const cfg = getAdminNumericFieldConfig(pendingNumeric.field);
+    if (!cfg) {
+      await clearAdminNumericInput(kv, user.id);
+    } else if (msg.text?.trim() === '/cancel') {
+      await clearAdminNumericInput(kv, user.id);
+      await tg.sendMsg({ chatId: user.id, text: t('admin.numericCanceled') });
+      return;
+    } else if (!msg.text) {
+      await tg.sendMsg({ chatId: user.id, text: buildAdminNumericPromptText(t, cfg) });
+      return;
+    } else if (!msg.text.startsWith('/')) {
+      const value = parseStrictInt(msg.text);
+      if (value === null || value < cfg.min || value > cfg.max) {
+        await tg.sendMsg({
+          chatId: user.id,
+          text: t('admin.numericInvalid', { label: t(cfg.labelKey), min: cfg.min, max: cfg.max, unit: cfg.unit || '' }),
+        });
+        return;
+      }
+
+      await db.setSetting(pendingNumeric.field, String(value));
+      await clearAdminNumericInput(kv, user.id);
+
+      const withUnit = cfg.unit ? `${value}${cfg.unit}` : String(value);
+      await tg.sendMsg({
+        chatId: user.id,
+        text: t('admin.numericSaved', { label: t(cfg.labelKey), value: withUnit }),
+      });
+      await sendPanel();
+      return;
+    } else {
+      await clearAdminNumericInput(kv, user.id);
+    }
+  }
+
   if (msg.text?.startsWith('/')) {
     const parts = msg.text.trim().split(/\s+/);
     const cmd   = parts[0].split('@')[0].slice(1).toLowerCase();
@@ -564,7 +655,7 @@ async function handleAdminPrivateMsg(msg, user, { tg, db, kv, settings, groupId,
         await tg.sendMsg({ chatId: user.id, text: t('admin.cannotBanAdmin') });
         return;
       }
-      await db.blockUser(uid, '管理员指令封禁', user.id, true);
+      await db.blockUser(uid, t('admin.reason.commandBan'), user.id, true);
       await tg.sendMsg({ chatId: user.id, text: t('admin.banned', { uid: arg }) });
       return;
     }
@@ -574,7 +665,7 @@ async function handleAdminPrivateMsg(msg, user, { tg, db, kv, settings, groupId,
       return;
     }
     if (cmd === 'wl' && arg) {
-      await db.addToWhitelist(parseInt(arg, 10), '管理员指令添加', String(user.id));
+      await db.addToWhitelist(parseInt(arg, 10), t('admin.reason.commandWhitelist'), String(user.id));
       await tg.sendMsg({ chatId: user.id, text: t('admin.wlAdded', { uid: arg }) });
       return;
     }
@@ -708,7 +799,7 @@ async function handleCb(q, { tg, db, kv, settings, t, waitUntil }) {
         await tg.answerCb({ id: q.id, text: t('admin.cannotBanAdmin'), alert: true });
         return;
       }
-      await db.blockUser(uid, '管理员操作', user.id, false);
+      await db.blockUser(uid, t('admin.reason.actionBan'), user.id, false);
       await refreshCard(tg, db, chatId, msgId, uid, message, t);
       await tg.sendMsg({ chatId: uid, text: t('appeal.blocked') }).catch(() => {});
       await tg.answerCb({ id: q.id, text: t('cb.blocked') });
@@ -720,7 +811,7 @@ async function handleCb(q, { tg, db, kv, settings, t, waitUntil }) {
         await tg.answerCb({ id: q.id, text: t('admin.cannotBanAdmin'), alert: true });
         return;
       }
-      await db.blockUser(uid, '永久封禁', user.id, true);
+      await db.blockUser(uid, t('admin.reason.permanentBan'), user.id, true);
       await refreshCard(tg, db, chatId, msgId, uid, message, t);
       await tg.sendMsg({ chatId: uid, text: t('appeal.blockedPermanent') }).catch(() => {});
       await tg.answerCb({ id: q.id, text: t('cb.permBlocked') });
@@ -741,7 +832,7 @@ async function handleCb(q, { tg, db, kv, settings, t, waitUntil }) {
         await db.removeFromWhitelist(uid);
         await tg.answerCb({ id: q.id, text: t('cb.wlRemoved') });
       } else {
-        await db.addToWhitelist(uid, '管理员手动添加', String(user.id));
+        await db.addToWhitelist(uid, t('admin.reason.manualWhitelist'), String(user.id));
         await tg.answerCb({ id: q.id, text: t('cb.wlAdded') });
       }
       await refreshCard(tg, db, chatId, msgId, uid, message, t);
@@ -791,7 +882,7 @@ async function handleCb(q, { tg, db, kv, settings, t, waitUntil }) {
     }
 
     // ── Admin panel callbacks ─────────────────────────────────────────────────
-    if (data.startsWith('adm:')) await handleAdmCb(q, data.slice(4), { tg, db, settings, chatId, msgId, t, waitUntil });
+    if (data.startsWith('adm:')) await handleAdmCb(q, data.slice(4), { tg, db, kv, settings, chatId, msgId, adminId: user.id, t, waitUntil });
     else await tg.answerCb({ id: q.id });
   } catch (e) {
     console.error('handleCb:', e);
@@ -829,7 +920,7 @@ async function handleVerifyAnswer(q, tg, db, kv, user, chatId, msgId, settings, 
           const tid = await getOrCreateThread(tg, db, user, groupId, kv, t);
           if (tid && p.msgId) {
             await tg.copyMsg({ chatId: groupId, fromChatId: chatId, msgId: p.msgId, threadId: tid });
-            await db.addMsg({ userId: user.id, direction: 'incoming', content: '[已验证，消息已转发]' });
+            await db.addMsg({ userId: user.id, direction: 'incoming', content: t('content.verifiedForwarded') });
             await tg.sendMsg({ chatId: user.id, text: t('sentAfterVerify') });
           }
         }
@@ -855,7 +946,7 @@ async function handleVerifyAnswer(q, tg, db, kv, user, chatId, msgId, settings, 
   }
 }
 
-async function handleAdmCb(q, action, { tg, db, settings, chatId, msgId, t, waitUntil }) {
+async function handleAdmCb(q, action, { tg, db, kv, settings, chatId, msgId, adminId, t, waitUntil }) {
   const toggle = async (key, label) => {
     const cur = settings[key] === 'true';
     await db.setSetting(key, cur ? 'false' : 'true');
@@ -881,36 +972,25 @@ async function handleAdmCb(q, action, { tg, db, settings, chatId, msgId, t, wait
     return;
   }
 
-  if (action === 'to') {
-    const cur = Math.max(60, parseInt(settings.VERIFICATION_TIMEOUT || '300', 10));
-    const next = cur >= 900 ? 60 : cur + 60;
-    await db.setSetting('VERIFICATION_TIMEOUT', String(next));
-    const ns = await db.getAllSettings();
-    await editUserKb({ tg, settings: ns, waitUntil, chatId, msgId, kb: adminPanelKb(ns, t) });
-    await tg.answerCb({ id: q.id, text: t('timeoutSet', { next }) });
+  if (action === 'to' || action === 'ma' || action === 'ik') {
+    const field = action === 'to'
+      ? 'VERIFICATION_TIMEOUT'
+      : (action === 'ma' ? 'MAX_VERIFICATION_ATTEMPTS' : 'INLINE_KB_MSG_DELETE_SECONDS');
+    const cfg = getAdminNumericFieldConfig(field);
+
+    if (!kv || !adminId || !cfg) {
+      await tg.answerCb({ id: q.id });
+      return;
+    }
+
+    await setAdminNumericInput(kv, adminId, field);
+    await tg.answerCb({ id: q.id, text: t('admin.awaitNumericInput') });
+    await tg.sendMsg({ chatId, text: buildAdminNumericPromptText(t, cfg) });
     return;
   }
 
-  if (action === 'ma') {
-    const cur = Math.max(1, parseInt(settings.MAX_VERIFICATION_ATTEMPTS || '3', 10));
-    const next = cur >= 10 ? 1 : cur + 1;
-    await db.setSetting('MAX_VERIFICATION_ATTEMPTS', String(next));
-    const ns = await db.getAllSettings();
-    await editUserKb({ tg, settings: ns, waitUntil, chatId, msgId, kb: adminPanelKb(ns, t) });
-    await tg.answerCb({ id: q.id, text: t('attemptsSet', { next }) });
-    return;
-  }
-
-  if (action === 'ik') {
-    const steps = [0, 15, 30, 60, 120, 300, 600];
-    const cur = parseBoundedInt(settings.INLINE_KB_MSG_DELETE_SECONDS || '30', 30, 0, 600);
-    const idx = steps.indexOf(cur);
-    const next = steps[(idx + 1 + steps.length) % steps.length];
-    await db.setSetting('INLINE_KB_MSG_DELETE_SECONDS', String(next));
-    const ns = await db.getAllSettings();
-    await editUserKb({ tg, settings: ns, waitUntil, chatId, msgId, kb: adminPanelKb(ns, t) });
-    await tg.answerCb({ id: q.id, text: t('inlineKbDeleteSet', { next: next === 0 ? t('panel.off') : `${next}s` }) });
-    return;
+  if (kv && adminId) {
+    await clearAdminNumericInput(kv, adminId);
   }
 
   if (action === 'st') {
@@ -976,7 +1056,7 @@ function canUserAppeal(blockedUser, settings) {
 
 function buildDetailText(u, isWl = false, t) {
   return `👤 <b>${t('detail.title')}</b>\n\n` +
-    `ID: <code>${u.user_id}</code>\n` +
+    `${t('detail.idLabel')}: <code>${u.user_id}</code>\n` +
     `${t('card.name')}: ${esc(name(u))}\n` +
     `${t('card.username')}: ${u.username ? '@' + esc(u.username) : t('list.none')}\n` +
     `${t('card.language')}: ${u.language_code || t('list.none')}\n` +
@@ -1013,7 +1093,7 @@ async function refreshCard(tg, db, chatId, msgId, uid, message, t) {
 }
 
 function fmtUtc8(ts, t = null) {
-  if (!ts) return t ? t('list.none') : '未知';
+  if (!ts) return t ? t('list.none') : '';
   const d = new Date(new Date(ts).getTime() + 8 * 3600000);
   const pad = n => String(n).padStart(2, '0');
   return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;

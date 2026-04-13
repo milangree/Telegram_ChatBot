@@ -1,6 +1,12 @@
 // src/stores/auth.js
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+import { createT, normalizeLocale } from '../../shared/i18n.js'
+
+function t(key) {
+  const locale = normalizeLocale(localStorage.getItem('ui_locale') || 'zh-hans')
+  return createT(locale)(key)
+}
 
 export const useAuthStore = defineStore('auth', () => {
   const token    = ref(localStorage.getItem('token') || '')
@@ -12,7 +18,7 @@ export const useAuthStore = defineStore('auth', () => {
   async function _doLogin(body) {
     const res  = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
     const data = await res.json()
-    if (!res.ok) throw new Error(data.error || '登录失败')
+    if (!res.ok) throw new Error(data.error || t('store.auth.loginFailed'))
     token.value    = data.token
     username.value = data.username
     isAdmin.value  = data.isAdmin || false

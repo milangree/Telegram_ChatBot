@@ -1,0 +1,80 @@
+name: Sync Upstream
+
+on:
+  schedule:
+    # Every 6 hours
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      upstream_repo:
+        description: "Upstream repository (owner/repo)"
+        required: false
+        default: "milangree/Telegram_ChatBot"
+      upstream_branch:
+        description: "Upstream branch"
+        required: false
+        default: "main"
+      target_branch:
+        description: "Target branch in current repository"
+        required: false
+        default: "main"
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout current repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fast-forward sync from upstream
+        shell: bash
+        env:
+          INPUT_UPSTREAM_REPO: ${{ github.event.inputs.upstream_repo }}
+          INPUT_UPSTREAM_BRANCH: ${{ github.event.inputs.upstream_branch }}
+          INPUT_TARGET_BRANCH: ${{ github.event.inputs.target_branch }}
+          VAR_UPSTREAM_REPO: ${{ vars.UPSTREAM_REPO }}
+          VAR_UPSTREAM_BRANCH: ${{ vars.UPSTREAM_BRANCH }}
+          VAR_TARGET_BRANCH: ${{ vars.TARGET_BRANCH }}
+        run: |
+          set -euo pipefail
+
+          UPSTREAM_REPO="${INPUT_UPSTREAM_REPO:-${VAR_UPSTREAM_REPO:-milangree/Telegram_ChatBot}}"
+          UPSTREAM_BRANCH="${INPUT_UPSTREAM_BRANCH:-${VAR_UPSTREAM_BRANCH:-main}}"
+          TARGET_BRANCH="${INPUT_TARGET_BRANCH:-${VAR_TARGET_BRANCH:-main}}"
+
+          echo "Upstream repo: ${UPSTREAM_REPO}"
+          echo "Upstream branch: ${UPSTREAM_BRANCH}"
+          echo "Target branch: ${TARGET_BRANCH}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if git remote get-url upstream >/dev/null 2>&1; then
+            git remote set-url upstream "https://github.com/${UPSTREAM_REPO}.git"
+          else
+            git remote add upstream "https://github.com/${UPSTREAM_REPO}.git"
+          fi
+
+          git fetch origin "${TARGET_BRANCH}"
+          git checkout "${TARGET_BRANCH}"
+          git reset --hard "origin/${TARGET_BRANCH}"
+
+          git fetch upstream "${UPSTREAM_BRANCH}"
+
+          if ! git merge-base --is-ancestor HEAD "upstream/${UPSTREAM_BRANCH}"; then
+            echo "Non fast-forward situation detected. Skip auto sync."
+            exit 0
+          fi
+
+          if [ "$(git rev-parse HEAD)" = "$(git rev-parse "upstream/${UPSTREAM_BRANCH}")" ]; then
+            echo "Already up to date."
+            exit 0
+          fi
+
+          git merge --ff-only "upstream/${UPSTREAM_BRANCH}"
+          git push origin "${TARGET_BRANCH}"

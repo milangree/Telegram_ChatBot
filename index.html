@@ -1,10 +1,30 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Bot 管理后台</title>
+    <title>Bot Admin</title>
+    <script>
+      (function () {
+        const raw = String(localStorage.getItem('ui_locale') || '').toLowerCase()
+        const locale = raw === 'zh' || raw === 'zh-cn' || raw === 'zh_hans'
+          ? 'zh-hans'
+          : (raw === 'zh-tw' || raw === 'zh-hk' || raw === 'zh_hant' ? 'zh-hant' : (raw || 'zh-hans'))
+        const titles = {
+          'zh-hans': 'Bot 管理',
+          'zh-hant': 'Bot 管理',
+          'en': 'Bot Admin',
+        }
+        const langs = {
+          'zh-hans': 'zh-CN',
+          'zh-hant': 'zh-TW',
+          'en': 'en',
+        }
+        document.title = titles[locale] || titles['zh-hans']
+        document.documentElement.lang = langs[locale] || langs['zh-hans']
+      })()
+    </script>
   </head>
   <body>
     <div id="app"></div>
