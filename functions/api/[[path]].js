@@ -5,12 +5,14 @@ import { CORS, j, err, hashPw, verifyPw, createSession, getSession, delSession, 
 import { verifyTOTP, generateTOTPSecret } from '../_shared/totp.js';
 import { renderCaptchaPNG } from '../_shared/captcha.js';
 import { setupCommands } from '../_shared/bot.js';
+import { normalizeBotLocale } from '../_shared/bot-i18n.js';
 
 export async function onRequest({ request, env }) {
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
   if (!env.KV) return err('KV 未绑定', 500);
 
   const db   = new DB(env.KV, env.D1 || null);
+  await db.autoRepair();
   await db.ensureDefaultAdmin();
   const kv   = env.KV;
   const url  = new URL(request.url);
@@ -201,11 +203,31 @@ export async function onRequest({ request, env }) {
         'CAPTCHA_TYPE','CAPTCHA_SITE_URL',
         'WELCOME_ENABLED','WELCOME_MESSAGE','BOT_COMMAND_FILTER','WHITELIST_ENABLED',
         'ADMIN_NOTIFY_ENABLED',
+        'BOT_LOCALE',
         'WEBHOOK_URL',
       ];
+
+      let shouldRefreshCommands = false;
       for (const key of allowed) {
-        if (body[key] !== undefined) await db.setSetting(key, String(body[key]));
+        if (body[key] === undefined) continue;
+        const value = key === 'BOT_LOCALE'
+          ? normalizeBotLocale(body[key])
+          : String(body[key]);
+        await db.setSetting(key, value);
+        if (key === 'BOT_TOKEN' || key === 'BOT_LOCALE') shouldRefreshCommands = true;
       }
+
+      if (shouldRefreshCommands) {
+        try {
+          const latest = await db.getAllSettings();
+          if (latest.BOT_TOKEN) {
+            await setupCommands(new TG(latest.BOT_TOKEN), latest.BOT_LOCALE);
+          }
+        } catch (e) {
+          console.error('refresh commands after settings save failed:', e);
+        }
+      }
+
       return j({ ok: true });
     } catch { return err('保存失败', 500); }
   }
@@ -226,7 +248,7 @@ export async function onRequest({ request, env }) {
       // Persist webhook URL so the UI can display it
       await db.setSetting('WEBHOOK_URL', webhookUrl);
       // Setup bot commands
-      await setupCommands(tg).catch(console.error);
+      await setupCommands(tg, settings.BOT_LOCALE).catch(console.error);
       return j({ ok: true, message: 'Webhook 设置成功，命令已更新' });
     } catch { return err('设置失败', 500); }
   }
@@ -317,8 +339,14 @@ export async function onRequest({ request, env }) {
     try {
       const uid = parseInt(blockMatch[1], 10), action = blockMatch[2];
       const body = await request.json();
-      if (action === 'block') await db.blockUser(uid, body.reason || 'WebUI', webUser.id, body.permanent === true);
-      else await db.unblockUser(uid);
+      if (action === 'block') {
+        const settings = await db.getAllSettings();
+        const adminIds = parseAdminIds(settings.ADMIN_IDS);
+        if (adminIds.includes(uid)) return err('不能封禁管理员', 400);
+        await db.blockUser(uid, body.reason || 'WebUI', webUser.id, body.permanent === true);
+      } else {
+        await db.unblockUser(uid);
+      }
       return j({ ok: true });
     } catch { return err('操作失败', 500); }
   }
@@ -403,6 +431,10 @@ export async function onRequest({ request, env }) {
     return j(await db.getStats());
 
   return err('接口不存在', 404);
+}
+
+function parseAdminIds(str) {
+  return (str || '').split(',').map(s => parseInt(s.trim(), 10)).filter(Boolean);
 }
 
 function cookie(token, maxAge = 86400) {

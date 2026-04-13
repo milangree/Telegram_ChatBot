@@ -1,28 +1,28 @@
 <template>
   <div class="auth-page">
     <div class="auth-card card">
-      <h1 class="login-title">🔑 找回密码</h1>
-      <div class="alert alert-info mb-2">需要账号已启用两步验证 (2FA) 才能通过此方式找回密码。</div>
+      <h1 class="login-title">🔑 {{ t('auth.recover.title') }}</h1>
+      <div class="alert alert-info mb-2">{{ t('auth.recover.tip') }}</div>
       <div v-if="error" class="alert alert-error">{{ error }}</div>
-      <div v-if="success" class="alert alert-success">✅ 密码已重置，正在跳转登录…</div>
+      <div v-if="success" class="alert alert-success">✅ {{ t('auth.recover.success') }}</div>
 
       <div class="form-group">
-        <label>用户名</label>
-        <input v-model="username" placeholder="用户名" />
+        <label>{{ t('auth.recover.username') }}</label>
+        <input v-model="username" :placeholder="t('auth.recover.username')" />
       </div>
       <div class="form-group">
-        <label>两步验证码</label>
-        <input v-model="totp" placeholder="Authenticator 6位码" maxlength="6" />
+        <label>{{ t('auth.recover.totp') }}</label>
+        <input v-model="totp" :placeholder="t('auth.recover.totpPh')" maxlength="6" />
       </div>
       <div class="form-group">
-        <label>新密码</label>
-        <input v-model="newPassword" type="password" placeholder="至少6位" />
+        <label>{{ t('auth.recover.newPassword') }}</label>
+        <input v-model="newPassword" type="password" :placeholder="t('auth.recover.newPasswordPh')" />
       </div>
       <button class="btn-primary w-full" @click="doRecover" :disabled="loading">
-        <span v-if="loading" class="spinner"></span>{{ loading ? '重置中…' : '重置密码' }}
+        <span v-if="loading" class="spinner"></span>{{ loading ? t('auth.recover.submitting') : t('auth.recover.submit') }}
       </button>
       <div style="margin-top:12px;text-align:center">
-        <RouterLink to="/login" class="text-sm">← 返回登录</RouterLink>
+        <RouterLink to="/login" class="text-sm">← {{ t('auth.recover.backLogin') }}</RouterLink>
       </div>
     </div>
   </div>
@@ -32,13 +32,16 @@
 import { ref } from 'vue'
 import { useRouter, RouterLink } from 'vue-router'
 import api from '../stores/api.js'
+import { useI18nStore } from '../stores/i18n'
 
 const router      = useRouter()
+const i18n        = useI18nStore()
+const t           = i18n.t
 const username    = ref(''), totp = ref(''), newPassword = ref('')
 const loading     = ref(false), error = ref(''), success = ref(false)
 
 async function doRecover() {
-  if (!username.value || !totp.value || !newPassword.value) { error.value = '请填写所有字段'; return }
+  if (!username.value || !totp.value || !newPassword.value) { error.value = t('auth.recover.err.required'); return }
   loading.value = true; error.value = ''
   try {
     await api.post('/api/auth/recover', { username: username.value, totp: totp.value, newPassword: newPassword.value })

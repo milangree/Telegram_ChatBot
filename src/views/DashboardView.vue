@@ -1,8 +1,8 @@
 <template>
   <div class="page">
     <div class="page-header">
-      <h2 class="page-title">📊 仪表盘</h2>
-      <button class="btn-ghost btn-sm" @click="load">🔄 刷新</button>
+      <h2 class="page-title">📊 {{ t('dashboard.title') }}</h2>
+      <button class="btn-ghost btn-sm" @click="load">🔄 {{ t('dashboard.refresh') }}</button>
     </div>
 
     <div v-if="loading" class="flex-center mt-3"><div class="spinner"></div></div>
@@ -18,32 +18,34 @@
       </div>
 
       <div class="card mb-2">
-        <h3 class="sec-title">🤖 Bot 状态</h3>
+        <h3 class="sec-title">🤖 {{ t('dashboard.botStatus') }}</h3>
         <div v-if="bot" class="bot-info">
           <div class="bot-ava">🤖</div>
           <div>
             <div style="font-weight:600">{{ bot.first_name }}</div>
             <div class="text-muted text-sm">@{{ bot.username }} · ID: {{ bot.id }}</div>
           </div>
-          <span class="badge badge-success">✓ 在线</span>
+          <span class="badge badge-success">✓ {{ t('dashboard.botOnline') }}</span>
         </div>
         <div v-else class="alert alert-error mb-1">
-          Bot Token 未配置 → <RouterLink to="/settings">前往设置</RouterLink>
+          {{ t('dashboard.botTokenMissing') }} <RouterLink to="/settings">{{ t('nav.settings') }}</RouterLink>
         </div>
         <div class="config-checks mt-2">
           <div class="config-row" v-for="c in configChecks" :key="c.label">
             <span class="text-muted" style="font-size:13px">{{ c.label }}</span>
-            <span class="badge" :class="c.ok ? 'badge-success' : 'badge-danger'">{{ c.ok ? '✓ 已配置' : '✗ 未配置' }}</span>
+            <span class="badge" :class="c.ok ? 'badge-success' : 'badge-danger'">
+              {{ c.ok ? t('dashboard.config.ok') : t('dashboard.config.missing') }}
+            </span>
           </div>
         </div>
       </div>
 
       <div class="card">
         <div class="flex" style="justify-content:space-between;align-items:center;margin-bottom:12px">
-          <h3 class="sec-title" style="margin:0">💬 最近对话</h3>
-          <RouterLink to="/conversations" class="text-sm">查看全部 →</RouterLink>
+          <h3 class="sec-title" style="margin:0">💬 {{ t('dashboard.recentConversations') }}</h3>
+          <RouterLink to="/conversations" class="text-sm">{{ t('dashboard.viewAll') }} →</RouterLink>
         </div>
-        <div v-if="!convs.length" class="text-muted text-sm text-center" style="padding:16px">暂无对话</div>
+        <div v-if="!convs.length" class="text-muted text-sm text-center" style="padding:16px">{{ t('dashboard.emptyConversations') }}</div>
         <RouterLink v-for="c in convs.slice(0, 8)" :key="c.user_id" :to="`/conversations?user=${c.user_id}`" class="conv-row">
           <div class="conv-ava">
             <img v-if="avatars[c.user_id]" :src="avatars[c.user_id]" class="ava-img" @error="avatars[c.user_id] = ''" />
@@ -52,9 +54,9 @@
           <div class="conv-body">
             <div class="conv-name">
               {{ c.first_name || c.username || c.user_id }}
-              <span v-if="c.is_blocked" class="badge badge-danger" style="font-size:9px;margin-left:4px">封</span>
+              <span v-if="c.is_blocked" class="badge badge-danger" style="font-size:9px;margin-left:4px">{{ t('dashboard.blockedShort') }}</span>
             </div>
-            <div class="conv-preview text-muted">{{ c.last_direction === 'outgoing' ? '← ' : '→ ' }}{{ c.last_message || '无消息' }}</div>
+            <div class="conv-preview text-muted">{{ c.last_direction === 'outgoing' ? '← ' : '→ ' }}{{ c.last_message || t('dashboard.noMessage') }}</div>
           </div>
           <div class="text-sm text-muted">{{ fmtTime(c.last_at) }}</div>
         </RouterLink>
@@ -67,27 +69,31 @@
 import { ref, computed, onMounted } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import api from '../stores/api.js'
+import { useI18nStore } from '../stores/i18n'
 
 const router = useRouter()
+const i18n = useI18nStore()
+const t = i18n.t
+
 const stats = ref({}), convs = ref([]), settings = ref({}), bot = ref(null)
 const loading = ref(true), avatars = ref({})
 
 const statCards = computed(() => [
-  { icon: '👥', label: '总用户数',   val: stats.value.totalUsers    ?? '—', cls: '', to: '/users' },
-  { icon: '⛔', label: '封禁用户',   val: stats.value.blockedUsers  ?? '—', cls: 'text-danger', to: '/users?filter=blocked' },
-  { icon: '💬', label: '总消息数',   val: stats.value.totalMessages ?? '—', cls: '', to: '/conversations' },
-  { icon: '📅', label: '今日消息',   val: stats.value.todayMessages ?? '—', cls: 'text-success', to: '/conversations' },
+  { icon: '👥', label: t('dashboard.totalUsers'), val: stats.value.totalUsers ?? '—', cls: '', to: '/users' },
+  { icon: '⛔', label: t('dashboard.blockedUsers'), val: stats.value.blockedUsers ?? '—', cls: 'text-danger', to: '/users?filter=blocked' },
+  { icon: '💬', label: t('dashboard.totalMessages'), val: stats.value.totalMessages ?? '—', cls: '', to: '/conversations' },
+  { icon: '📅', label: t('dashboard.todayMessages'), val: stats.value.todayMessages ?? '—', cls: 'text-success', to: '/conversations' },
 ])
 
 const configChecks = computed(() => [
-  { label: 'Bot Token',    ok: !!settings.value.BOT_TOKEN },
-  { label: '论坛群组 ID', ok: !!settings.value.FORUM_GROUP_ID },
-  { label: '管理员 ID',  ok: !!settings.value.ADMIN_IDS },
+  { label: t('dashboard.config.botToken'), ok: !!settings.value.BOT_TOKEN },
+  { label: t('dashboard.config.topicGroupId'), ok: !!settings.value.FORUM_GROUP_ID },
+  { label: t('dashboard.config.adminIds'), ok: !!settings.value.ADMIN_IDS },
 ])
 
 function tryLoadAvatar(uid) {
   const img = new Image()
-  img.onload  = () => { avatars.value[uid] = `/api/users/${uid}/avatar` }
+  img.onload = () => { avatars.value[uid] = `/api/users/${uid}/avatar` }
   img.onerror = () => {}
   img.src = `/api/users/${uid}/avatar`
 }
@@ -113,20 +119,19 @@ function goTo(path) {
 function fmtTime(ts) {
   if (!ts) return ''
   const diff = Date.now() - new Date(ts)
-  if (diff < 60000)    return '刚刚'
-  if (diff < 3600000)  return Math.floor(diff / 60000) + '分钟前'
-  if (diff < 86400000) return Math.floor(diff / 3600000) + '小时前'
-  // Show UTC+8 date
+  if (diff < 60000) return t('dashboard.justNow')
+  if (diff < 3600000) return t('dashboard.minutesAgo', { n: Math.floor(diff / 60000) })
+  if (diff < 86400000) return t('dashboard.hoursAgo', { n: Math.floor(diff / 3600000) })
   const d = new Date(new Date(ts).getTime() + 8 * 3600000)
   const pad = n => String(n).padStart(2, '0')
-  return `${d.getUTCMonth()+1}-${pad(d.getUTCDate())}`
+  return `${d.getUTCMonth() + 1}-${pad(d.getUTCDate())}`
 }
 
 onMounted(load)
 </script>
 
 <style scoped>
-.page{max-width:900px}
+.page{max-width:720px;margin:0 auto}
 .stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
 .stat-card{display:flex;align-items:center;gap:14px}
 .stat-card.clickable{cursor:pointer;user-select:none}

@@ -8,6 +8,7 @@ export async function onRequestPost(context) {
     if (!env.KV) return new Response('KV 未绑定', { status: 500 });
 
     const db = new DB(env.KV, env.D1 || null);
+    await db.autoRepair();
     await db.ensureDefaultAdmin();
 
     const secret   = await db.getSetting('WEBHOOK_SECRET');

@@ -2,22 +2,22 @@
   <div class="auth-page">
     <div class="auth-card card">
       <div class="login-logo">🤖</div>
-      <h1 class="login-title">首次联系配置</h1>
-      <div class="alert alert-info mb-2">首次联系完成后将关闭该入口，并禁用默认账号，请妥善保管账号密码。</div>
+      <h1 class="login-title">{{ t('auth.register.title') }}</h1>
+      <div class="alert alert-info mb-2">{{ t('auth.register.tip') }}</div>
       <div v-if="error" class="alert alert-error">{{ error }}</div>
       <div class="form-group">
-        <label>用户名</label>
-        <input v-model="username" placeholder="至少3个字符" autocomplete="username" />
+        <label>{{ t('auth.register.username') }}</label>
+        <input v-model="username" :placeholder="t('auth.register.usernamePh')" autocomplete="username" />
       </div>
       <div class="form-group">
-        <label>密码</label>
-        <input v-model="password" type="password" placeholder="至少6个字符" autocomplete="new-password" />
+        <label>{{ t('auth.register.password') }}</label>
+        <input v-model="password" type="password" :placeholder="t('auth.register.passwordPh')" autocomplete="new-password" />
       </div>
       <button class="btn-primary w-full" @click="doRegister" :disabled="loading">
-        <span v-if="loading" class="spinner"></span>{{ loading ? '提交中…' : '完成首次联系' }}
+        <span v-if="loading" class="spinner"></span>{{ loading ? t('auth.register.submitting') : t('auth.register.submit') }}
       </button>
       <div style="margin-top:12px;text-align:center">
-        <RouterLink to="/login" class="text-sm">← 已有账号，登录</RouterLink>
+        <RouterLink to="/login" class="text-sm">← {{ t('auth.register.toLogin') }}</RouterLink>
       </div>
     </div>
   </div>
@@ -27,18 +27,21 @@
 import { ref } from 'vue'
 import { useRouter, RouterLink } from 'vue-router'
 import { useAuthStore } from '../stores/auth.js'
+import { useI18nStore } from '../stores/i18n'
 
 const auth     = useAuthStore()
+const i18n     = useI18nStore()
+const t        = i18n.t
 const router   = useRouter()
 const username = ref(''), password = ref(''), loading = ref(false), error = ref('')
 
 async function doRegister() {
-  if (!username.value || !password.value) { error.value = '请填写所有字段'; return }
+  if (!username.value || !password.value) { error.value = t('auth.register.err.required'); return }
   loading.value = true; error.value = ''
   try {
     const res  = await fetch('/api/auth/register', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ username: username.value, password: password.value }) })
     const data = await res.json()
-    if (!res.ok) throw new Error(data.error || '首次联系失败')
+    if (!res.ok) throw new Error(data.error || t('auth.register.err.fallback'))
     auth.token = data.token; auth.username = data.username; auth.isAdmin = true
     localStorage.setItem('token', data.token); localStorage.setItem('username', data.username); localStorage.setItem('isAdmin', 'true')
     router.push('/')

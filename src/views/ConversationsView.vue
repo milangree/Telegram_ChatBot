@@ -1,16 +1,19 @@
 <template>
   <div class="conv-page">
-    <!-- Left panel: conversation list -->
     <div class="conv-left" :class="{ 'mobile-hidden': mobileView === 'detail' }">
       <div class="left-search">
-        <input v-model="search" placeholder="🔍 搜索用户…" />
+        <input v-model="search" :placeholder="t('conv.search')" />
       </div>
       <div class="left-list">
         <div v-if="loadingList" class="flex-center" style="padding:20px"><div class="spinner"></div></div>
         <template v-else>
-          <div v-for="c in filtered" :key="c.user_id"
-            class="left-item" :class="{ active: selId === c.user_id }"
-            @click="selectUser(c)">
+          <div
+            v-for="c in filtered"
+            :key="c.user_id"
+            class="left-item"
+            :class="{ active: selId === c.user_id }"
+            @click="selectUser(c)"
+          >
             <div class="item-ava" :class="{ blocked: c.is_blocked }">
               <img v-if="avatars[c.user_id]" :src="avatars[c.user_id]" class="ava-img" @error="avatars[c.user_id] = ''" />
               <span v-else>{{ (c.first_name || c.username || '?')[0].toUpperCase() }}</span>
@@ -18,18 +21,17 @@
             <div class="item-body">
               <div class="item-name">
                 {{ c.first_name || c.username || c.user_id }}
-                <span v-if="c.is_blocked" class="badge badge-danger" style="font-size:9px;margin-left:4px">封</span>
+                <span v-if="c.is_blocked" class="badge badge-danger" style="font-size:9px;margin-left:4px">{{ t('conv.blockedTag') }}</span>
               </div>
-              <div class="item-preview">{{ c.last_direction === 'outgoing' ? '← ' : '→ ' }}{{ c.last_message || '无消息' }}</div>
+              <div class="item-preview">{{ c.last_direction === 'outgoing' ? '← ' : '→ ' }}{{ c.last_message || t('conv.noMessage') }}</div>
             </div>
             <div class="item-time">{{ fmtShort(c.last_at) }}</div>
           </div>
-          <div v-if="!filtered.length" class="empty">暂无对话</div>
+          <div v-if="!filtered.length" class="empty">{{ t('conv.empty') }}</div>
         </template>
       </div>
     </div>
 
-    <!-- Right panel: message thread -->
     <div class="conv-right" :class="{ 'mobile-hidden': mobileView === 'list' }">
       <template v-if="selUser">
         <div class="right-header">
@@ -44,23 +46,25 @@
               ID: <code>{{ selUser.user_id }}</code>{{ selUser.username ? ' · @' + selUser.username : '' }}
             </div>
           </div>
-          <span class="badge" :class="selUser.is_blocked ? 'badge-danger' : 'badge-success'">{{ selUser.is_blocked ? '⛔ 封禁' : '✅ 正常' }}</span>
+          <span class="badge" :class="selUser.is_blocked ? 'badge-danger' : 'badge-success'">
+            {{ selUser.is_blocked ? t('conv.status.blocked') : t('conv.status.normal') }}
+          </span>
           <button v-if="!selUser.is_blocked" class="btn-danger btn-sm hide-mobile" @click="blockUser">🚫</button>
           <button v-else class="btn-success btn-sm hide-mobile" @click="unblockUser">✅</button>
-          <button class="btn-ghost btn-sm hide-mobile" @click="deleteConv" title="删除对话并关闭话题">🗑️</button>
-          <button class="btn-ghost btn-sm mobile-only" @click="deleteConv" title="删除对话并关闭话题">🗑️</button>
+          <button class="btn-ghost btn-sm hide-mobile" @click="deleteConv" :title="t('conv.deleteTitle')">🗑️</button>
+          <button class="btn-ghost btn-sm mobile-only" @click="deleteConv" :title="t('conv.deleteTitle')">🗑️</button>
         </div>
 
         <div class="msg-list" ref="msgRef">
           <div v-if="loadingMsgs" class="flex-center" style="padding:30px"><div class="spinner"></div></div>
           <template v-else>
-            <div v-if="!msgs.length" class="empty">暂无消息记录</div>
+            <div v-if="!msgs.length" class="empty">{{ t('conv.msgEmpty') }}</div>
             <div v-for="m in msgs" :key="m.id" class="msg-wrap" :class="m.direction">
               <div class="msg-bubble">
                 <div class="msg-type-badge" v-if="m.message_type && m.message_type !== 'text'">
                   {{ typeLabel(m.message_type) }}
                 </div>
-                <div class="msg-text" v-if="m.content && m.content !== '[媒体]'">{{ m.content }}</div>
+                <div class="msg-text" v-if="m.content && m.content !== t('conv.media')">{{ m.content }}</div>
                 <div class="msg-text text-muted" v-else-if="m.message_type !== 'text'">[{{ typeLabel(m.message_type) }}]</div>
                 <div class="msg-meta">{{ fmtFull(m.created_at) }}</div>
               </div>
@@ -70,7 +74,7 @@
       </template>
       <div v-else class="conv-placeholder">
         <div style="font-size:48px">💬</div>
-        <div>从左侧选择对话</div>
+        <div>{{ t('conv.placeholder') }}</div>
       </div>
     </div>
   </div>
@@ -80,18 +84,22 @@
 import { ref, computed, onMounted, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import api from '../stores/api.js'
+import { useI18nStore } from '../stores/i18n'
 
-const route      = useRoute()
-const convs      = ref([]), msgs = ref([]), selUser = ref(null), selId = ref(null)
-const search     = ref(''), loadingList = ref(true), loadingMsgs = ref(false), msgRef = ref(null)
+const route = useRoute()
+const i18n = useI18nStore()
+const t = i18n.t
+
+const convs = ref([]), msgs = ref([]), selUser = ref(null), selId = ref(null)
+const search = ref(''), loadingList = ref(true), loadingMsgs = ref(false), msgRef = ref(null)
 const mobileView = ref('list')
-const avatars    = ref({})
+const avatars = ref({})
 
 const filtered = computed(() => {
   if (!search.value) return convs.value
   const q = search.value.toLowerCase()
   return convs.value.filter(c =>
-    String(c.user_id).includes(q) || (c.first_name || '').toLowerCase().includes(q) || (c.username || '').toLowerCase().includes(q)
+    String(c.user_id).includes(q) || (c.first_name || '').toLowerCase().includes(q) || (c.username || '').toLowerCase().includes(q),
   )
 })
 
@@ -125,21 +133,20 @@ async function deleteConv() {
   if (!selUser.value) return
   const uid = selUser.value.user_id
   const name = selUser.value.first_name || uid
-  if (!confirm(`确认删除与「${name}」的全部对话记录并关闭话题群组中的话题？
-白名单用户外均需重新验证。`)) return
+  if (!confirm(t('conv.deleteConfirm', { name }))) return
   try {
     const r = await api.delete(`/api/conversations/${uid}`)
-    // Remove from list
     convs.value = convs.value.filter(c => c.user_id !== uid)
     selUser.value = null; selId.value = null; msgs.value = []
     mobileView.value = 'list'
-    if (r.reVerifyRequired) alert('✅ 对话已删除，用户下次发消息需重新验证。')
-    else alert('✅ 对话已删除（用户在白名单，无需重新验证）。')
-  } catch (e) { alert('❌ 删除失败：' + e.message) }
+    if (r.reVerifyRequired) alert(t('conv.deleteSuccessReverify'))
+    else alert(t('conv.deleteSuccessNoReverify'))
+  } catch (e) { alert(t('conv.deleteFailed', { err: e.message })) }
 }
 
 async function blockUser() {
-  const r = prompt('封禁原因（可留空）：') ?? ''; if (r === null) return
+  const r = prompt(t('conv.blockReasonPrompt')) ?? ''
+  if (r === null) return
   await api.put(`/api/users/${selUser.value.user_id}/block`, { reason: r, permanent: true })
   selUser.value.is_blocked = 1
   updateConv(selUser.value.user_id, { is_blocked: 1 })
@@ -157,7 +164,7 @@ function updateConv(uid, patch) {
 function fmtShort(ts) {
   if (!ts) return ''
   const d = new Date(ts), diff = Date.now() - d
-  if (diff < 60000) return '刚刚'
+  if (diff < 60000) return t('conv.justNow')
   if (diff < 3600000) return Math.floor(diff / 60000) + 'm'
   if (diff < 86400000) return Math.floor(diff / 3600000) + 'h'
   return d.toLocaleDateString('zh-CN')
@@ -166,10 +173,23 @@ function fmtFull(ts) {
   if (!ts) return ''
   const d = new Date(new Date(ts).getTime() + 8 * 3600000)
   const pad = n => String(n).padStart(2, '0')
-  return `${pad(d.getUTCMonth()+1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`
+  return `${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`
 }
-function typeLabel(t) {
-  return { photo: '📷 图片', video: '🎥 视频', audio: '🎵 音频', voice: '🎤 语音', document: '📄 文件', sticker: '🎭 贴纸', animation: '🎞️ GIF', video_note: '📹 圆视频', contact: '📞 联系人', location: '📍 位置', poll: '📊 投票', dice: '🎲 骰子' }[t] || t
+function typeLabel(type) {
+  return {
+    photo: t('conv.type.photo'),
+    video: t('conv.type.video'),
+    audio: t('conv.type.audio'),
+    voice: t('conv.type.voice'),
+    document: t('conv.type.document'),
+    sticker: t('conv.type.sticker'),
+    animation: t('conv.type.animation'),
+    video_note: t('conv.type.video_note'),
+    contact: t('conv.type.contact'),
+    location: t('conv.type.location'),
+    poll: t('conv.type.poll'),
+    dice: t('conv.type.dice'),
+  }[type] || type
 }
 
 onMounted(async () => {
