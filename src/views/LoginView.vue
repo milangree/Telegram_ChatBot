@@ -2,66 +2,66 @@
   <div class="login-wrap">
     <div class="login-card card">
       <div class="login-logo">🤖</div>
-      <h1 class="login-title">Bot 管理后台</h1>
+      <h1 class="login-title">{{ t('auth.login.title') }}</h1>
 
       <div v-if="error" class="alert alert-error">{{ error }}</div>
 
       <!-- Username field (shared) -->
       <div class="form-group" v-if="step === 'username' || step === 'password' || step === 'totp_only'">
-        <label>用户名</label>
-        <input v-model="username" placeholder="用户名" autocomplete="username"
+        <label>{{ t('auth.login.username') }}</label>
+        <input v-model="username" :placeholder="t('auth.login.username')" autocomplete="username"
           @keydown.enter="step === 'username' ? checkUsername() : null" />
       </div>
 
       <!-- Step 1: enter username only, then we detect if TOTP is enabled -->
       <div v-if="step === 'username'">
         <button class="btn-primary w-full" :disabled="loading" @click="checkUsername">
-          <span v-if="loading" class="spinner"></span>{{ loading ? '检查中…' : '下一步' }}
+          <span v-if="loading" class="spinner"></span>{{ loading ? t('auth.login.checking') : t('auth.login.next') }}
         </button>
         <div class="login-links">
-          <RouterLink to="/register">首次联系</RouterLink>
-          <RouterLink to="/recover">找回密码</RouterLink>
+          <RouterLink to="/register">{{ t('auth.login.register') }}</RouterLink>
+          <RouterLink to="/recover">{{ t('auth.login.recover') }}</RouterLink>
         </div>
       </div>
 
       <!-- Step 2a: password (+ optional TOTP) -->
       <div v-else-if="step === 'password'">
         <div class="form-group">
-          <label>密码</label>
-          <input v-model="password" type="password" placeholder="密码" autocomplete="current-password"
+          <label>{{ t('auth.login.password') }}</label>
+          <input v-model="password" type="password" :placeholder="t('auth.login.password')" autocomplete="current-password"
             @keydown.enter="handleLogin" />
         </div>
         <div class="form-group" v-if="totpEnabled">
-          <label>两步验证码 <span class="text-muted">(6位)</span></label>
+          <label>{{ t('auth.login.totp') }} <span class="text-muted">(6位)</span></label>
           <input v-model="totp" placeholder="123456" maxlength="6" @keydown.enter="handleLogin" />
         </div>
         <button class="btn-primary w-full" :disabled="loading" @click="handleLogin">
-          <span v-if="loading" class="spinner"></span>{{ loading ? '登录中…' : '登录' }}
+          <span v-if="loading" class="spinner"></span>{{ loading ? t('auth.login.loggingIn') : t('auth.login.login') }}
         </button>
         <div style="margin-top:10px;text-align:center">
-          <button class="btn-ghost btn-sm" @click="step = 'username'">← 返回</button>
+          <button class="btn-ghost btn-sm" @click="step = 'username'">← {{ t('auth.login.back') }}</button>
           <button v-if="totpEnabled" class="btn-ghost btn-sm" style="margin-left:8px" @click="step = 'totp_only'">
-            仅用验证码登录
+            {{ t('auth.login.loginTotpOnly') }}
           </button>
         </div>
       </div>
 
       <!-- Step 2b: TOTP-only login -->
       <div v-else-if="step === 'totp_only'">
-        <div class="alert alert-info">使用 Authenticator 验证码直接登录（无需密码）</div>
+        <div class="alert alert-info">{{ t('auth.login.tipTotpOnly') }}</div>
         <div class="form-group">
-          <label>两步验证码 <span class="text-muted">(6位)</span></label>
+          <label>{{ t('auth.login.totp') }} <span class="text-muted">(6位)</span></label>
           <input v-model="totp" placeholder="123456" maxlength="6" @keydown.enter="handleLoginTotp" />
         </div>
         <button class="btn-primary w-full" :disabled="loading" @click="handleLoginTotp">
-          <span v-if="loading" class="spinner"></span>{{ loading ? '登录中…' : '验证登录' }}
+          <span v-if="loading" class="spinner"></span>{{ loading ? t('auth.login.loggingIn') : t('auth.login.verifyAndLogin') }}
         </button>
         <div style="margin-top:10px;text-align:center">
-          <button class="btn-ghost btn-sm" @click="step = 'password'">← 密码登录</button>
+          <button class="btn-ghost btn-sm" @click="step = 'password'">← {{ t('auth.login.backPassword') }}</button>
         </div>
       </div>
 
-      <div class="login-footer">首次联系完成后默认账号将自动禁用</div>
+      <div class="login-footer">{{ t('auth.login.defaultAccountTip') }}</div>
     </div>
   </div>
 </template>
@@ -70,8 +70,11 @@
 import { ref } from 'vue'
 import { useRouter, RouterLink } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
+import { useI18nStore } from '../stores/i18n'
 
 const auth     = useAuthStore()
+const i18n     = useI18nStore()
+const t        = i18n.t
 const router   = useRouter()
 const step     = ref('username')
 const username = ref('')
@@ -82,7 +85,7 @@ const error    = ref('')
 const totpEnabled = ref(false)
 
 async function checkUsername() {
-  if (!username.value.trim()) { error.value = '请输入用户名'; return }
+  if (!username.value.trim()) { error.value = t('auth.login.err.needUsername'); return }
   loading.value = true; error.value = ''
   try {
     const res = await fetch('/api/auth/totp-status', {
@@ -98,7 +101,7 @@ async function checkUsername() {
 }
 
 async function handleLogin() {
-  if (!password.value) { error.value = '请输入密码'; return }
+  if (!password.value) { error.value = t('auth.login.err.needPassword'); return }
   loading.value = true; error.value = ''
   try {
     await auth.login(username.value, password.value, totp.value || undefined)
@@ -108,7 +111,7 @@ async function handleLogin() {
 }
 
 async function handleLoginTotp() {
-  if (!totp.value) { error.value = '请输入验证码'; return }
+  if (!totp.value) { error.value = t('auth.login.err.needTotp'); return }
   loading.value = true; error.value = ''
   try {
     await auth.loginTotp(username.value, totp.value)

@@ -1,6 +1,7 @@
 // functions/_shared/bot.js
 import { TG, esc, name, msgType } from './tg.js';
 import { generateCode, generateWrongOptions } from './captcha.js';
+import { createBotT, getBotCommands, normalizeBotLocale } from './bot-i18n.js';
 
 // ── Verification helpers ──────────────────────────────────────────────────────
 const MATH_QS = [
@@ -38,7 +39,7 @@ function rateCheck(uid, max) {
 }
 
 // ── Thread management ─────────────────────────────────────────────────────────
-async function getOrCreateThread(tg, db, user, groupId, kv) {
+async function getOrCreateThread(tg, db, user, groupId, kv, t) {
   // Atomic-ish lock to prevent duplicate topics
   const lockKey = `lock:thread:${user.id}`;
   const existing = await db.getUser(user.id);
@@ -59,17 +60,17 @@ async function getOrCreateThread(tg, db, user, groupId, kv) {
     if (!res.ok) { console.error('createTopic failed:', res); return null; }
     const tid = res.result.message_thread_id;
     await db.setUserThread(user.id, tid);
-    await sendCard(tg, db, user, groupId, tid);
+    await sendCard(tg, db, user, groupId, tid, t);
     return tid;
   } finally {
     await kv.delete(lockKey).catch(() => {});
   }
 }
 
-async function sendCard(tg, db, user, groupId, tid) {
+async function sendCard(tg, db, user, groupId, tid, t) {
   const u    = await db.getUser(user.id);
-  const kb   = fullUserKb(user.id, u);
-  const text = buildCardText(user, u);
+  const kb   = fullUserKb(user.id, u, t);
+  const text = buildCardText(user, u, t);
 
   try {
     const photos = await tg.getUserProfilePhotos({ userId: user.id, limit: 1 });
@@ -83,14 +84,14 @@ async function sendCard(tg, db, user, groupId, tid) {
   await tg.sendMsg({ chatId: groupId, text, threadId: tid, kb });
 }
 
-function buildCardText(user, u) {
-  return `👤 <b>用户信息</b>\n\n` +
-    `姓名：${esc(name(user))}\n` +
-    `用户名：${user.username ? '@' + esc(user.username) : '无'}\n` +
-    `ID：<code>${user.id ?? user.user_id}</code>\n` +
-    `语言：${user.language_code || '未知'}\n` +
-    `首次联系：${fmtUtc8(u?.created_at)}\n` +
-    `状态：${u?.is_blocked ? '⛔ 已封禁' : (u?.is_verified ? '✅ 已验证' : '🟡 未验证')}`;
+function buildCardText(user, u, t) {
+  return `👤 <b>${t('card.userInfo')}</b>\n\n` +
+    `${t('card.name')}：${esc(name(user))}\n` +
+    `${t('card.username')}：${user.username ? '@' + esc(user.username) : t('list.none')}\n` +
+    `${t('card.id')}：<code>${user.id ?? user.user_id}</code>\n` +
+    `${t('card.language')}：${user.language_code || t('list.none')}\n` +
+    `${t('card.firstContact')}：${fmtUtc8(u?.created_at, t)}\n` +
+    `${t('card.status')}：${u?.is_blocked ? t('status.blocked') : (u?.is_verified ? t('status.verified') : t('status.unverified'))}`;
 }
 
 async function sendToUserThreadOrAdminDm({ tg, db, groupId, adminIds, userId, text, kb }) {
@@ -111,71 +112,58 @@ async function sendToUserThreadOrAdminDm({ tg, db, groupId, adminIds, userId, te
 }
 
 // ── Keyboards ─────────────────────────────────────────────────────────────────
-function fullUserKb(uid, u) {
+function fullUserKb(uid, u, t) {
   return [
     [
-      { text: u?.is_blocked ? '✅ 解封' : '🚫 封禁', callback_data: u?.is_blocked ? `ub:${uid}` : `bl:${uid}` },
-      { text: u?.is_blocked ? '♾️ 永封' : '📋 详情', callback_data: u?.is_blocked ? `pb:${uid}` : `ui:${uid}` },
+      { text: u?.is_blocked ? t('kb.unblock') : t('kb.block'), callback_data: u?.is_blocked ? `ub:${uid}` : `bl:${uid}` },
+      { text: u?.is_blocked ? t('kb.permBan') : t('kb.detail'), callback_data: u?.is_blocked ? `pb:${uid}` : `ui:${uid}` },
     ],
     [
-      { text: '⚪ 白名单', callback_data: `wl:${uid}` },
-      { text: '📨 消息记录', callback_data: `ml:${uid}:1` },
+      { text: t('kb.whitelist'), callback_data: `wl:${uid}` },
+      { text: t('kb.msgHistory'), callback_data: `ml:${uid}:1` },
     ],
     [
-      { text: '🔄 刷新', callback_data: `rf:${uid}` },
+      { text: t('kb.refresh'), callback_data: `rf:${uid}` },
     ],
   ];
 }
 
-function adminPanelKb(s) {
+function adminPanelKb(s, t) {
   const capLabel = s.CAPTCHA_TYPE === 'image_numeric'
-    ? '图片数字'
-    : (s.CAPTCHA_TYPE === 'image_alphanumeric' ? '图片字母数字' : '数学题');
+    ? t('panel.cap.imageNumeric')
+    : (s.CAPTCHA_TYPE === 'image_alphanumeric' ? t('panel.cap.imageAlnum') : t('panel.cap.math'));
   return [
     [
-      { text: `✅ 验证: ${s.VERIFICATION_ENABLED === 'true' ? '开' : '关'}`, callback_data: 'adm:tv' },
-      { text: `🔓 申诉: ${s.AUTO_UNBLOCK_ENABLED === 'true' ? '开' : '关'}`, callback_data: 'adm:ta' },
+      { text: `✅ ${t('panel.verify')}: ${s.VERIFICATION_ENABLED === 'true' ? t('panel.on') : t('panel.off')}`, callback_data: 'adm:tv' },
+      { text: `🔓 ${t('panel.appeal')}: ${s.AUTO_UNBLOCK_ENABLED === 'true' ? t('panel.on') : t('panel.off')}`, callback_data: 'adm:ta' },
     ],
     [
-      { text: `⚪ 白名单: ${s.WHITELIST_ENABLED === 'true' ? '开' : '关'}`, callback_data: 'adm:tw' },
-      { text: `🤖 过滤指令: ${s.BOT_COMMAND_FILTER === 'true' ? '开' : '关'}`, callback_data: 'adm:tf' },
+      { text: `⚪ ${t('panel.whitelist')}: ${s.WHITELIST_ENABLED === 'true' ? t('panel.on') : t('panel.off')}`, callback_data: 'adm:tw' },
+      { text: `🤖 ${t('panel.cmdFilter')}: ${s.BOT_COMMAND_FILTER === 'true' ? t('panel.on') : t('panel.off')}`, callback_data: 'adm:tf' },
     ],
     [
-      { text: `🧩 验证类型: ${capLabel}`, callback_data: 'adm:ct' },
-      { text: `⏱ 超时: ${s.VERIFICATION_TIMEOUT || '300'}s`, callback_data: 'adm:to' },
+      { text: `🧩 ${t('panel.captchaType')}: ${capLabel}`, callback_data: 'adm:ct' },
+      { text: `⏱ ${t('panel.timeout')}: ${s.VERIFICATION_TIMEOUT || '300'}s`, callback_data: 'adm:to' },
     ],
     [
-      { text: `🔁 尝试: ${s.MAX_VERIFICATION_ATTEMPTS || '3'}`, callback_data: 'adm:ma' },
-      { text: `📩 管理私聊: ${s.ADMIN_NOTIFY_ENABLED === 'true' ? '开' : '关'}`, callback_data: 'adm:tn' },
+      { text: `🔁 ${t('panel.attempts')}: ${s.MAX_VERIFICATION_ATTEMPTS || '3'}`, callback_data: 'adm:ma' },
+      { text: `📩 ${t('panel.adminNotify')}: ${s.ADMIN_NOTIFY_ENABLED === 'true' ? t('panel.on') : t('panel.off')}`, callback_data: 'adm:tn' },
     ],
     [
-      { text: '📊 统计', callback_data: 'adm:st' },
-      { text: '🚫 黑名单', callback_data: 'adm:bk:1' },
+      { text: t('kb.stats'), callback_data: 'adm:st' },
+      { text: t('kb.blacklist'), callback_data: 'adm:bk:1' },
     ],
-    [{ text: '👥 用户列表', callback_data: 'adm:ul:1' }],
+    [{ text: t('kb.userList'), callback_data: 'adm:ul:1' }],
   ];
 }
 
 // ── Commands setup ────────────────────────────────────────────────────────────
-export async function setupCommands(tg) {
-  const userCmds = [
-    { command: 'start', description: '开始使用 / 查看欢迎信息' },
-    { command: 'help',  description: '查看帮助' },
-    { command: 'status', description: '查看当前状态' },
-  ];
-  const adminCmds = [
-    ...userCmds,
-    { command: 'stats',  description: '[管理] 查看统计信息' },
-    { command: 'ban',    description: '[管理] 封禁用户 /ban <uid>' },
-    { command: 'unban',  description: '[管理] 解封用户 /unban <uid>' },
-    { command: 'wl',     description: '[管理] 加入白名单 /wl <uid>' },
-    { command: 'unwl',   description: '[管理] 移出白名单 /unwl <uid>' },
-    { command: 'info',   description: '[管理] 用户信息 /info <uid>' },
-    { command: 'panel',  description: '[管理] 打开控制台' },
-  ];
-  await tg.setMyCommands({ commands: userCmds });
-  await tg.setMyCommands({ commands: adminCmds, scope: { type: 'all_private_chats' } });
-  await tg.setChatMenuButton({ menuButton: { type: 'commands' } });
+export async function setupCommands(tg, locale = 'zh-hans') {
+  const normalized = normalizeBotLocale(locale)
+  const { userCmds, adminCmds } = getBotCommands(normalized)
+  await tg.setMyCommands({ commands: userCmds })
+  await tg.setMyCommands({ commands: adminCmds, scope: { type: 'all_private_chats' } })
+  await tg.setChatMenuButton({ menuButton: { type: 'commands' } })
 }
 
 // ── Entry point ───────────────────────────────────────────────────────────────
@@ -186,15 +174,17 @@ export async function processUpdate(update, env) {
     const settings = await db.getAllSettings();
     if (!settings.BOT_TOKEN)      { console.error('BOT_TOKEN missing'); return; }
     if (!settings.FORUM_GROUP_ID) { console.error('FORUM_GROUP_ID missing'); return; }
+    const locale = normalizeBotLocale(settings.BOT_LOCALE);
+    const t = createBotT(locale);
     const tg  = new TG(settings.BOT_TOKEN);
-    const ctx = { tg, db, kv: env.KV, settings, baseUrl: env.baseUrl || '' };
+    const ctx = { tg, db, kv: env.KV, settings, baseUrl: env.baseUrl || '', t };
     if (update.message)              await handleMsg(update.message, ctx);
     else if (update.callback_query)  await handleCb(update.callback_query, ctx);
   } catch (e) { console.error('processUpdate:', e); }
 }
 
 // ── Message handler ───────────────────────────────────────────────────────────
-async function handleMsg(msg, { tg, db, kv, settings, baseUrl }) {
+async function handleMsg(msg, { tg, db, kv, settings, baseUrl, t }) {
   if (!msg) return;
   const user = msg.from;
   if (!user || user.is_bot) return;
@@ -224,7 +214,7 @@ async function handleMsg(msg, { tg, db, kv, settings, baseUrl }) {
 
   // ── Admin private chat: control panel or command processing ───────────────
   if (adminIds.includes(user.id)) {
-    await handleAdminPrivateMsg(msg, user, { tg, db, kv, settings, groupId });
+    await handleAdminPrivateMsg(msg, user, { tg, db, kv, settings, groupId, t });
     return;
   }
 
@@ -234,18 +224,23 @@ async function handleMsg(msg, { tg, db, kv, settings, baseUrl }) {
     const cmd = cmdFull.split('@')[0].slice(1).toLowerCase();
 
     if (cmd === 'start' || cmd === 'help') {
-      const welcomeText = settings.WELCOME_MESSAGE ||
-        '👋 欢迎使用双向消息机器人！\n\n请直接发送您的问题，管理员将尽快回复。';
+      const welcomeText = settings.WELCOME_MESSAGE || t('defaultWelcome');
       const kb = [[
-        { text: '📨 发送消息', callback_data: 'user:msg' },
-        { text: '🆘 帮助', callback_data: 'user:help' },
+        { text: t('user.sendMsg'), callback_data: 'user:msg' },
+        { text: t('user.help'), callback_data: 'user:help' },
       ]];
       await tg.sendMsg({ chatId: user.id, text: welcomeText, kb });
       return;
     }
     if (cmd === 'status') {
       const u = await db.getUser(user.id);
-      await tg.sendMsg({ chatId: user.id, text: `📋 <b>状态</b>\n\n验证：${u?.is_verified ? '✅ 已通过' : '❌ 未通过'}\n封禁：${u?.is_blocked ? '⛔ 是' : '✅ 否'}` });
+      await tg.sendMsg({
+        chatId: user.id,
+        text: t('user.status', {
+          verified: u?.is_verified ? t('user.statusVerified') : t('user.statusUnverified'),
+          blocked: u?.is_blocked ? t('user.statusBlocked') : t('user.statusNotBlocked'),
+        }),
+      });
       return;
     }
     if (settings.BOT_COMMAND_FILTER === 'true') return; // swallow unknown commands
@@ -254,37 +249,42 @@ async function handleMsg(msg, { tg, db, kv, settings, baseUrl }) {
   // ── Block check ───────────────────────────────────────────────────────────
   const dbUser = await db.getUser(user.id);
   if (dbUser?.is_blocked) {
+    const isPermanentBlock = Boolean(dbUser.is_permanent_block);
+    const canAppeal = canUserAppeal(dbUser, settings);
     const pendingAppeal = await kv.get(`pending_appeal:${user.id}`);
-    if (pendingAppeal && msg.text && !msg.text.startsWith('/')) {
+
+    if (!canAppeal && pendingAppeal) {
+      await kv.delete(`pending_appeal:${user.id}`).catch(() => {});
+    }
+
+    if (canAppeal && pendingAppeal && msg.text && !msg.text.startsWith('/')) {
       const appealText = msg.text.trim();
       if (appealText) {
         const who = `${name(user)} (${user.id})`;
-        const text = `📝 <b>用户申诉</b>\n\n用户：${esc(who)}\n内容：\n${esc(appealText)}`;
+        const text = t('appeal.title', { who: esc(who), content: esc(appealText) });
         const kb = [[
-          { text: '✅ 通过申诉(解封)', callback_data: `apu:${user.id}` },
-          { text: '❌ 拒绝申诉', callback_data: `apr:${user.id}` },
+          { text: t('appeal.approve'), callback_data: `apu:${user.id}` },
+          { text: t('appeal.reject'), callback_data: `apr:${user.id}` },
         ]];
 
         const delivery = await sendToUserThreadOrAdminDm({ tg, db, groupId, adminIds, userId: user.id, text, kb });
-        await kv.delete(`pending_appeal:${user.id}`);
+        await kv.delete(`pending_appeal:${user.id}`).catch(() => {});
 
         if (delivery.sent) {
-          await tg.sendMsg({ chatId: user.id, text: '✅ 申诉已提交，请等待管理员处理。' });
+          await tg.sendMsg({ chatId: user.id, text: t('appeal.submitted') });
         } else {
-          await tg.sendMsg({ chatId: user.id, text: '⚠️ 申诉已记录，但通知管理员失败，请稍后重试。' });
+          await tg.sendMsg({ chatId: user.id, text: t('appeal.submitFail') });
         }
       }
       return;
     }
 
-    // AUTO_UNBLOCK_ENABLED takes priority: when enabled, all banned users can appeal
-    // (is_permanent_block only prevents appeal when auto-unblock is OFF)
-    if (settings.AUTO_UNBLOCK_ENABLED === 'true') {
-      await tg.sendMsg({ chatId: user.id, text: '⛔ <b>您已被封禁</b>\n可发起申诉：', kb: [[{ text: '📝 发起申诉', callback_data: 'appeal:start' }]] });
-    } else if (dbUser.is_permanent_block) {
-      await tg.sendMsg({ chatId: user.id, text: '⛔ <b>您已被永久封禁</b>，如有疑问请联系管理员。' });
+    if (isPermanentBlock) {
+      await tg.sendMsg({ chatId: user.id, text: t('appeal.blockedPermanent') });
+    } else if (canAppeal) {
+      await tg.sendMsg({ chatId: user.id, text: t('appeal.blockedCan'), kb: [[{ text: t('appeal.start'), callback_data: 'appeal:start' }]] });
     } else {
-      await tg.sendMsg({ chatId: user.id, text: '⛔ <b>您已被封禁</b>，请联系管理员。' });
+      await tg.sendMsg({ chatId: user.id, text: t('appeal.blocked') });
     }
     return;
   }
@@ -295,7 +295,7 @@ async function handleMsg(msg, { tg, db, kv, settings, baseUrl }) {
   if (!whitelisted) {
     const maxRate = parseInt(settings.MAX_MESSAGES_PER_MINUTE || '30', 10);
     if (rateCheck(user.id, maxRate)) {
-      await tg.sendMsg({ chatId: user.id, text: `⚠️ 发送过于频繁，请稍候再试。` });
+      await tg.sendMsg({ chatId: user.id, text: t('rateLimit') });
       return;
     }
 
@@ -305,7 +305,7 @@ async function handleMsg(msg, { tg, db, kv, settings, baseUrl }) {
       const captchaType = settings.CAPTCHA_TYPE || 'math';
       const existing    = await db.getVerify(user.id);
       if (existing && existing.expires_at > Date.now()) {
-        await tg.sendMsg({ chatId: user.id, text: '请先完成上方的人机验证 ☝️' });
+        await tg.sendMsg({ chatId: user.id, text: t('verify.completeFirst') });
         return;
       }
 
@@ -314,14 +314,14 @@ async function handleMsg(msg, { tg, db, kv, settings, baseUrl }) {
       if (captchaType === 'math') {
         const { question, answer, kb } = mkMathVerify();
         await db.setVerify(user.id, { answer, captcha_type: 'math' }, timeout);
-        await tg.sendMsg({ chatId: user.id, text: `🔐 <b>人机验证</b>\n\n请选择正确答案：\n\n${question}`, kb });
+        await tg.sendMsg({ chatId: user.id, text: t('verify.title', { question }), kb });
       } else {
         const siteUrl = settings.CAPTCHA_SITE_URL || baseUrl;
         if (!siteUrl) {
           // Fallback to math
           const { question, answer, kb } = mkMathVerify();
           await db.setVerify(user.id, { answer, captcha_type: 'math' }, timeout);
-          await tg.sendMsg({ chatId: user.id, text: `🔐 <b>人机验证</b>\n\n请选择正确答案：\n\n${question}`, kb });
+          await tg.sendMsg({ chatId: user.id, text: t('verify.title', { question }), kb });
         } else {
           const captchaId  = randId();
           const code       = generateCode(captchaType);
@@ -330,14 +330,14 @@ async function handleMsg(msg, { tg, db, kv, settings, baseUrl }) {
           const opts       = [code, ...wrongs].sort(() => Math.random() - 0.5);
           const kb         = rows2(opts, o => ({ text: o, callback_data: `iv:${o}:${captchaId}` }));
           await db.setVerify(user.id, { answer: code, captcha_id: captchaId, captcha_type: captchaType }, timeout);
-          const typeLabel  = captchaType === 'image_alphanumeric' ? '5位字母+数字' : '4位数字';
-          const caption    = `🔐 <b>图片验证码</b>\n\n请识别图中的 ${typeLabel} 验证码：`;
+          const typeLabel  = captchaType === 'image_alphanumeric' ? t('verify.imgAlpha') : t('verify.imgNum');
+          const caption    = t('verify.image', { typeLabel });
           const imgUrl     = `${siteUrl}/api/captcha/${captchaId}`;
           const r          = await tg.sendPhoto({ chatId: user.id, url: imgUrl, caption, kb });
           if (!r.ok) {
             const { question, answer, kb: mathKb } = mkMathVerify();
             await db.setVerify(user.id, { answer, captcha_type: 'math' }, timeout);
-            await tg.sendMsg({ chatId: user.id, text: `🔐 <b>人机验证</b>\n\n请选择正确答案：\n\n${question}`, kb: mathKb });
+            await tg.sendMsg({ chatId: user.id, text: t('verify.title', { question }), kb: mathKb });
           }
         }
       }
@@ -346,43 +346,45 @@ async function handleMsg(msg, { tg, db, kv, settings, baseUrl }) {
   }
 
   if (!groupId || isNaN(groupId)) {
-    await tg.sendMsg({ chatId: user.id, text: '⚙️ 机器人未正确配置，请联系管理员。' });
+    await tg.sendMsg({ chatId: user.id, text: t('badConfig') });
     return;
   }
 
-  const tid = await getOrCreateThread(tg, db, user, groupId, kv);
-  if (!tid) { await tg.sendMsg({ chatId: user.id, text: '❌ 发送失败，请稍后再试。' }); return; }
+  const tid = await getOrCreateThread(tg, db, user, groupId, kv, t);
+  if (!tid) { await tg.sendMsg({ chatId: user.id, text: t('sendFail') }); return; }
 
   // Use copyMessage to forward ALL content types with full formatting preserved
   const res = await tg.copyMsg({ chatId: groupId, fromChatId: msg.chat.id, msgId: msg.message_id, threadId: tid });
   if (res.ok) {
     await db.addMsg({ userId: user.id, direction: 'incoming', content: msg.text || msg.caption || '[媒体]', messageType: msgType(msg), telegramMessageId: msg.message_id });
-    await tg.sendMsg({ chatId: user.id, text: '✅ 消息已发送，管理员将尽快回复。' });
+    await tg.sendMsg({ chatId: user.id, text: t('sentToAdmin') });
   } else {
     // Topic may have been deleted — clear stale thread, recreate, and retry once
     console.warn('copyMsg failed (thread may be deleted), retrying with new thread:', res);
     await db.clearUserThread(user.id);
-    const newTid = await getOrCreateThread(tg, db, user, groupId, kv);
+    const newTid = await getOrCreateThread(tg, db, user, groupId, kv, t);
     if (newTid) {
       const retry = await tg.copyMsg({ chatId: groupId, fromChatId: msg.chat.id, msgId: msg.message_id, threadId: newTid });
       if (retry.ok) {
         await db.addMsg({ userId: user.id, direction: 'incoming', content: msg.text || msg.caption || '[媒体]', messageType: msgType(msg), telegramMessageId: msg.message_id });
-        await tg.sendMsg({ chatId: user.id, text: '✅ 消息已发送，管理员将尽快回复。' });
+        await tg.sendMsg({ chatId: user.id, text: t('sentToAdmin') });
         return;
       }
     }
     console.error('copyMsg retry also failed:', res);
-    await tg.sendMsg({ chatId: user.id, text: '❌ 发送失败，请稍后再试。' });
+    await tg.sendMsg({ chatId: user.id, text: t('sendFail') });
   }
 }
 
-async function handleAdminPrivateMsg(msg, user, { tg, db, kv, settings, groupId }) {
+async function handleAdminPrivateMsg(msg, user, { tg, db, kv, settings, groupId, t }) {
+  const protectedAdminIds = new Set(parseAdminIds(settings.ADMIN_IDS).map(Number));
+
   const sendPanel = async () => {
     const s = await db.getStats();
     await tg.sendMsg({
       chatId: user.id,
-      text: `🤖 <b>管理员控制台</b>\n\n👥 ${s.totalUsers} 用户  ⛔ ${s.blockedUsers} 封禁\n💬 ${s.totalMessages} 消息  📅 今日 ${s.todayMessages}`,
-      kb: adminPanelKb(settings),
+      text: t('admin.panel', s),
+      kb: adminPanelKb(settings, t),
     });
   };
 
@@ -397,38 +399,43 @@ async function handleAdminPrivateMsg(msg, user, { tg, db, kv, settings, groupId 
     }
     if (cmd === 'stats') {
       const s = await db.getStats();
-      await tg.sendMsg({ chatId: user.id, text: `📊 <b>统计</b>\n\n👥 总用户：${s.totalUsers}\n⛔ 封禁：${s.blockedUsers}\n💬 消息：${s.totalMessages}\n📅 今日：${s.todayMessages}` });
+      await tg.sendMsg({ chatId: user.id, text: t('admin.stats', s) });
       return;
     }
     if (cmd === 'ban' && arg) {
-      await db.blockUser(parseInt(arg, 10), '管理员指令封禁', user.id, true);
-      await tg.sendMsg({ chatId: user.id, text: `✅ 已封禁用户 ${arg}` });
+      const uid = parseInt(arg, 10);
+      if (protectedAdminIds.has(uid)) {
+        await tg.sendMsg({ chatId: user.id, text: t('admin.cannotBanAdmin') });
+        return;
+      }
+      await db.blockUser(uid, '管理员指令封禁', user.id, true);
+      await tg.sendMsg({ chatId: user.id, text: t('admin.banned', { uid: arg }) });
       return;
     }
     if (cmd === 'unban' && arg) {
       await db.unblockUser(parseInt(arg, 10));
-      await tg.sendMsg({ chatId: user.id, text: `✅ 已解封用户 ${arg}` });
+      await tg.sendMsg({ chatId: user.id, text: t('admin.unbanned', { uid: arg }) });
       return;
     }
     if (cmd === 'wl' && arg) {
       await db.addToWhitelist(parseInt(arg, 10), '管理员指令添加', String(user.id));
-      await tg.sendMsg({ chatId: user.id, text: `✅ 用户 ${arg} 已加入白名单` });
+      await tg.sendMsg({ chatId: user.id, text: t('admin.wlAdded', { uid: arg }) });
       return;
     }
     if (cmd === 'unwl' && arg) {
       await db.removeFromWhitelist(parseInt(arg, 10));
-      await tg.sendMsg({ chatId: user.id, text: `✅ 用户 ${arg} 已移出白名单` });
+      await tg.sendMsg({ chatId: user.id, text: t('admin.wlRemoved', { uid: arg }) });
       return;
     }
     if (cmd === 'info' && arg) {
       const u = await db.getUser(parseInt(arg, 10));
-      if (!u) { await tg.sendMsg({ chatId: user.id, text: '用户不存在' }); return; }
-      await tg.sendMsg({ chatId: user.id, text: buildDetailText(u), kb: fullUserKb(u.user_id, u) });
+      if (!u) { await tg.sendMsg({ chatId: user.id, text: t('admin.userNotFound') }); return; }
+      await tg.sendMsg({ chatId: user.id, text: buildDetailText(u, false, t), kb: fullUserKb(u.user_id, u, t) });
       return;
     }
 
     // Unknown slash commands should not be forwarded to group/topic.
-    await tg.sendMsg({ chatId: user.id, text: 'ℹ️ 未知命令。可用命令：/panel /stats /ban /unban /wl /unwl /info' });
+    await tg.sendMsg({ chatId: user.id, text: t('admin.unknownCmd') });
     return;
   }
 
@@ -437,7 +444,7 @@ async function handleAdminPrivateMsg(msg, user, { tg, db, kv, settings, groupId 
   // ADMIN_NOTIFY is ON: forward admin message to forum group (no target thread context in private chat)
   const fwdRes = await tg.copyMsg({ chatId: groupId, fromChatId: msg.chat.id, msgId: msg.message_id });
   if (fwdRes.ok) {
-    await tg.sendMsg({ chatId: user.id, text: '✅ 消息已转发到群组。' });
+    await tg.sendMsg({ chatId: user.id, text: t('admin.forwarded') });
   } else {
     // Fallback: show admin control panel if forwarding fails (e.g. bot not in group yet)
     await sendPanel();
@@ -445,7 +452,7 @@ async function handleAdminPrivateMsg(msg, user, { tg, db, kv, settings, groupId 
 }
 
 // ── Callback handler ──────────────────────────────────────────────────────────
-async function handleCb(q, { tg, db, kv, settings }) {
+async function handleCb(q, { tg, db, kv, settings, t }) {
   const { data, from: user, message } = q;
   const chatId  = message.chat.id;
   const msgId   = message.message_id;
@@ -455,15 +462,15 @@ async function handleCb(q, { tg, db, kv, settings }) {
 
   try {
     // ── User callbacks ────────────────────────────────────────────────────────
-    if (data === 'user:msg') { await tg.answerCb({ id: q.id, text: '请直接发送文字消息' }); return; }
+    if (data === 'user:msg') { await tg.answerCb({ id: q.id, text: t('cb.sendText') }); return; }
     if (data === 'user:help') {
-      await tg.editText({ chatId, msgId, text: '❓ <b>帮助</b>\n\n直接发送消息即可联系管理员。\n发送 /start 返回主页。', kb: [[{ text: '← 返回', callback_data: 'user:back' }]] });
+      await tg.editText({ chatId, msgId, text: t('cb.help'), kb: [[{ text: t('cb.back'), callback_data: 'user:back' }]] });
       await tg.answerCb({ id: q.id });
       return;
     }
     if (data === 'user:back') {
       const s = await db.getAllSettings();
-      await tg.editText({ chatId, msgId, text: s.WELCOME_MESSAGE || '欢迎！', kb: [[{ text: '📨 发送消息', callback_data: 'user:msg' }, { text: '🆘 帮助', callback_data: 'user:help' }]] });
+      await tg.editText({ chatId, msgId, text: s.WELCOME_MESSAGE || t('cb.welcomeFallback'), kb: [[{ text: t('user.sendMsg'), callback_data: 'user:msg' }, { text: t('user.help'), callback_data: 'user:help' }]] });
       await tg.answerCb({ id: q.id });
       return;
     }
@@ -471,56 +478,77 @@ async function handleCb(q, { tg, db, kv, settings }) {
     // ── Math verification ─────────────────────────────────────────────────────
     if (data.startsWith('v:')) {
       const sel = data.slice(2);
-      await handleVerifyAnswer(q, tg, db, kv, user, chatId, msgId, settings, groupId, sel, null);
+      await handleVerifyAnswer(q, tg, db, kv, user, chatId, msgId, settings, groupId, sel, null, t);
       return;
     }
 
     // ── Image verification ────────────────────────────────────────────────────
     if (data.startsWith('iv:')) {
       const [, sel, captchaId] = data.split(':');
-      await handleVerifyAnswer(q, tg, db, kv, user, chatId, msgId, settings, groupId, sel, captchaId);
+      await handleVerifyAnswer(q, tg, db, kv, user, chatId, msgId, settings, groupId, sel, captchaId, t);
       return;
     }
 
     // ── Appeal ────────────────────────────────────────────────────────────────
     if (data.startsWith('appeal:')) {
+      const blockedUser = await db.getUser(user.id);
+      const canAppeal = canUserAppeal(blockedUser, settings);
+
+      if (!canAppeal) {
+        await kv.delete(`pending_appeal:${user.id}`).catch(() => {});
+        const denyText = blockedUser?.is_permanent_block
+          ? t('appeal.notAvailablePermanent')
+          : t('appeal.notAvailable');
+        await tg.answerCb({ id: q.id, text: t('cb.appealNotAvailable'), alert: true }).catch(() => {});
+        await tg.editText({ chatId, msgId, text: denyText, kb: [] }).catch(() => {});
+        return;
+      }
+
       const isStart = data === 'appeal:start';
       if (isStart) await kv.put(`pending_appeal:${user.id}`, '1', { expirationTtl: 900 });
       else await kv.delete(`pending_appeal:${user.id}`);
       await tg.editText({
         chatId, msgId,
-        text: isStart ? '📝 <b>申诉</b>\n\n请直接发送申诉内容，管理员会审核。' : '⛔ <b>您已被封禁</b>',
-        kb:   isStart ? [[{ text: '❌ 取消', callback_data: 'appeal:cancel' }]] : [[{ text: '📝 申诉', callback_data: 'appeal:start' }]],
+        text: isStart ? t('appeal.enter') : t('appeal.blocked'),
+        kb:   isStart ? [[{ text: t('appeal.cancel'), callback_data: 'appeal:cancel' }]] : [[{ text: t('appeal.short'), callback_data: 'appeal:start' }]],
       });
       await tg.answerCb({ id: q.id });
       return;
     }
 
-    if (!isAdmin) { await tg.answerCb({ id: q.id, text: '⛔ 无权限', alert: true }); return; }
+    if (!isAdmin) { await tg.answerCb({ id: q.id, text: t('cb.noPermission'), alert: true }); return; }
 
     // ── Admin callbacks ───────────────────────────────────────────────────────
     if (data.startsWith('bl:')) {
       const uid = parseInt(data.slice(3), 10);
+      if (isProtectedAdminUid(uid, settings)) {
+        await tg.answerCb({ id: q.id, text: t('admin.cannotBanAdmin'), alert: true });
+        return;
+      }
       await db.blockUser(uid, '管理员操作', user.id, false);
-      await refreshCard(tg, db, chatId, msgId, uid, message);
-      await tg.sendMsg({ chatId: uid, text: '⛔ 您已被封禁。' }).catch(() => {});
-      await tg.answerCb({ id: q.id, text: '✅ 已封禁' });
+      await refreshCard(tg, db, chatId, msgId, uid, message, t);
+      await tg.sendMsg({ chatId: uid, text: t('appeal.blocked') }).catch(() => {});
+      await tg.answerCb({ id: q.id, text: t('cb.blocked') });
       return;
     }
     if (data.startsWith('pb:')) {
       const uid = parseInt(data.slice(3), 10);
+      if (isProtectedAdminUid(uid, settings)) {
+        await tg.answerCb({ id: q.id, text: t('admin.cannotBanAdmin'), alert: true });
+        return;
+      }
       await db.blockUser(uid, '永久封禁', user.id, true);
-      await refreshCard(tg, db, chatId, msgId, uid, message);
-      await tg.sendMsg({ chatId: uid, text: '⛔ 您已被永久封禁。' }).catch(() => {});
-      await tg.answerCb({ id: q.id, text: '✅ 已永久封禁' });
+      await refreshCard(tg, db, chatId, msgId, uid, message, t);
+      await tg.sendMsg({ chatId: uid, text: t('appeal.blockedPermanent') }).catch(() => {});
+      await tg.answerCb({ id: q.id, text: t('cb.permBlocked') });
       return;
     }
     if (data.startsWith('ub:')) {
       const uid = parseInt(data.slice(3), 10);
       await db.unblockUser(uid);
-      await refreshCard(tg, db, chatId, msgId, uid, message);
-      await tg.sendMsg({ chatId: uid, text: '✅ 您已被解封，可继续发送消息。' }).catch(() => {});
-      await tg.answerCb({ id: q.id, text: '✅ 已解封' });
+      await refreshCard(tg, db, chatId, msgId, uid, message, t);
+      await tg.sendMsg({ chatId: uid, text: t('unblockedNotice') }).catch(() => {});
+      await tg.answerCb({ id: q.id, text: t('cb.unblocked') });
       return;
     }
     if (data.startsWith('wl:')) {
@@ -528,59 +556,59 @@ async function handleCb(q, { tg, db, kv, settings }) {
       const isWl = await db.isWhitelisted(uid);
       if (isWl) {
         await db.removeFromWhitelist(uid);
-        await tg.answerCb({ id: q.id, text: '✅ 已移出白名单' });
+        await tg.answerCb({ id: q.id, text: t('cb.wlRemoved') });
       } else {
         await db.addToWhitelist(uid, '管理员手动添加', String(user.id));
-        await tg.answerCb({ id: q.id, text: '✅ 已加入白名单' });
+        await tg.answerCb({ id: q.id, text: t('cb.wlAdded') });
       }
-      await refreshCard(tg, db, chatId, msgId, uid, message);
+      await refreshCard(tg, db, chatId, msgId, uid, message, t);
       return;
     }
     if (data.startsWith('ui:')) {
       const uid = parseInt(data.slice(3), 10);
       const u   = await db.getUser(uid);
-      if (!u) { await tg.answerCb({ id: q.id, text: '用户不存在' }); return; }
+      if (!u) { await tg.answerCb({ id: q.id, text: t('admin.userNotFound') }); return; }
       const isWl = await db.isWhitelisted(uid);
-      await editCard(tg, chatId, msgId, message, buildDetailText(u, isWl), [...fullUserKb(uid, u), [{ text: '🔙 收起', callback_data: `rf:${uid}` }]]);
+      await editCard(tg, chatId, msgId, message, buildDetailText(u, isWl, t), [...fullUserKb(uid, u, t), [{ text: t('collapse'), callback_data: `rf:${uid}` }]]);
       await tg.answerCb({ id: q.id });
       return;
     }
     if (data.startsWith('rf:')) {
       const uid = parseInt(data.slice(3), 10);
       const u   = await db.getUser(uid);
-      await refreshCard(tg, db, chatId, msgId, uid, message);
-      await tg.answerCb({ id: q.id, text: '已刷新' });
+      await refreshCard(tg, db, chatId, msgId, uid, message, t);
+      await tg.answerCb({ id: q.id, text: t('cb.refreshed') });
       return;
     }
     if (data.startsWith('ml:')) {
       const [, uid, pg] = data.split(':');
       const page = parseInt(pg || '1', 10), ps = 8;
       const msgs = await db.getMsgs(parseInt(uid, 10), ps, (page - 1) * ps);
-      if (!msgs.length) { await tg.answerCb({ id: q.id, text: '暂无记录' }); return; }
+      if (!msgs.length) { await tg.answerCb({ id: q.id, text: t('cb.noRecord') }); return; }
       const lines = msgs.map(m => `[${fmtMsgTime(m.created_at)}] ${m.direction === 'incoming' ? '→' : '←'} ${esc((m.content || '').slice(0, 36))}`).join('\n');
       const nav = [];
       if (page > 1)           nav.push({ text: '◀', callback_data: `ml:${uid}:${page - 1}` });
       if (msgs.length === ps) nav.push({ text: '▶', callback_data: `ml:${uid}:${page + 1}` });
-      await editCard(tg, chatId, msgId, message, `📨 <b>消息记录 (第${page}页)</b>\n\n<code>${lines}</code>`, [nav, [{ text: '← 返回', callback_data: `ui:${uid}` }]]);
+      await editCard(tg, chatId, msgId, message, `📨 <b>${t('msgHistoryTitle', { page })}</b>\n\n<code>${lines}</code>`, [nav, [{ text: t('cb.back'), callback_data: `ui:${uid}` }]]);
       await tg.answerCb({ id: q.id });
       return;
     }
     if (data.startsWith('apu:')) {
       const uid = parseInt(data.slice(4), 10);
       await db.unblockUser(uid);
-      await tg.sendMsg({ chatId: uid, text: '✅ 您的申诉已通过，账号已解封。' }).catch(() => {});
-      await tg.answerCb({ id: q.id, text: '已通过申诉并解封' });
+      await tg.sendMsg({ chatId: uid, text: t('appealApprovedNotice') }).catch(() => {});
+      await tg.answerCb({ id: q.id, text: t('cb.appealApproved') });
       return;
     }
     if (data.startsWith('apr:')) {
       const uid = parseInt(data.slice(4), 10);
-      await tg.sendMsg({ chatId: uid, text: '❌ 您的申诉未通过，请稍后再试或联系管理员。' }).catch(() => {});
-      await tg.answerCb({ id: q.id, text: '已拒绝申诉' });
+      await tg.sendMsg({ chatId: uid, text: t('appealRejectedNotice') }).catch(() => {});
+      await tg.answerCb({ id: q.id, text: t('cb.appealRejected') });
       return;
     }
 
     // ── Admin panel callbacks ─────────────────────────────────────────────────
-    if (data.startsWith('adm:')) await handleAdmCb(q, data.slice(4), { tg, db, settings, chatId, msgId });
+    if (data.startsWith('adm:')) await handleAdmCb(q, data.slice(4), { tg, db, settings, chatId, msgId, t });
     else await tg.answerCb({ id: q.id });
   } catch (e) {
     console.error('handleCb:', e);
@@ -588,15 +616,15 @@ async function handleCb(q, { tg, db, kv, settings }) {
   }
 }
 
-async function handleVerifyAnswer(q, tg, db, kv, user, chatId, msgId, settings, groupId, sel, captchaId) {
+async function handleVerifyAnswer(q, tg, db, kv, user, chatId, msgId, settings, groupId, sel, captchaId, t) {
   const v = await db.getVerify(user.id);
   if (!v || v.expires_at < Date.now()) {
     await db.delVerify(user.id);
-    await tg.answerCb({ id: q.id, text: '验证已过期，请重新发送消息', alert: true });
+    await tg.answerCb({ id: q.id, text: t('verify.expired'), alert: true });
     return;
   }
   if (captchaId && v.captcha_id !== captchaId) {
-    await tg.answerCb({ id: q.id, text: '验证码不匹配，请重新发送消息', alert: true });
+    await tg.answerCb({ id: q.id, text: t('verify.mismatch'), alert: true });
     return;
   }
   const maxAtt = parseInt(settings.MAX_VERIFICATION_ATTEMPTS || '3', 10);
@@ -604,18 +632,18 @@ async function handleVerifyAnswer(q, tg, db, kv, user, chatId, msgId, settings, 
     await db.setUserVerified(user.id, true);
     await db.delVerify(user.id);
     if (captchaId) await kv.delete(`captcha_render:${captchaId}`);
-    await tg.editText({ chatId, msgId, text: '✅ <b>验证成功！</b>\n\n现在可以发送消息了。', kb: [] }).catch(() => {});
+    await tg.editText({ chatId, msgId, text: t('verify.success'), kb: [] }).catch(() => {});
     // Forward pending message
     const pr = await kv.get(`pending:${user.id}`);
     if (pr && groupId) {
       await kv.delete(`pending:${user.id}`);
       const p = JSON.parse(pr);
       const u = await db.getUser(user.id);
-      const tid = await getOrCreateThread(tg, db, user, groupId, kv);
+      const tid = await getOrCreateThread(tg, db, user, groupId, kv, t);
       if (tid && p.msgId) {
         await tg.copyMsg({ chatId: groupId, fromChatId: chatId, msgId: p.msgId, threadId: tid });
         await db.addMsg({ userId: user.id, direction: 'incoming', content: '[已验证，消息已转发]' });
-        await tg.sendMsg({ chatId: user.id, text: '✅ 消息已发送给管理员。' });
+        await tg.sendMsg({ chatId: user.id, text: t('sentAfterVerify') });
       }
     }
     await tg.answerCb({ id: q.id }).catch(() => {});
@@ -625,28 +653,28 @@ async function handleVerifyAnswer(q, tg, db, kv, user, chatId, msgId, settings, 
     if (att >= maxAtt) {
       await db.delVerify(user.id);
       if (captchaId) await kv.delete(`captcha_render:${captchaId}`);
-      await tg.editText({ chatId, msgId, text: '❌ <b>验证失败次数过多</b>\n请重新发送消息获取新验证。', kb: [] }).catch(() => {});
+      await tg.editText({ chatId, msgId, text: t('verify.tooMany'), kb: [] }).catch(() => {});
       await tg.answerCb({ id: q.id }).catch(() => {});
     } else {
-      await tg.answerCb({ id: q.id, text: `❌ 错误，还剩 ${maxAtt - att} 次`, alert: true });
+      await tg.answerCb({ id: q.id, text: t('verify.wrongLeft', { left: maxAtt - att }), alert: true });
     }
   }
 }
 
-async function handleAdmCb(q, action, { tg, db, settings, chatId, msgId }) {
+async function handleAdmCb(q, action, { tg, db, settings, chatId, msgId, t }) {
   const toggle = async (key, label) => {
     const cur = settings[key] === 'true';
     await db.setSetting(key, cur ? 'false' : 'true');
     const ns = await db.getAllSettings();
-    await tg.editKb({ chatId, msgId, kb: adminPanelKb(ns) });
-    await tg.answerCb({ id: q.id, text: `${label}已${cur ? '关闭' : '开启'}` });
+    await tg.editKb({ chatId, msgId, kb: adminPanelKb(ns, t) });
+    await tg.answerCb({ id: q.id, text: t('toggleResult', { label, state: cur ? t('panel.off') : t('panel.on') }) });
   };
 
-  if (action === 'tv') return toggle('VERIFICATION_ENABLED', '验证');
-  if (action === 'ta') return toggle('AUTO_UNBLOCK_ENABLED', '申诉');
-  if (action === 'tw') return toggle('WHITELIST_ENABLED', '白名单');
-  if (action === 'tf') return toggle('BOT_COMMAND_FILTER', '指令过滤');
-  if (action === 'tn') return toggle('ADMIN_NOTIFY_ENABLED', '管理私聊提示');
+  if (action === 'tv') return toggle('VERIFICATION_ENABLED', t('panel.verify'));
+  if (action === 'ta') return toggle('AUTO_UNBLOCK_ENABLED', t('panel.appeal'));
+  if (action === 'tw') return toggle('WHITELIST_ENABLED', t('panel.whitelist'));
+  if (action === 'tf') return toggle('BOT_COMMAND_FILTER', t('panel.cmdFilter'));
+  if (action === 'tn') return toggle('ADMIN_NOTIFY_ENABLED', t('panel.adminNotify'));
 
   if (action === 'ct') {
     const all = ['math', 'image_numeric', 'image_alphanumeric'];
@@ -654,8 +682,8 @@ async function handleAdmCb(q, action, { tg, db, settings, chatId, msgId }) {
     const next = all[(cur + 1) % all.length];
     await db.setSetting('CAPTCHA_TYPE', next);
     const ns = await db.getAllSettings();
-    await tg.editKb({ chatId, msgId, kb: adminPanelKb(ns) });
-    await tg.answerCb({ id: q.id, text: '验证类型已切换' });
+    await tg.editKb({ chatId, msgId, kb: adminPanelKb(ns, t) });
+    await tg.answerCb({ id: q.id, text: t('captchaTypeSwitched') });
     return;
   }
 
@@ -664,8 +692,8 @@ async function handleAdmCb(q, action, { tg, db, settings, chatId, msgId }) {
     const next = cur >= 900 ? 60 : cur + 60;
     await db.setSetting('VERIFICATION_TIMEOUT', String(next));
     const ns = await db.getAllSettings();
-    await tg.editKb({ chatId, msgId, kb: adminPanelKb(ns) });
-    await tg.answerCb({ id: q.id, text: `验证超时已设为 ${next}s` });
+    await tg.editKb({ chatId, msgId, kb: adminPanelKb(ns, t) });
+    await tg.answerCb({ id: q.id, text: t('timeoutSet', { next }) });
     return;
   }
 
@@ -674,35 +702,35 @@ async function handleAdmCb(q, action, { tg, db, settings, chatId, msgId }) {
     const next = cur >= 10 ? 1 : cur + 1;
     await db.setSetting('MAX_VERIFICATION_ATTEMPTS', String(next));
     const ns = await db.getAllSettings();
-    await tg.editKb({ chatId, msgId, kb: adminPanelKb(ns) });
-    await tg.answerCb({ id: q.id, text: `尝试次数已设为 ${next}` });
+    await tg.editKb({ chatId, msgId, kb: adminPanelKb(ns, t) });
+    await tg.answerCb({ id: q.id, text: t('attemptsSet', { next }) });
     return;
   }
 
   if (action === 'st') {
     const s = await db.getStats();
-    await tg.editText({ chatId, msgId, text: `📊 <b>统计</b>\n\n👥 总用户：${s.totalUsers}\n⛔ 封禁：${s.blockedUsers}\n💬 消息：${s.totalMessages}\n📅 今日：${s.todayMessages}`, kb: [[{ text: '← 返回', callback_data: 'adm:bk' }]] });
+    await tg.editText({ chatId, msgId, text: t('admin.stats', s), kb: [[{ text: t('cb.back'), callback_data: 'adm:bk' }]] });
   } else if (action === 'bk') {
     const s = await db.getAllSettings(), st = await db.getStats();
-    await tg.editText({ chatId, msgId, text: `🤖 <b>管理员控制台</b>\n\n👥 ${st.totalUsers}  ⛔ ${st.blockedUsers}  💬 ${st.totalMessages}`, kb: adminPanelKb(s) });
+    await tg.editText({ chatId, msgId, text: t('admin.panelCompact', st), kb: adminPanelKb(s, t) });
   } else if (action.startsWith('bk:')) {
     const page = parseInt(action.split(':')[1] || '1', 10), ps = 8;
     const { users, total } = await db.getBlockedUsers(page, ps);
     const tp = Math.ceil(total / ps) || 1;
-    const lines = users.map(u => `• <code>${u.user_id}</code> ${esc(name(u))} — ${esc(u.block_reason || '无')}`).join('\n') || '暂无';
+    const lines = users.map(u => `• <code>${u.user_id}</code> ${esc(name(u))} — ${esc(u.block_reason || t('list.none'))}`).join('\n') || t('list.none');
     const nav = [];
     if (page > 1)  nav.push({ text: '◀', callback_data: `adm:bk:${page - 1}` });
     if (page < tp) nav.push({ text: '▶', callback_data: `adm:bk:${page + 1}` });
-    await tg.editText({ chatId, msgId, text: `🚫 <b>黑名单 (${total}人 第${page}/${tp}页)</b>\n\n${lines}`, kb: [nav, [{ text: '← 返回', callback_data: 'adm:bk' }]] });
+    await tg.editText({ chatId, msgId, text: `🚫 <b>${t('blacklistTitle', { total, page, tp })}</b>\n\n${lines}`, kb: [nav, [{ text: t('cb.back'), callback_data: 'adm:bk' }]] });
   } else if (action.startsWith('ul:')) {
     const page = parseInt(action.split(':')[1] || '1', 10), ps = 8;
     const { users, total } = await db.getAllUsers(page, ps);
     const tp = Math.ceil(total / ps) || 1;
-    const lines = users.map(u => `• <code>${u.user_id}</code> ${esc(name(u))} ${u.is_blocked ? '⛔' : '✅'}`).join('\n') || '暂无';
+    const lines = users.map(u => `• <code>${u.user_id}</code> ${esc(name(u))} ${u.is_blocked ? '⛔' : '✅'}`).join('\n') || t('list.none');
     const nav = [];
     if (page > 1)  nav.push({ text: '◀', callback_data: `adm:ul:${page - 1}` });
     if (page < tp) nav.push({ text: '▶', callback_data: `adm:ul:${page + 1}` });
-    await tg.editText({ chatId, msgId, text: `👥 <b>用户列表 (${total}人 第${page}/${tp}页)</b>\n\n${lines}`, kb: [nav, [{ text: '← 返回', callback_data: 'adm:bk' }]] });
+    await tg.editText({ chatId, msgId, text: `👥 <b>${t('userListTitle', { total, page, tp })}</b>\n\n${lines}`, kb: [nav, [{ text: t('cb.back'), callback_data: 'adm:bk' }]] });
   }
   await tg.answerCb({ id: q.id }).catch(() => {});
 }
@@ -712,17 +740,29 @@ function parseAdminIds(str) {
   return (str || '').split(',').map(s => parseInt(s.trim(), 10)).filter(Boolean);
 }
 
-function buildDetailText(u, isWl = false) {
-  return `👤 <b>用户详情</b>\n\n` +
+function isProtectedAdminUid(uid, settings) {
+  const n = Number(uid);
+  if (!Number.isFinite(n)) return false;
+  return parseAdminIds(settings?.ADMIN_IDS).includes(n);
+}
+
+function canUserAppeal(blockedUser, settings) {
+  return Boolean(blockedUser?.is_blocked) &&
+    !Boolean(blockedUser?.is_permanent_block) &&
+    settings?.AUTO_UNBLOCK_ENABLED === 'true';
+}
+
+function buildDetailText(u, isWl = false, t) {
+  return `👤 <b>${t('detail.title')}</b>\n\n` +
     `ID: <code>${u.user_id}</code>\n` +
-    `姓名: ${esc(name(u))}\n` +
-    `用户名: ${u.username ? '@' + esc(u.username) : '无'}\n` +
-    `语言: ${u.language_code || '未知'}\n` +
-    `状态: ${u.is_blocked ? (u.is_permanent_block ? '♾️ 永久封禁' : '⛔ 封禁') : '✅ 正常'}\n` +
-    (u.is_blocked ? `原因: ${esc(u.block_reason || '无')}\n` : '') +
-    `白名单: ${isWl ? '⚪ 是' : '否'}\n` +
-    `验证: ${u.is_verified ? '✅ 已验证' : '未验证'}\n` +
-    `首次联系: ${fmtUtc8(u.created_at)}`;
+    `${t('card.name')}: ${esc(name(u))}\n` +
+    `${t('card.username')}: ${u.username ? '@' + esc(u.username) : t('list.none')}\n` +
+    `${t('card.language')}: ${u.language_code || t('list.none')}\n` +
+    `${t('card.status')}: ${u.is_blocked ? (u.is_permanent_block ? '♾️' : '⛔') : '✅'}\n` +
+    (u.is_blocked ? `${t('detail.reason')}: ${esc(u.block_reason || t('list.none'))}\n` : '') +
+    `${t('detail.whitelist')}: ${isWl ? '⚪ ' + t('panel.on') : t('panel.off')}\n` +
+    `${t('detail.verification')}: ${u.is_verified ? t('status.verified') : t('status.unverified')}\n` +
+    `${t('detail.firstContact')}: ${fmtUtc8(u.created_at, t)}`;
 }
 
 /** Edit existing card — handles both text and photo (caption) messages. */
@@ -736,22 +776,22 @@ async function editCard(tg, chatId, msgId, message, text, kb) {
   }
 }
 
-async function refreshCard(tg, db, chatId, msgId, uid, message) {
+async function refreshCard(tg, db, chatId, msgId, uid, message, t) {
   const u  = await db.getUser(uid);
-  const kb = fullUserKb(uid, u);
+  const kb = fullUserKb(uid, u, t);
   if (message.photo || message.video) {
-    await tg.editCaption({ chatId, msgId, caption: buildCardText(u, u), kb }).catch(() =>
+    await tg.editCaption({ chatId, msgId, caption: buildCardText(u, u, t), kb }).catch(() =>
       tg.editKb({ chatId, msgId, kb })
     );
   } else {
-    await tg.editText({ chatId, msgId, text: buildCardText(u, u), kb }).catch(() =>
+    await tg.editText({ chatId, msgId, text: buildCardText(u, u, t), kb }).catch(() =>
       tg.editKb({ chatId, msgId, kb })
     );
   }
 }
 
-function fmtUtc8(ts) {
-  if (!ts) return '未知';
+function fmtUtc8(ts, t = null) {
+  if (!ts) return t ? t('list.none') : '未知';
   const d = new Date(new Date(ts).getTime() + 8 * 3600000);
   const pad = n => String(n).padStart(2, '0');
   return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;

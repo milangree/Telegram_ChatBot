@@ -17,7 +17,7 @@
         <span class="user-name">{{ auth.username }}</span>
       </div>
       <RouterLink to="/profile" class="profile-btn" title="个人设置">⚙️</RouterLink>
-      <button class="logout-btn" @click="logout" title="退出">⏻</button>
+      <button class="logout-btn" @click="logout" title="退出">🚪</button>
     </div>
   </nav>
 </template>
@@ -47,7 +47,7 @@ async function logout() { await auth.logout(); router.push('/login') }
 .user-ava{width:30px;height:30px;border-radius:50%;background:var(--accent-dim);color:var(--accent);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex-shrink:0}
 .user-name{font-size:13px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .profile-btn{background:transparent;border:none;font-size:18px;cursor:pointer;margin-right:4px;color:var(--text2)}
-.logout-btn{background:transparent;color:var(--text3);border:none;padding:6px;font-size:16px;border-radius:var(--rs)}
+.logout-btn{background:transparent;color:var(--text3);border:none;padding:6px;font-size:16px;line-height:1;border-radius:var(--rs)}
 .logout-btn:hover{color:var(--danger);background:rgba(247,79,79,.1)}
 @media(max-width:768px){.sidebar{width:100%;min-width:0;height:auto;flex-direction:row;border-right:none;border-bottom:1px solid var(--border)}.nav-links{flex-direction:row;padding:8px;overflow-x:auto}.nav-label{display:none}.sidebar-header{padding:12px}}
 </style>
