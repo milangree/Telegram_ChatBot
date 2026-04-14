@@ -364,6 +364,13 @@ const SETTINGS_DB_CACHE_KEY = 'settings:db-info'
 
 let adminProfileSeq = 0
 
+function syncSettingsCache() {
+  writeLocalCache(SETTINGS_CACHE_KEY, {
+    ...form.value,
+    WEBHOOK_URL: webhookUrl.value || '',
+  })
+}
+
 const boolProp = key => computed({ get: () => form.value[key] === 'true', set: v => { form.value[key] = v ? 'true' : 'false' } })
 const verifyEnabled = boolProp('VERIFICATION_ENABLED')
 const autoUnblock = boolProp('AUTO_UNBLOCK_ENABLED')
@@ -481,7 +488,7 @@ async function load(force = false) {
     webhookUrl.value = data.WEBHOOK_URL || ''
     form.value.CAPTCHA_SITE_URL = data.CAPTCHA_SITE_URL || ''
 
-    writeLocalCache(SETTINGS_CACHE_KEY, form.value)
+    syncSettingsCache()
     writeLocalCache(SETTINGS_DB_CACHE_KEY, dbInfo.value)
 
     resolveAdminProfiles()
@@ -511,7 +518,7 @@ async function save() {
     await api.put('/api/settings', form.value)
     saved.value = true
     form.value.WEBHOOK_URL = webhookUrl.value || ''
-    writeLocalCache(SETTINGS_CACHE_KEY, form.value)
+    syncSettingsCache()
     setTimeout(() => saved.value = false, 3000)
   } catch (e) {
     saveErr.value = e.message
@@ -543,7 +550,7 @@ async function setWebhook() {
     if (!form.value.CAPTCHA_SITE_URL && webhookUrl.value) {
       form.value.CAPTCHA_SITE_URL = new URL(webhookUrl.value).origin
     }
-    writeLocalCache(SETTINGS_CACHE_KEY, form.value)
+    syncSettingsCache()
   }
   catch (e) { whResult.value = { ok: false, err: e.message } }
   finally { settingWh.value = false }
@@ -666,6 +673,19 @@ async function clearData() {
 }
 
 watch(adminList, () => {
+  resolveAdminProfiles()
+})
+
+watch(form, () => {
+  syncSettingsCache()
+}, { deep: true })
+
+watch(webhookUrl, () => {
+  syncSettingsCache()
+})
+
+watch(zalgoFilterEnabled, () => {
+  syncSettingsCache()
   resolveAdminProfiles()
 })
 

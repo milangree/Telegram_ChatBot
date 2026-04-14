@@ -104,6 +104,7 @@ const convs = ref([]), msgs = ref([]), selUser = ref(null), selId = ref(null)
 const search = ref(''), loadingList = ref(true), loadingMsgs = ref(false), msgRef = ref(null)
 const mobileView = ref('list')
 const avatars = ref({})
+const msgRequestToken = ref(0)
 
 const CONV_LIST_CACHE_KEY = 'conversations:list'
 const convMessagesCacheKey = uid => `conversations:messages:${uid}`
@@ -176,39 +177,55 @@ function tryLoadAvatar(uid) {
 }
 
 async function selectUser(c) {
-  selId.value = c.user_id
+  const uid = c.user_id
+  const requestToken = ++msgRequestToken.value
+
+  selId.value = uid
+  selUser.value = { ...c }
   mobileView.value = 'detail'
 
-  const cacheKey = convMessagesCacheKey(c.user_id)
+  const cacheKey = convMessagesCacheKey(uid)
   const cached = readLocalCache(cacheKey)
+  const cachedMessages = Array.isArray(cached?.messages) ? cached.messages : []
+
   if (cached?.user) {
     selUser.value = cached.user
-    msgs.value = Array.isArray(cached.messages) ? cached.messages : []
+    msgs.value = cachedMessages
     loadingMsgs.value = false
   } else {
+    msgs.value = []
     loadingMsgs.value = true
   }
 
   try {
-    const since = getLatestTimestamp(msgs.value, 'created_at')
+    const since = getLatestTimestamp(cachedMessages, 'created_at')
     const query = since ? `?since=${encodeURIComponent(since)}` : ''
-    const d = await api.get(`/api/conversations/${c.user_id}${query}`)
-    const incomingMessages = Array.isArray(d?.messages) ? d.messages : []
+    const d = await api.get(`/api/conversations/${uid}${query}`)
 
-    selUser.value = d.user || c
-    msgs.value = since
+    if (requestToken !== msgRequestToken.value || selId.value !== uid) return
+
+    const incomingMessages = Array.isArray(d?.messages) ? d.messages : []
+    const nextUser = d.user || c
+    const nextMessages = since
       ? limitToLast(
-        mergeByKey(msgs.value, incomingMessages, 'id', (a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0)),
+        mergeByKey(cachedMessages, incomingMessages, 'id', (a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0)),
         200,
       )
       : incomingMessages
 
-    writeLocalCache(cacheKey, { user: selUser.value, messages: msgs.value })
-    tryLoadAvatar(c.user_id)
-    updateConv(c.user_id, { ...(d.user || {}), ...c })
+    selUser.value = nextUser
+    msgs.value = nextMessages
+
+    writeLocalCache(cacheKey, { user: nextUser, messages: nextMessages })
+    tryLoadAvatar(uid)
+    updateConv(uid, { ...c, ...(d.user || {}) })
     await nextTick()
     if (msgRef.value) msgRef.value.scrollTop = msgRef.value.scrollHeight
-  } finally { loadingMsgs.value = false }
+  } finally {
+    if (requestToken === msgRequestToken.value && selId.value === uid) {
+      loadingMsgs.value = false
+    }
+  }
 }
 
 async function deleteConv() {

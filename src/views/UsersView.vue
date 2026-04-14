@@ -43,7 +43,7 @@
 
     <div v-if="selected.length" class="batch-bar mb-2">
       <span class="text-sm text-muted">{{ t('users.selectedCount', { n: selected.length }) }}</span>
-      <div class="flex gap-2 flex-wrap">
+      <div class="batch-actions flex gap-2 flex-wrap">
         <button class="btn-danger btn-sm" @click="batchBlock">
           <AppIcon name="block" :size="14" />
           {{ t('users.batchBlock') }}
@@ -365,6 +365,12 @@ onMounted(() => {
 .cb{width:14px;height:14px;cursor:pointer;accent-color:var(--accent)}
 .row-sel td{background:rgba(79,142,247,.07)!important}
 .batch-bar{display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--accent-dim);border:1px solid rgba(79,142,247,.3);border-radius:var(--rs);flex-wrap:wrap}
+.batch-actions{align-items:center}
+.batch-actions button{white-space:nowrap}
+@media (max-width:768px){
+  .batch-actions{width:100%}
+  .batch-actions button{flex:0 1 auto;max-width:100%}
+}
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px}
 .modal-card{width:100%;max-width:440px;padding:24px;max-height:90vh;overflow-y:auto}
 .modal-hdr{display:flex;align-items:center;gap:14px;margin-bottom:20px}

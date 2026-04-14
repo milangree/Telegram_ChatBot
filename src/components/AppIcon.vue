@@ -49,8 +49,16 @@
     </template>
 
     <template v-else-if="name === 'settings'">
+      <circle cx="12" cy="12" r="7" />
       <circle cx="12" cy="12" r="3" />
-      <path d="M19.4 15a1 1 0 0 0 .2 1.1l.1.1a1 1 0 0 1 0 1.4l-1.3 1.3a1 1 0 0 1-1.4 0l-.1-.1a1 1 0 0 0-1.1-.2 1 1 0 0 0-.6.9V20a1 1 0 0 1-1 1h-1.8a1 1 0 0 1-1-1v-.2a1 1 0 0 0-.6-.9 1 1 0 0 0-1.1.2l-.1.1a1 1 0 0 1-1.4 0L4.3 17.9a1 1 0 0 1 0-1.4l.1-.1a1 1 0 0 0 .2-1.1 1 1 0 0 0-.9-.6H3.5a1 1 0 0 1-1-1v-1.8a1 1 0 0 1 1-1h.2a1 1 0 0 0 .9-.6 1 1 0 0 0-.2-1.1l-.1-.1a1 1 0 0 1 0-1.4L5.6 4.3a1 1 0 0 1 1.4 0l.1.1a1 1 0 0 0 1.1.2 1 1 0 0 0 .6-.9V3.5a1 1 0 0 1 1-1h1.8a1 1 0 0 1 1 1v.2a1 1 0 0 0 .6.9 1 1 0 0 0 1.1-.2l.1-.1a1 1 0 0 1 1.4 0l1.3 1.3a1 1 0 0 1 0 1.4l-.1.1a1 1 0 0 0-.2 1.1 1 1 0 0 0 .9.6h.2a1 1 0 0 1 1 1v1.8a1 1 0 0 1-1 1h-.2a1 1 0 0 0-.9.6z" />
+      <path d="M12 2.5v2.5" />
+      <path d="M12 19v2.5" />
+      <path d="M2.5 12H5" />
+      <path d="M19 12h2.5" />
+      <path d="M5.3 5.3l1.8 1.8" />
+      <path d="M16.9 16.9l1.8 1.8" />
+      <path d="M18.7 5.3l-1.8 1.8" />
+      <path d="M7.1 16.9l-1.8 1.8" />
     </template>
 
     <template v-else-if="name === 'profile'">
@@ -59,8 +67,10 @@
     </template>
 
     <template v-else-if="name === 'refresh'">
-      <path d="M20 11a8 8 0 1 0 2 5.3" />
-      <path d="M20 4v7h-7" />
+      <path d="M20 4.5V8h-3.5" />
+      <path d="M20 8a8.5 8.5 0 0 0-14.8-2.8" />
+      <path d="M4 19.5V16h3.5" />
+      <path d="M4 16a8.5 8.5 0 0 0 14.8 2.8" />
     </template>
 
     <template v-else-if="name === 'logout'">
@@ -206,5 +216,6 @@ const iconStyle = computed(() => {
   display: inline-block;
   vertical-align: middle;
   flex-shrink: 0;
+  overflow: visible;
 }
 </style>
