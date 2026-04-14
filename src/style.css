@@ -150,15 +150,22 @@ button{cursor:pointer;border:none;border-radius:var(--rs);font-size:14px;font-fa
 /* ── Sidebar ─────────────────────────────────────────────────────────────── */
 .sidebar{
   width:var(--sidebar-w);min-width:var(--sidebar-w);
-  background:linear-gradient(180deg, rgba(255,255,255,.02), rgba(255,255,255,0)), var(--bg2);
-  background-color:var(--bg2);color:var(--text);
+  background:var(--bg2)!important;
+  background-image:none!important;
+  background-color:var(--bg2)!important;
+  color:var(--text);
   border-right:1px solid var(--border);display:flex;flex-direction:column;
   height:100vh;position:sticky;top:0;z-index:200;transition:transform .25s ease;
+  isolation:isolate;
 }
 .sidebar-header{
   padding:18px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;
-  background:linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,0)), var(--bg2);
-  background-color:var(--bg2);color:var(--text)
+  background:var(--bg2)!important;
+  background-image:none!important;
+  background-color:var(--bg2)!important;
+  color:var(--text);
+  position:relative;
+  z-index:1;
 }
 .logo-link{display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--text);background:transparent!important;flex:1}
 .logo{font-size:22px}.logo-text{font-weight:700;font-size:15px;white-space:nowrap}
@@ -185,8 +192,9 @@ button{cursor:pointer;border:none;border-radius:var(--rs);font-size:14px;font-fa
 /* ── Mobile overlay ──────────────────────────────────────────────────────── */
 .sidebar-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:190}
 .mobile-header{
-  display:none;align-items:center;gap:12px;padding:12px 16px;background:var(--bg2);
-  background-color:var(--bg2);color:var(--text);border-bottom:1px solid var(--border);
+  display:none;align-items:center;gap:12px;padding:12px 16px;background:var(--bg2)!important;
+  background-image:none!important;
+  background-color:var(--bg2)!important;color:var(--text);border-bottom:1px solid var(--border);
   position:sticky;top:0;z-index:100
 }
 .mobile-title{font-weight:700;font-size:15px;color:var(--text)}

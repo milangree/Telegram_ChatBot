@@ -22,9 +22,9 @@
         <h3 class="sec-title">🤖 {{ t('settings.section.bot') }}</h3>
         <div class="form-group">
           <label>{{ t('settings.config.botToken') }} <span class="req">*</span></label>
-          <div class="row-g">
+          <div class="row-g settings-inline-row">
             <input v-model="form.BOT_TOKEN" type="password" :placeholder="t('settings.token.placeholder')" autocomplete="off" />
-            <button class="btn-ghost btn-sm" @click="testToken" :disabled="testingTok">{{ testingTok ? '…' : t('settings.token.test') }}</button>
+            <button class="btn-ghost btn-sm settings-inline-btn" @click="testToken" :disabled="testingTok">{{ testingTok ? '…' : t('settings.token.test') }}</button>
           </div>
           <div v-if="tokResult" class="form-hint" :class="tokResult.ok ? 'text-success' : 'text-danger'">
             {{ tokResult.ok ? t('settings.token.valid', { username: tokResult.bot.username, id: tokResult.bot.id }) : '❌ ' + tokResult.err }}
@@ -33,9 +33,9 @@
 
         <div class="form-group">
           <label>{{ t('settings.topicGroupId') }} <span class="req">*</span></label>
-          <div class="row-g">
+          <div class="row-g settings-inline-row">
             <input v-model="form.FORUM_GROUP_ID" :placeholder="t('settings.topicGroupPh')" />
-            <button class="btn-ghost btn-sm utility-btn" @click="resolveChat(form.FORUM_GROUP_ID, 'group')" :disabled="resolvingGroup">
+            <button class="btn-ghost btn-sm utility-btn settings-inline-btn" @click="resolveChat(form.FORUM_GROUP_ID, 'group')" :disabled="resolvingGroup">
               {{ resolvingGroup ? '…' : t('settings.resolve') }}
             </button>
           </div>
@@ -52,9 +52,9 @@
 
         <div class="form-group">
           <label>{{ t('settings.queryChat') }}</label>
-          <div class="row-g">
+          <div class="row-g settings-inline-row">
             <input v-model="chatQuery" :placeholder="t('settings.queryPh')" />
-            <button class="btn-ghost btn-sm utility-btn" @click="resolveChat(chatQuery, 'custom')" :disabled="resolvingCustom">{{ resolvingCustom ? '…' : t('settings.query') }}</button>
+            <button class="btn-ghost btn-sm utility-btn settings-inline-btn" @click="resolveChat(chatQuery, 'custom')" :disabled="resolvingCustom">{{ resolvingCustom ? '…' : t('settings.query') }}</button>
           </div>
           <div v-if="customInfo" class="resolve-card">
             <span>{{ { supergroup: '👥', channel: '📢' }[customInfo.type] || '💬' }}</span>
@@ -495,15 +495,18 @@ onMounted(load)
 .section{margin-bottom:0}
 .resolve-card{margin-top:8px;display:flex;align-items:center;gap:12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rs);padding:10px 14px;flex-wrap:wrap}
 .utility-btn{min-width:88px;justify-content:center}
-.admin-tags{display:grid;gap:10px;margin-bottom:10px}
-.admin-card{display:flex;align-items:flex-start;gap:12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--r);padding:12px 14px}
-.admin-card-avatar{width:42px;height:42px;border-radius:50%;flex-shrink:0;background:var(--accent-dim);color:var(--accent);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;overflow:hidden}
+.settings-inline-row{align-items:stretch}
+.settings-inline-row input{min-height:38px}
+.settings-inline-btn{min-width:96px;min-height:38px;justify-content:center}
+.admin-tags{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,max-content));gap:10px;margin-bottom:10px;justify-content:flex-start}
+.admin-card{width:min(100%,360px);display:grid;grid-template-columns:42px minmax(0,1fr) auto;align-items:center;column-gap:12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--r);padding:12px 14px}
+.admin-card-avatar{width:42px;height:42px;border-radius:50%;background:var(--accent-dim);color:var(--accent);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;overflow:hidden}
 .admin-card-avatar-img{width:100%;height:100%;object-fit:cover}
-.admin-card-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.admin-card-info{min-width:0;display:flex;flex-direction:column;justify-content:center;gap:2px;text-align:left}
 .admin-card-name{font-size:13px;font-weight:600;color:var(--text);word-break:break-word}
 .admin-card-meta{font-size:12px;color:var(--text2);word-break:break-all}
 .admin-card-id{font-size:12px;color:var(--text3);word-break:break-all}
-.admin-card-remove{padding:4px 8px;line-height:1}
+.admin-card-remove{align-self:center;padding:4px 8px;line-height:1}
 .db-status{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .danger-zone{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .settings-card{margin-bottom:18px}
