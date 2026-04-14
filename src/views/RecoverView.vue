@@ -1,10 +1,13 @@
 <template>
   <div class="auth-page">
     <div class="auth-card card">
-      <h1 class="login-title">🔑 {{ t('auth.recover.title') }}</h1>
+      <h1 class="login-title login-title-with-icon">
+        <AppIcon name="lock" :size="20" />
+        {{ t('auth.recover.title') }}
+      </h1>
       <div class="alert alert-info mb-2">{{ t('auth.recover.tip') }}</div>
       <div v-if="error" class="alert alert-error">{{ error }}</div>
-      <div v-if="success" class="alert alert-success">✅ {{ t('auth.recover.success') }}</div>
+      <div v-if="success" class="alert alert-success">{{ t('auth.recover.success') }}</div>
 
       <div class="form-group">
         <label>{{ t('auth.recover.username') }}</label>
@@ -31,6 +34,7 @@
 <script setup>
 import { ref } from 'vue'
 import { useRouter, RouterLink } from 'vue-router'
+import AppIcon from '../components/AppIcon.vue'
 import api from '../stores/api.js'
 import { useI18nStore } from '../stores/i18n'
 
@@ -56,4 +60,5 @@ async function doRecover() {
 .auth-page{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);padding:20px}
 .auth-card{width:100%;max-width:380px;padding:36px 28px}
 .login-title{font-size:20px;font-weight:700;text-align:center;margin-bottom:20px}
+.login-title-with-icon{display:flex;align-items:center;justify-content:center;gap:8px}
 </style>

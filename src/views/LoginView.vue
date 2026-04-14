@@ -7,7 +7,7 @@
         </select>
         <div class="theme-menu-wrap login-theme-wrap">
           <button class="btn-icon theme-trigger" type="button" @click.stop="toggleThemeMenu" :title="t('app.toggleTheme')">
-            {{ currentThemeOption.icon }}
+            <AppIcon :name="currentThemeOption.icon" :size="18" />
           </button>
           <div v-if="themeMenuOpen" class="theme-menu">
             <button
@@ -18,9 +18,9 @@
               type="button"
               @click.stop="applyTheme(option.value)"
             >
-              <span class="theme-menu-icon">{{ option.icon }}</span>
+              <AppIcon :name="option.icon" :size="16" class="theme-menu-icon" />
               <span class="theme-menu-label">{{ option.label }}</span>
-              <span class="theme-menu-check">{{ themeMode === option.value ? '✓' : '' }}</span>
+              <span class="theme-menu-check">{{ themeMode === option.value ? '●' : '' }}</span>
             </button>
           </div>
         </div>
@@ -29,7 +29,9 @@
         </button>
       </div>
 
-      <div class="login-logo">🤖</div>
+      <div class="login-logo">
+        <AppIcon name="logo" :size="44" />
+      </div>
       <h1 class="login-title">{{ t('auth.login.title') }}</h1>
 
       <div v-if="error" class="alert alert-error">{{ error }}</div>
@@ -109,6 +111,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter, RouterLink } from 'vue-router'
+import AppIcon from '../components/AppIcon.vue'
 import { useAuthStore } from '../stores/auth'
 import { useI18nStore } from '../stores/i18n'
 
@@ -148,9 +151,9 @@ const selectedLocale = computed({
 })
 
 const themeOptions = computed(() => [
-  { value: 'light', label: t('app.themeLight'), icon: '☀️' },
-  { value: 'dark', label: t('app.themeDark'), icon: '🌙' },
-  { value: 'system', label: t('app.themeSystem'), icon: '🖥️' },
+  { value: 'light', label: t('app.themeLight'), icon: 'light' },
+  { value: 'dark', label: t('app.themeDark'), icon: 'dark' },
+  { value: 'system', label: t('app.themeSystem'), icon: 'system' },
 ])
 
 const currentThemeOption = computed(() => (
@@ -350,7 +353,7 @@ onBeforeUnmount(() => {
 .login-card{width:100%;max-width:380px;padding:20px 28px 36px}
 .login-topbar{display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-bottom:12px}
 .login-theme-wrap,.login-glass-btn{flex-shrink:0}
-.login-logo{font-size:44px;text-align:center;margin-bottom:12px}
+.login-logo{display:flex;align-items:center;justify-content:center;margin-bottom:12px}
 .login-title{font-size:21px;font-weight:700;text-align:center;margin-bottom:22px}
 .login-links{margin-bottom:18px;display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:13px}
 .login-link-side{min-width:0}

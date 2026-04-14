@@ -1,11 +1,16 @@
 <template>
   <div class="page">
     <div class="page-header">
-      <h2 class="page-title">⚙️ {{ t('settings.title') }}</h2>
+      <h2 class="page-title page-title-with-icon">
+        <AppIcon name="settings" :size="20" />
+        {{ t('settings.title') }}
+      </h2>
       <div class="flex gap-2">
-        <button class="btn-ghost btn-sm" @click="load(true)">🔄</button>
+        <button class="btn-ghost btn-sm" @click="load(true)">
+          <AppIcon name="refresh" :size="14" />
+        </button>
         <button class="btn-primary" @click="save" :disabled="saving">
-          <span v-if="saving" class="spinner"></span>{{ saving ? t('settings.saving') : `💾 ${t('settings.save')}` }}
+          <span v-if="saving" class="spinner"></span>{{ saving ? t('settings.saving') : t('settings.save') }}
         </button>
       </div>
     </div>
@@ -19,7 +24,10 @@
 
       <!-- Bot 配置 -->
       <div class="card section settings-card">
-        <h3 class="sec-title">🤖 {{ t('settings.section.bot') }}</h3>
+        <h3 class="sec-title sec-title-with-icon">
+          <AppIcon name="bot" :size="18" />
+          {{ t('settings.section.bot') }}
+        </h3>
         <div class="form-group">
           <label>{{ t('settings.config.botToken') }} <span class="req">*</span></label>
           <div class="row-g settings-inline-row">
@@ -27,7 +35,7 @@
             <button class="btn-ghost btn-sm settings-inline-btn" @click="testToken" :disabled="testingTok">{{ testingTok ? '…' : t('settings.token.test') }}</button>
           </div>
           <div v-if="tokResult" class="form-hint" :class="tokResult.ok ? 'text-success' : 'text-danger'">
-            {{ tokResult.ok ? t('settings.token.valid', { username: tokResult.bot.username, id: tokResult.bot.id }) : '❌ ' + tokResult.err }}
+            {{ tokResult.ok ? t('settings.token.valid', { username: tokResult.bot.username, id: tokResult.bot.id }) : tokResult.err }}
           </div>
         </div>
 
@@ -40,7 +48,7 @@
             </button>
           </div>
           <div v-if="groupInfo" class="resolve-card">
-            <span>{{ groupInfo.type === 'supergroup' ? '👥' : '💬' }}</span>
+            <AppIcon :name="groupInfo.type === 'supergroup' ? 'users' : 'conversations'" :size="18" />
             <div>
               <div style="font-weight:600">{{ groupInfo.title }}</div>
               <div class="text-muted text-sm">{{ t('common.id') }}: <code>{{ groupInfo.id }}</code></div>
@@ -57,7 +65,7 @@
             <button class="btn-ghost btn-sm utility-btn settings-inline-btn" @click="resolveChat(chatQuery, 'custom')" :disabled="resolvingCustom">{{ resolvingCustom ? '…' : t('settings.query') }}</button>
           </div>
           <div v-if="customInfo" class="resolve-card">
-            <span>{{ { supergroup: '👥', channel: '📢' }[customInfo.type] || '💬' }}</span>
+            <AppIcon :name="{ supergroup: 'users', channel: 'link' }[customInfo.type] || 'conversations'" :size="18" />
             <div style="flex:1">
               <div>{{ customInfo.title || customInfo.first_name }}</div>
               <div class="text-muted text-sm">{{ t('common.id') }}: {{ customInfo.id }}</div>
@@ -86,7 +94,9 @@
                 <div class="admin-card-meta">{{ adminSecondaryLine(id) }}</div>
                 <div class="admin-card-id">{{ t('common.id') }}: {{ id }}</div>
               </div>
-              <button class="btn-ghost btn-sm admin-card-remove" @click="removeAdmin(i)">✕</button>
+              <button class="btn-ghost btn-sm admin-card-remove" @click="removeAdmin(i)">
+                <AppIcon name="close" :size="14" />
+              </button>
             </div>
           </div>
           <div class="row-g">
@@ -99,7 +109,10 @@
 
       <!-- Webhook -->
       <div class="card section settings-card">
-        <h3 class="sec-title">🔗 {{ t('settings.section.webhook') }}</h3>
+        <h3 class="sec-title sec-title-with-icon">
+          <AppIcon name="webhook" :size="18" />
+          {{ t('settings.section.webhook') }}
+        </h3>
         <div class="form-group">
           <label>{{ t('settings.webhookUrl') }}</label>
           <div class="row-g">
@@ -107,7 +120,7 @@
             <button class="btn-primary btn-sm" @click="setWebhook" :disabled="settingWh">{{ settingWh ? '…' : t('settings.webhookSet') }}</button>
           </div>
           <div v-if="whResult" class="form-hint" :class="whResult.ok ? 'text-success' : 'text-danger'">
-            {{ whResult.ok ? '✅ ' + whResult.message : '❌ ' + whResult.err }}
+            {{ whResult.ok ? whResult.message : whResult.err }}
           </div>
           <div class="form-hint">{{ t('settings.webhookHint') }}</div>
         </div>
@@ -115,7 +128,10 @@
 
       <!-- 验证配置 -->
       <div class="card section settings-card">
-        <h3 class="sec-title">🔐 {{ t('settings.section.verify') }}</h3>
+        <h3 class="sec-title sec-title-with-icon">
+          <AppIcon name="verify" :size="18" />
+          {{ t('settings.section.verify') }}
+        </h3>
         <div class="toggle-row">
           <div>
             <div class="toggle-label">{{ t('settings.verifyEnable') }}</div>
@@ -151,7 +167,10 @@
 
       <!-- 功能配置 -->
       <div class="card section settings-card">
-        <h3 class="sec-title">🔧 {{ t('settings.section.feature') }}</h3>
+        <h3 class="sec-title sec-title-with-icon">
+          <AppIcon name="feature" :size="18" />
+          {{ t('settings.section.feature') }}
+        </h3>
         <div class="toggle-row">
           <div>
             <div class="toggle-label">{{ t('settings.feature.autoUnblock') }}</div>
@@ -218,7 +237,10 @@
 
       <!-- 欢迎消息 -->
       <div class="card section settings-card">
-        <h3 class="sec-title">👋 {{ t('settings.section.welcome') }}</h3>
+        <h3 class="sec-title sec-title-with-icon">
+          <AppIcon name="welcome" :size="18" />
+          {{ t('settings.section.welcome') }}
+        </h3>
         <div class="toggle-row">
           <div class="toggle-label">{{ t('settings.welcome.enable') }}</div>
           <label class="toggle"><input type="checkbox" v-model="welcomeEnabled" /><span class="toggle-slider"></span></label>
@@ -231,7 +253,10 @@
 
       <!-- 数据库切换 -->
       <div class="card section settings-card">
-        <h3 class="sec-title">🗄️ {{ t('settings.section.storage') }}</h3>
+        <h3 class="sec-title sec-title-with-icon">
+          <AppIcon name="storage" :size="18" />
+          {{ t('settings.section.storage') }}
+        </h3>
         <div class="db-status">
           <div>
             <div class="toggle-label">
@@ -298,7 +323,7 @@
 
       <div style="text-align:right;margin-top:12px">
         <button class="btn-primary" @click="save" :disabled="saving">
-          <span v-if="saving" class="spinner"></span>{{ saving ? t('settings.saving') : `💾 ${t('settings.saveAll')}` }}
+          <span v-if="saving" class="spinner"></span>{{ saving ? t('settings.saving') : t('settings.saveAll') }}
         </button>
       </div>
     </template>
@@ -308,6 +333,7 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import AppIcon from '../components/AppIcon.vue'
 import api from '../stores/api.js'
 import UserSearchPicker from '../components/UserSearchPicker.vue'
 import { useI18nStore } from '../stores/i18n'
@@ -531,7 +557,7 @@ async function switchDb(target, sync = true) {
     dbMsg.value = t('settings.storage.switched', { target: target === 'd1' ? t('settings.storage.d1Short') : t('settings.storage.kvShort') })
     dbOk.value = true
   } catch (e) {
-    dbMsg.value = '❌ ' + e.message
+    dbMsg.value = e.message
     dbOk.value = false
   } finally {
     dbSwitching.value = false
@@ -574,7 +600,7 @@ async function exportSql() {
     sqlMsg.value = t('settings.storage.sqlExported', { name: fileName })
     sqlOk.value = true
   } catch (e) {
-    sqlMsg.value = '❌ ' + e.message
+    sqlMsg.value = e.message
     sqlOk.value = false
   } finally {
     sqlWorking.value = false
@@ -599,7 +625,7 @@ async function importSql(fileName = 'SQL') {
     sqlMsg.value = t('settings.storage.sqlImported', { name: fileName })
     sqlOk.value = true
   } catch (e) {
-    sqlMsg.value = '❌ ' + e.message
+    sqlMsg.value = e.message
     sqlOk.value = false
   } finally {
     sqlWorking.value = false
@@ -632,7 +658,7 @@ async function clearData() {
     await auth.logout()
     router.push('/login')
   } catch (e) {
-    dbMsg.value = '❌ ' + e.message
+    dbMsg.value = e.message
     dbOk.value = false
   } finally {
     clearingData.value = false
@@ -681,4 +707,6 @@ onMounted(load)
 .sql-file-input{display:none}
 .settings-card{margin-bottom:18px}
 .page{max-width:720px;margin:0 auto}
+.page-title-with-icon,
+.sec-title-with-icon{display:flex;align-items:center;gap:8px}
 </style>

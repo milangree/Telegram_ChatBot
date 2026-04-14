@@ -1,6 +1,9 @@
 <template>
   <div class="page">
-    <h2 class="page-title mb-2">👤 {{ t('profile.title') }}</h2>
+    <h2 class="page-title page-title-with-icon mb-2">
+      <AppIcon name="profile" :size="20" />
+      {{ t('profile.title') }}
+    </h2>
 
     <div class="card mb-2">
       <h3 class="sec-title">{{ t('profile.username.title') }}</h3>
@@ -73,6 +76,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
+import AppIcon from '../components/AppIcon.vue'
 import api from '../stores/api.js'
 import { useAuthStore } from '../stores/auth.js'
 import { useI18nStore } from '../stores/i18n'
@@ -103,7 +107,7 @@ async function changeUsername() {
     localStorage.setItem('username', newUsername.value)
     newUsername.value = ''
   } catch (e) {
-    flash(unameMsg, unameOk, '❌ ' + e.message, false)
+    flash(unameMsg, unameOk, e.message, false)
   } finally {
     unameLoading.value = false
   }
@@ -119,7 +123,7 @@ async function changePassword() {
     oldPw.value = ''
     newPw.value = ''
   } catch (e) {
-    flash(pwMsg, pwOk, '❌ ' + e.message, false)
+    flash(pwMsg, pwOk, e.message, false)
   } finally {
     pwLoading.value = false
   }
@@ -133,7 +137,7 @@ async function setup2FA() {
     totpSecret.value = d.secret
     qrUrl.value = d.qrcode
   } catch (e) {
-    flash(totpMsg, totpOk, '❌ ' + e.message, false)
+    flash(totpMsg, totpOk, e.message, false)
   } finally {
     totpLoading.value = false
   }
@@ -150,7 +154,7 @@ async function verify2FA() {
     totpToken.value = ''
     flash(totpMsg, totpOk, t('profile.flash.2faEnabled'))
   } catch (e) {
-    flash(totpMsg, totpOk, '❌ ' + e.message, false)
+    flash(totpMsg, totpOk, e.message, false)
   } finally {
     totpLoading.value = false
   }
@@ -165,7 +169,7 @@ async function disable2FA() {
     totpEnabled.value = false
     flash(totpMsg, totpOk, t('profile.flash.2faDisabled'))
   } catch (e) {
-    flash(totpMsg, totpOk, '❌ ' + e.message, false)
+    flash(totpMsg, totpOk, e.message, false)
   } finally {
     totpLoading.value = false
   }
@@ -183,6 +187,7 @@ onMounted(async () => {
 
 <style scoped>
 .page { max-width: 540px; margin: 0 auto; }
+.page-title-with-icon{display:flex;align-items:center;gap:8px}
 .qr-wrap { display: flex; justify-content: center; }
 .qr-wrap img { border-radius: 8px; border: 4px solid var(--bg2); }
 </style>

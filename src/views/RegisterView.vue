@@ -1,7 +1,9 @@
 <template>
   <div class="auth-page">
     <div class="auth-card card">
-      <div class="login-logo">🤖</div>
+      <div class="login-logo">
+        <AppIcon name="logo" :size="44" />
+      </div>
       <h1 class="login-title">{{ t('auth.register.title') }}</h1>
       <div class="alert alert-info mb-2">{{ t('auth.register.tip') }}</div>
       <div v-if="error" class="alert alert-error">{{ error }}</div>
@@ -26,6 +28,7 @@
 <script setup>
 import { ref } from 'vue'
 import { useRouter, RouterLink } from 'vue-router'
+import AppIcon from '../components/AppIcon.vue'
 import { useAuthStore } from '../stores/auth.js'
 import { useI18nStore } from '../stores/i18n'
 
@@ -53,6 +56,6 @@ async function doRegister() {
 <style scoped>
 .auth-page{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);padding:20px}
 .auth-card{width:100%;max-width:380px;padding:36px 28px}
-.login-logo{font-size:44px;text-align:center;margin-bottom:12px}
+.login-logo{display:flex;align-items:center;justify-content:center;margin-bottom:12px}
 .login-title{font-size:20px;font-weight:700;text-align:center;margin-bottom:20px}
 </style>

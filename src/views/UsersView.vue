@@ -1,25 +1,42 @@
 <template>
   <div class="page">
     <div class="page-header">
-      <h2 class="page-title">👥 {{ t('users.title') }}</h2>
+      <h2 class="page-title page-title-with-icon">
+        <AppIcon name="users" :size="20" />
+        {{ t('users.title') }}
+      </h2>
       <div class="flex gap-2 flex-wrap">
         <select v-model="filter" style="width:110px">
           <option value="">{{ t('users.filter.all') }}</option>
           <option value="blocked">{{ t('users.filter.blocked') }}</option>
           <option value="normal">{{ t('users.filter.normal') }}</option>
         </select>
-        <button class="btn-ghost btn-sm" @click="load">🔄</button>
+        <button class="btn-ghost btn-sm" @click="load">
+          <AppIcon name="refresh" :size="14" />
+        </button>
       </div>
     </div>
 
     <div class="card mb-2">
-      <h3 class="sec-title">⚡ {{ t('users.quickActions') }}</h3>
+      <h3 class="sec-title sec-title-with-icon">
+        <AppIcon name="quick" :size="18" />
+        {{ t('users.quickActions') }}
+      </h3>
       <div class="quick-row">
         <UserSearchPicker v-model="quickId" :placeholder="t('users.searchUser')" @selected="u => quickId = String(u.user_id)" style="flex:1" />
         <input v-model="quickReason" :placeholder="t('users.reasonOptional')" style="flex:1" />
-        <button class="btn-danger btn-sm" :disabled="!quickId" @click="quickBlock">🚫 {{ t('users.block') }}</button>
-        <button class="btn-success btn-sm" :disabled="!quickId" @click="quickUnblock">✅ {{ t('users.unblock') }}</button>
-        <button class="btn-ghost btn-sm" :disabled="!quickId" @click="quickWhitelist">⚪ {{ t('users.addWhitelist') }}</button>
+        <button class="btn-danger btn-sm" :disabled="!quickId" @click="quickBlock">
+          <AppIcon name="block" :size="14" />
+          {{ t('users.block') }}
+        </button>
+        <button class="btn-success btn-sm" :disabled="!quickId" @click="quickUnblock">
+          <AppIcon name="unblock" :size="14" />
+          {{ t('users.unblock') }}
+        </button>
+        <button class="btn-ghost btn-sm" :disabled="!quickId" @click="quickWhitelist">
+          <AppIcon name="whitelist" :size="14" />
+          {{ t('users.addWhitelist') }}
+        </button>
       </div>
       <div v-if="quickMsg" class="alert mt-1" :class="quickOk ? 'alert-success' : 'alert-error'">{{ quickMsg }}</div>
     </div>
@@ -27,10 +44,22 @@
     <div v-if="selected.length" class="batch-bar mb-2">
       <span class="text-sm text-muted">{{ t('users.selectedCount', { n: selected.length }) }}</span>
       <div class="flex gap-2 flex-wrap">
-        <button class="btn-danger btn-sm" @click="batchBlock">🚫 {{ t('users.batchBlock') }}</button>
-        <button class="btn-success btn-sm" @click="batchUnblock">✅ {{ t('users.batchUnblock') }}</button>
-        <button class="btn-ghost btn-sm" @click="batchWhitelist">⚪ {{ t('users.batchWhitelist') }}</button>
-        <button class="btn-ghost btn-sm" @click="selected = []">✕ {{ t('users.cancel') }}</button>
+        <button class="btn-danger btn-sm" @click="batchBlock">
+          <AppIcon name="block" :size="14" />
+          {{ t('users.batchBlock') }}
+        </button>
+        <button class="btn-success btn-sm" @click="batchUnblock">
+          <AppIcon name="unblock" :size="14" />
+          {{ t('users.batchUnblock') }}
+        </button>
+        <button class="btn-ghost btn-sm" @click="batchWhitelist">
+          <AppIcon name="whitelist" :size="14" />
+          {{ t('users.batchWhitelist') }}
+        </button>
+        <button class="btn-ghost btn-sm" @click="selected = []">
+          <AppIcon name="close" :size="14" />
+          {{ t('users.cancel') }}
+        </button>
       </div>
     </div>
 
@@ -77,10 +106,21 @@
                 <td class="hide-mobile text-muted text-sm">{{ fmtDate(u.created_at) }}</td>
                 <td>
                   <div class="flex gap-1 flex-wrap">
-                    <button v-if="!u.is_blocked" class="btn-danger btn-sm" @click.stop="blockOne(u)">{{ t('users.block') }}</button>
-                    <button v-else class="btn-success btn-sm" @click.stop="unblockOne(u)">{{ t('users.unblock') }}</button>
-                    <button class="btn-ghost btn-sm" @click.stop="toggleWhitelistOne(u)" :title="t('users.addWhitelist')">⚪</button>
-                    <RouterLink :to="`/conversations?user=${u.user_id}`" class="btn-ghost btn-sm" style="text-decoration:none">{{ t('users.messages') }}</RouterLink>
+                    <button v-if="!u.is_blocked" class="btn-danger btn-sm" @click.stop="blockOne(u)">
+                      <AppIcon name="block" :size="14" />
+                      {{ t('users.block') }}
+                    </button>
+                    <button v-else class="btn-success btn-sm" @click.stop="unblockOne(u)">
+                      <AppIcon name="unblock" :size="14" />
+                      {{ t('users.unblock') }}
+                    </button>
+                    <button class="btn-ghost btn-sm" @click.stop="toggleWhitelistOne(u)" :title="t('users.addWhitelist')">
+                      <AppIcon name="whitelist" :size="14" />
+                    </button>
+                    <RouterLink :to="`/conversations?user=${u.user_id}`" class="btn-ghost btn-sm action-link" style="text-decoration:none">
+                      <AppIcon name="conversations" :size="14" />
+                      {{ t('users.messages') }}
+                    </RouterLink>
                   </div>
                 </td>
               </tr>
@@ -109,7 +149,9 @@
             <div style="font-size:17px;font-weight:700">{{ detailUser.first_name }} {{ detailUser.last_name }}</div>
             <div class="text-muted text-sm">{{ detailUser.username ? '@' + detailUser.username : t('users.detail.noUsername') }}</div>
           </div>
-          <button class="btn-icon" @click="detailUser = null" style="font-size:20px">✕</button>
+          <button class="btn-icon" @click="detailUser = null" style="font-size:20px">
+            <AppIcon name="close" :size="18" />
+          </button>
         </div>
 
         <div class="detail-grid">
@@ -125,7 +167,14 @@
           </div>
           <div class="dr" v-if="detailUser.block_reason"><span class="dl">{{ t('users.detail.blockReason') }}</span>{{ detailUser.block_reason }}</div>
           <div class="dr"><span class="dl">{{ t('users.detail.verified') }}</span>{{ detailUser.is_verified ? t('users.detail.verified') : t('users.detail.unverified') }}</div>
-          <div class="dr"><span class="dl">{{ t('users.detail.whitelist') }}</span>{{ detailIsWl ? `⚪ ${t('common.yes')}` : t('common.no') }}</div>
+          <div class="dr">
+            <span class="dl">{{ t('users.detail.whitelist') }}</span>
+            <span v-if="detailIsWl" class="inline-icon-text">
+              <AppIcon name="whitelist" :size="14" />
+              {{ t('common.yes') }}
+            </span>
+            <span v-else>{{ t('common.no') }}</span>
+          </div>
           <div class="dr">
             <span class="dl">{{ t('users.detail.name') }}</span>
             <span>{{ detailUser.first_name }} {{ detailUser.last_name }}</span>
@@ -136,10 +185,22 @@
         </div>
 
         <div class="modal-acts">
-          <button v-if="!detailUser.is_blocked" class="btn-danger" @click="blockDetail">🚫 {{ t('users.block') }}</button>
-          <button v-else class="btn-success" @click="unblockDetail">✅ {{ t('users.unblock') }}</button>
-          <button class="btn-ghost" @click="toggleWlDetail">{{ detailIsWl ? t('users.removeWhitelist') : t('users.addWhitelistWithIcon') }}</button>
-          <RouterLink :to="`/conversations?user=${detailUser.user_id}`" class="btn-ghost" style="text-decoration:none" @click="detailUser = null">💬 {{ t('users.messages') }}</RouterLink>
+          <button v-if="!detailUser.is_blocked" class="btn-danger" @click="blockDetail">
+            <AppIcon name="block" :size="14" />
+            {{ t('users.block') }}
+          </button>
+          <button v-else class="btn-success" @click="unblockDetail">
+            <AppIcon name="unblock" :size="14" />
+            {{ t('users.unblock') }}
+          </button>
+          <button class="btn-ghost" @click="toggleWlDetail">
+            <AppIcon name="whitelist" :size="14" />
+            {{ detailIsWl ? t('users.removeWhitelist') : t('users.addWhitelist') }}
+          </button>
+          <RouterLink :to="`/conversations?user=${detailUser.user_id}`" class="btn-ghost action-link" style="text-decoration:none" @click="detailUser = null">
+            <AppIcon name="conversations" :size="14" />
+            {{ t('users.messages') }}
+          </RouterLink>
         </div>
       </div>
     </div>
@@ -149,6 +210,7 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
+import AppIcon from '../components/AppIcon.vue'
 import api from '../stores/api.js'
 import UserSearchPicker from '../components/UserSearchPicker.vue'
 import { useI18nStore } from '../stores/i18n'
@@ -218,9 +280,9 @@ async function batchWhitelist() {
   flash(t('users.flash.addedWhitelist')); selected.value = []
 }
 
-async function quickBlock() { try { await api.put(`/api/users/${quickId.value}/block`, { reason: quickReason.value || 'quick_block', permanent: true }); flash(t('users.flash.blocked')); await load() } catch (e) { flash('❌ ' + e.message, false) } }
-async function quickUnblock() { try { await api.put(`/api/users/${quickId.value}/unblock`, {}); flash(t('users.flash.unblocked')); await load() } catch (e) { flash('❌ ' + e.message, false) } }
-async function quickWhitelist() { try { await api.post(`/api/whitelist/${quickId.value}`, { reason: 'quick_add' }); flash(t('users.flash.addedWhitelist')) } catch (e) { flash('❌ ' + e.message, false) } }
+async function quickBlock() { try { await api.put(`/api/users/${quickId.value}/block`, { reason: quickReason.value || 'quick_block', permanent: true }); flash(t('users.flash.blocked')); await load() } catch (e) { flash(e.message, false) } }
+async function quickUnblock() { try { await api.put(`/api/users/${quickId.value}/unblock`, {}); flash(t('users.flash.unblocked')); await load() } catch (e) { flash(e.message, false) } }
+async function quickWhitelist() { try { await api.post(`/api/whitelist/${quickId.value}`, { reason: 'quick_add' }); flash(t('users.flash.addedWhitelist')) } catch (e) { flash(e.message, false) } }
 
 async function blockOne(u) {
   const r = prompt(t('users.blockReasonPrompt')); if (r === null) return
@@ -233,7 +295,7 @@ async function toggleWhitelistOne(u) {
     const r = await api.get(`/api/whitelist/check/${u.user_id}`)
     if (r.whitelisted) { await api.delete(`/api/whitelist/${u.user_id}`); flash(t('users.flash.removedWhitelist')) }
     else { await api.post(`/api/whitelist/${u.user_id}`, { reason: 'manual' }); flash(t('users.flash.addedWhitelist')) }
-  } catch (e) { flash('❌ ' + e.message, false) }
+  } catch (e) { flash(e.message, false) }
 }
 
 async function blockDetail() {
@@ -289,6 +351,10 @@ onMounted(() => {
 
 <style scoped>
 .page{max-width:720px;margin:0 auto}
+.page-title-with-icon,
+.sec-title-with-icon,
+.inline-icon-text,
+.action-link{display:inline-flex;align-items:center;gap:8px}
 .quick-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .user-cell{display:flex;align-items:center;gap:10px}
 .u-name{font-weight:500;font-size:13px;text-decoration:underline;text-decoration-color:transparent;transition:.15s}
@@ -307,6 +373,6 @@ onMounted(() => {
 .dr{display:flex;align-items:center;gap:10px;font-size:13px}
 .dl{width:80px;flex-shrink:0;color:var(--text2);font-size:12px}
 .modal-acts{display:flex;gap:8px;flex-wrap:wrap}
-.modal-acts button,.modal-acts a{display:inline-flex;align-items:center;flex:1;min-width:70px;justify-content:center;font-size:12px;padding:7px 10px;border-radius:var(--rs)}
+.modal-acts button,.modal-acts a{display:inline-flex;align-items:center;flex:1;min-width:70px;justify-content:center;font-size:12px;padding:7px 10px;border-radius:var(--rs);gap:6px}
 .copy-btn{padding:2px 8px;font-size:11px}
 </style>

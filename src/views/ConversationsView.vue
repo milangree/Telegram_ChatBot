@@ -49,10 +49,18 @@
           <span class="badge" :class="selUser.is_blocked ? 'badge-danger' : 'badge-success'">
             {{ selUser.is_blocked ? t('conv.status.blocked') : t('conv.status.normal') }}
           </span>
-          <button v-if="!selUser.is_blocked" class="btn-danger btn-sm hide-mobile" @click="blockUser">🚫</button>
-          <button v-else class="btn-success btn-sm hide-mobile" @click="unblockUser">✅</button>
-          <button class="btn-ghost btn-sm hide-mobile" @click="deleteConv" :title="t('conv.deleteTitle')">🗑️</button>
-          <button class="btn-ghost btn-sm mobile-only" @click="deleteConv" :title="t('conv.deleteTitle')">🗑️</button>
+          <button v-if="!selUser.is_blocked" class="btn-danger btn-sm hide-mobile" @click="blockUser">
+            <AppIcon name="block" :size="14" />
+          </button>
+          <button v-else class="btn-success btn-sm hide-mobile" @click="unblockUser">
+            <AppIcon name="unblock" :size="14" />
+          </button>
+          <button class="btn-ghost btn-sm hide-mobile" @click="deleteConv" :title="t('conv.deleteTitle')">
+            <AppIcon name="delete" :size="14" />
+          </button>
+          <button class="btn-ghost btn-sm mobile-only" @click="deleteConv" :title="t('conv.deleteTitle')">
+            <AppIcon name="delete" :size="14" />
+          </button>
         </div>
 
         <div class="msg-list" ref="msgRef">
@@ -73,7 +81,7 @@
         </div>
       </template>
       <div v-else class="conv-placeholder">
-        <div style="font-size:48px">💬</div>
+        <AppIcon name="conversations" :size="40" class="placeholder-icon" />
         <div>{{ t('conv.placeholder') }}</div>
       </div>
     </div>
@@ -83,6 +91,7 @@
 <script setup>
 import { ref, computed, onMounted, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
+import AppIcon from '../components/AppIcon.vue'
 import api from '../stores/api.js'
 import { useI18nStore } from '../stores/i18n'
 import { getLatestTimestamp, limitToLast, mergeByKey, readLocalCache, removeLocalCache, writeLocalCache } from '../stores/local-cache.js'
@@ -316,5 +325,6 @@ onMounted(async () => {
 .msg-text{white-space:pre-wrap}
 .msg-meta{font-size:10px;color:var(--text3);margin-top:4px;text-align:right}
 .conv-placeholder{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;color:var(--text3)}
+.placeholder-icon{color:var(--text3)}
 .empty{text-align:center;color:var(--text3);font-size:13px;padding:30px}
 </style>

@@ -1,12 +1,21 @@
 <template>
   <div class="page">
     <div class="page-header">
-      <h2 class="page-title">⚪ {{ t('whitelist.title') }}</h2>
-      <button class="btn-ghost btn-sm" @click="load">🔄 {{ t('whitelist.refresh') }}</button>
+      <h2 class="page-title page-title-with-icon">
+        <AppIcon name="whitelist" :size="20" />
+        {{ t('whitelist.title') }}
+      </h2>
+      <button class="btn-ghost btn-sm" @click="load">
+        <AppIcon name="refresh" :size="14" />
+        {{ t('whitelist.refresh') }}
+      </button>
     </div>
 
     <div class="card mb-2">
-      <h3 class="sec-title">➕ {{ t('whitelist.addUser') }}</h3>
+      <h3 class="sec-title sec-title-with-icon">
+        <AppIcon name="add" :size="18" />
+        {{ t('whitelist.addUser') }}
+      </h3>
       <div class="quick-row">
         <UserSearchPicker v-model="addId" :placeholder="t('whitelist.search')" @selected="u => addId = String(u.user_id)" style="flex:1" />
         <input v-model="addReason" :placeholder="t('whitelist.reasonOptional')" style="flex:1" />
@@ -66,6 +75,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
+import AppIcon from '../components/AppIcon.vue'
 import api from '../stores/api.js'
 import UserSearchPicker from '../components/UserSearchPicker.vue'
 import { useI18nStore } from '../stores/i18n'
@@ -93,7 +103,7 @@ async function doAdd() {
     addMsg.value = t('whitelist.addSuccess', { id: addId.value }); addOk.value = true
     addId.value = ''; addReason.value = ''
     await load()
-  } catch (e) { addMsg.value = '❌ ' + e.message; addOk.value = false }
+  } catch (e) { addMsg.value = e.message; addOk.value = false }
   finally { adding.value = false; setTimeout(() => addMsg.value = '', 4000) }
 }
 
@@ -112,6 +122,8 @@ onMounted(load)
 
 <style scoped>
 .page{max-width:720px;margin:0 auto}
+.page-title-with-icon,
+.sec-title-with-icon{display:flex;align-items:center;gap:8px}
 .quick-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .user-cell{display:flex;align-items:center;gap:10px}
 .u-ava{width:32px;height:32px;border-radius:50%;flex-shrink:0;background:var(--accent-dim);color:var(--accent);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px}

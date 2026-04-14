@@ -1,15 +1,23 @@
 <template>
   <div class="page">
     <div class="page-header">
-      <h2 class="page-title">📊 {{ t('dashboard.title') }}</h2>
-      <button class="btn-ghost btn-sm" @click="load(true)">🔄 {{ t('dashboard.refresh') }}</button>
+      <h2 class="page-title page-title-with-icon">
+        <AppIcon name="dashboard" :size="20" />
+        {{ t('dashboard.title') }}
+      </h2>
+      <button class="btn-ghost btn-sm" @click="load(true)">
+        <AppIcon name="refresh" :size="14" />
+        {{ t('dashboard.refresh') }}
+      </button>
     </div>
 
     <div v-if="loading" class="flex-center mt-3"><div class="spinner"></div></div>
     <template v-else>
       <div class="stat-grid mb-2">
         <div class="stat-card card clickable" v-for="s in statCards" :key="s.label" @click="goTo(s.to)">
-          <div class="stat-icon">{{ s.icon }}</div>
+          <div class="stat-icon">
+            <AppIcon :name="s.icon" :size="26" />
+          </div>
           <div>
             <div class="stat-val" :class="s.cls">{{ s.val }}</div>
             <div class="text-muted text-sm">{{ s.label }}</div>
@@ -18,14 +26,19 @@
       </div>
 
       <div class="card mb-2">
-        <h3 class="sec-title">🤖 {{ t('dashboard.botStatus') }}</h3>
+        <h3 class="sec-title sec-title-with-icon">
+          <AppIcon name="bot" :size="18" />
+          {{ t('dashboard.botStatus') }}
+        </h3>
         <div v-if="bot" class="bot-info">
-          <div class="bot-ava">🤖</div>
+          <div class="bot-ava">
+            <AppIcon name="bot" :size="28" />
+          </div>
           <div>
             <div style="font-weight:600">{{ bot.first_name }}</div>
             <div class="text-muted text-sm">@{{ bot.username }} · ID: {{ bot.id }}</div>
           </div>
-          <span class="badge badge-success">✓ {{ t('dashboard.botOnline') }}</span>
+          <span class="badge badge-success">{{ t('dashboard.botOnline') }}</span>
         </div>
         <div v-else class="alert alert-error mb-1">
           {{ t('dashboard.botTokenMissing') }} <RouterLink to="/settings">{{ t('nav.settings') }}</RouterLink>
@@ -42,7 +55,10 @@
 
       <div class="card">
         <div class="flex" style="justify-content:space-between;align-items:center;margin-bottom:12px">
-          <h3 class="sec-title" style="margin:0">💬 {{ t('dashboard.recentConversations') }}</h3>
+          <h3 class="sec-title sec-title-with-icon" style="margin:0">
+            <AppIcon name="conversations" :size="18" />
+            {{ t('dashboard.recentConversations') }}
+          </h3>
           <RouterLink to="/conversations" class="text-sm">{{ t('dashboard.viewAll') }} →</RouterLink>
         </div>
         <div v-if="!convs.length" class="text-muted text-sm text-center" style="padding:16px">{{ t('dashboard.emptyConversations') }}</div>
@@ -68,6 +84,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
+import AppIcon from '../components/AppIcon.vue'
 import api from '../stores/api.js'
 import { useI18nStore } from '../stores/i18n'
 import { getLatestTimestamp, mergeByKey, readLocalCache, writeLocalCache } from '../stores/local-cache.js'
@@ -85,10 +102,10 @@ const DASHBOARD_BOT_CACHE_KEY = 'dashboard:bot'
 const DASHBOARD_CONVS_CACHE_KEY = 'conversations:list'
 
 const statCards = computed(() => [
-  { icon: '👥', label: t('dashboard.totalUsers'), val: stats.value.totalUsers ?? '—', cls: '', to: '/users' },
-  { icon: '⛔', label: t('dashboard.blockedUsers'), val: stats.value.blockedUsers ?? '—', cls: 'text-danger', to: '/users?filter=blocked' },
-  { icon: '💬', label: t('dashboard.totalMessages'), val: stats.value.totalMessages ?? '—', cls: '', to: '/conversations' },
-  { icon: '📅', label: t('dashboard.todayMessages'), val: stats.value.todayMessages ?? '—', cls: 'text-success', to: '/conversations' },
+  { icon: 'users', label: t('dashboard.totalUsers'), val: stats.value.totalUsers ?? '—', cls: '', to: '/users' },
+  { icon: 'block', label: t('dashboard.blockedUsers'), val: stats.value.blockedUsers ?? '—', cls: 'text-danger', to: '/users?filter=blocked' },
+  { icon: 'conversations', label: t('dashboard.totalMessages'), val: stats.value.totalMessages ?? '—', cls: '', to: '/conversations' },
+  { icon: 'today', label: t('dashboard.todayMessages'), val: stats.value.todayMessages ?? '—', cls: 'text-success', to: '/conversations' },
 ])
 
 const configChecks = computed(() => [
@@ -166,15 +183,17 @@ onMounted(load)
 
 <style scoped>
 .page{max-width:720px;margin:0 auto}
+.page-title-with-icon,
+.sec-title-with-icon{display:flex;align-items:center;gap:8px}
 .stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
 .stat-card{display:flex;align-items:center;gap:14px}
 .stat-card.clickable{cursor:pointer;user-select:none}
 .stat-card.clickable:hover{border-color:var(--accent);transform:translateY(-1px)}
-.stat-icon{font-size:28px}
+.stat-icon{display:flex;align-items:center;justify-content:center}
 .stat-val{font-size:26px;font-weight:700;line-height:1}
 .text-danger{color:var(--danger)}.text-success{color:var(--success)}
 .bot-info{display:flex;align-items:center;gap:12px}
-.bot-ava{font-size:32px}
+.bot-ava{display:flex;align-items:center;justify-content:center}
 .config-checks{display:flex;flex-direction:column;gap:8px}
 .config-row{display:flex;align-items:center;justify-content:space-between}
 .conv-row{display:flex;align-items:center;gap:12px;padding:9px;border-radius:var(--rs);text-decoration:none;color:inherit;transition:var(--tr)}
