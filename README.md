@@ -162,22 +162,21 @@ https://你的Pages地址/webhook
 ## 🔧 常见问题
 
 **Q：WebUI 打不开 / 返回 500？**
-A：检查 KV 绑定是否已添加，变量名必须是 `KV`（大写）。在 Pages → Settings → Bindings 中确认。
+- A：检查 KV 绑定是否已添加，变量名必须是 `KV`（大写）。在 Pages → Settings → Bindings 中确认。
 
 **Q：Webhook 设置失败？**
-A：请先在设置页填写并保存 Bot Token，再填写 Webhook URL（格式：`https://xxx.pages.dev/webhook`）。
+- A：请先在设置页填写并保存 Bot Token，再填写 Webhook URL（格式：`https://xxx.pages.dev/webhook`）。
 
 **Q：用户发消息，群组里没有出现新话题？**
-A：请依次检查：① 群组已开启「话题功能」；② Bot 已设为群组管理员并拥有「管理话题」权限；③ `FORUM_GROUP_ID` 填写的是负数 ID（超级群组 ID 以 `-100` 开头）。
+- A：请依次检查：① 群组已开启「话题功能」；② Bot 已设为群组管理员并拥有「管理话题」权限；③ `FORUM_GROUP_ID` 填写的是负数 ID（超级群组 ID 以 `-100` 开头）。
 
 **Q：如何找回密码？**
-A：若已启用 2FA，可在登录页点击「找回密码」，通过 TOTP 验证码重置。若未启用 2FA，需在 Cloudflare KV 中手动删除对应的 `webuser:` 键后重新注册。
-
+- A：若已启用 2FA，可在登录页点击「找回密码」，通过 TOTP 验证码重置。若未启用 2FA，需在 Cloudflare KV 中手动删除对应的 `webuser:` 键后重新注册。
 **Q：如何更新代码？**
-A：仓库已内置 `.github/workflows/sync-upstream.yml`，默认每 6 小时自动尝试 fast-forward 同步上游 `milangree/Telegram_ChatBot` 的 `main` 分支；同步成功后 Cloudflare Pages 会自动触发重部署。也可在 Actions 页面手动运行并指定上游仓库/分支。
+- A：仓库已内置 `.github/workflows/sync-upstream.yml`，默认每 6 小时自动尝试 fast-forward 同步上游 `milangree/Telegram_ChatBot` 的 `main` 分支；同步成功后 Cloudflare Pages 会自动触发重部署。也可在 Actions 页面手动运行并指定上游仓库/分支。
 
 **Q：免费套餐够用吗？**
-A：完全够用。Pages Functions 每天 10 万次调用，KV 每天 10 万次读取 / 1000 次写入，存储上限 1GB。
+- A：完全够用。Pages Functions 每天 10 万次调用，KV 每天 10 万次读取 / 1000 次写入，存储上限 1GB。
 
 ---
 
