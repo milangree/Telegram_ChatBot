@@ -655,22 +655,22 @@ onMounted(load)
 .settings-inline-btn{min-width:96px;min-height:38px;justify-content:center}
 .admin-tags{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:10px}
 .admin-tags-single{grid-template-columns:minmax(0,1fr)}
-.admin-card{width:100%;min-width:0;display:grid;grid-template-columns:42px minmax(0,1fr) auto;align-items:center;column-gap:12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--r);padding:12px 14px}
+.admin-card{position:relative;width:100%;min-width:0;display:grid;grid-template-columns:42px minmax(0,1fr);align-items:center;column-gap:12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--r);padding:12px 40px 12px 14px}
 .admin-card-avatar{width:42px;height:42px;border-radius:50%;background:var(--accent-dim);color:var(--accent);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;overflow:hidden}
 .admin-card-avatar-img{width:100%;height:100%;object-fit:cover}
 .admin-card-info{min-width:0;display:flex;flex-direction:column;justify-content:center;gap:2px;text-align:left}
-.admin-card-name{font-size:13px;font-weight:600;color:var(--text);word-break:break-word}
-.admin-card-meta{font-size:12px;color:var(--text2);word-break:break-all}
-.admin-card-id{font-size:12px;color:var(--text3);word-break:break-all}
-.admin-card-remove{align-self:center;padding:4px 8px;line-height:1}
+.admin-card-name{font-size:13px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.admin-card-meta{font-size:12px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.admin-card-id{font-size:12px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.admin-card-remove{position:absolute;top:8px;right:8px;padding:2px 6px;line-height:1;align-self:auto}
 @media (max-width:640px){
   .admin-tags{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
   .admin-tags-single{grid-template-columns:minmax(0,1fr)}
-  .admin-card{grid-template-columns:36px minmax(0,1fr) auto;column-gap:8px;padding:10px}
+  .admin-card{grid-template-columns:36px minmax(0,1fr);column-gap:8px;padding:10px 34px 10px 10px}
   .admin-card-avatar{width:36px;height:36px;font-size:13px}
   .admin-card-name{font-size:12px}
   .admin-card-meta,.admin-card-id{font-size:11px}
-  .admin-card-remove{padding:3px 6px}
+  .admin-card-remove{top:6px;right:6px;padding:2px 5px}
 }
 .db-status{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .danger-zone{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
