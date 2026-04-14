@@ -54,7 +54,7 @@
 
   <!-- Auth pages (login/register etc.) -->
   <div v-else class="main-content no-sidebar">
-    <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
+    <div v-if="showAuthLanguageSelector" style="display:flex;justify-content:flex-end;margin-bottom:8px">
       <select class="lang-select auth-lang-select" v-model="selectedLocale" :title="t('app.language')">
         <option v-for="opt in localeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
       </select>
@@ -89,6 +89,8 @@ const selectedLocale = computed({
   get: () => i18n.locale,
   set: (next) => i18n.setLocale(next),
 })
+
+const showAuthLanguageSelector = computed(() => route.path !== '/login')
 
 const navItems = computed(() => [
   { to: '/',              icon: '📊', label: t('nav.dashboard') },

@@ -17,21 +17,14 @@ const router = createRouter({
   ],
 })
 
-let checkedStatus = false
-let needsFirstContact = false
-
 async function fetchAuthStatus() {
-  if (checkedStatus) return needsFirstContact
   try {
     const res = await fetch('/api/auth/status')
     const data = await res.json()
-    needsFirstContact = !!data.needsRegistration
+    return !!data.needsRegistration
   } catch {
-    needsFirstContact = false
-  } finally {
-    checkedStatus = true
+    return false
   }
-  return needsFirstContact
 }
 
 router.beforeEach(async (to, from, next) => {

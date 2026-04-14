@@ -299,4 +299,32 @@ export class KVStore {
   async getAllWebUsersRaw() {
     return (await Promise.all((await kvListAll(this.kv, 'webuser_id:')).map(k => this.kv.get(k.name).then(d => d ? JSON.parse(d) : null)))).filter(Boolean)
   }
+
+  async clearAppDataPreserveWebUsers(activeDb = 'kv') {
+    const prefixes = [
+      'setting:',
+      'user:',
+      'username:',
+      'whitelist:',
+      'msg:',
+      'recent:',
+      'thread:',
+      'verify:',
+      'pending:',
+      'pending_appeal:',
+      'captcha_render:',
+      'sess:',
+      'dedupe:',
+      'lock:user:',
+      'lock:thread:',
+    ]
+
+    for (const prefix of prefixes) {
+      const keys = await kvListAll(this.kv, prefix)
+      await Promise.all(keys.map(k => this.kv.delete(k.name).catch(() => {})))
+    }
+
+    await this.setSetting('ACTIVE_DB', activeDb)
+    this.cache.clear()
+  }
 }

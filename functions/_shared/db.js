@@ -84,6 +84,15 @@ export class DB {
   async updateWebUserUsername(id, u) { return (await this._store()).updateWebUserUsername(id, u) }
   async setWebUserTotp(id, s, e) { return (await this._store()).setWebUserTotp(id, s, e) }
 
+  async clearAppDataPreserveWebUsers() {
+    const active = await this.getActiveDb()
+
+    await this._kv.clearAppDataPreserveWebUsers(active)
+    if (this._d1) await this._d1.clearAppDataPreserveWebUsers(active)
+
+    this._activeStore = null
+  }
+
   /** Switch active DB and optionally sync data. */
   async switchDb(target) {
     await switchDbStore({ kv: this.kv, kvStore: this._kv, d1Store: this._d1 }, target)

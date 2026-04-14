@@ -191,6 +191,16 @@ export class D1Store {
   async setWebUserTotp(id, secret, enabled) { await this.exec('UPDATE web_users SET totp_secret=?,totp_enabled=? WHERE id=?', secret, enabled ? 1 : 0, id) }
   async getAllWebUsersRaw() { return this.all('SELECT * FROM web_users') }
 
+  async clearAppDataPreserveWebUsers(activeDb = 'kv') {
+    await this.exec('DELETE FROM whitelist')
+    await this.exec('DELETE FROM recent_convs')
+    await this.exec('DELETE FROM messages')
+    await this.exec('DELETE FROM thread_map')
+    await this.exec('DELETE FROM users')
+    await this.exec('DELETE FROM settings')
+    await this.setSetting('ACTIVE_DB', activeDb)
+  }
+
   async initSchema() {
     for (const stmt of D1_SCHEMA.split(';').map(s => s.trim()).filter(Boolean)) {
       await this.exec(stmt)

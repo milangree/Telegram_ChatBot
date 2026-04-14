@@ -142,6 +142,12 @@ export class TG {
     });
   }
 
+  deleteWebhook({ dropPendingUpdates = false } = {}) {
+    return this.call('deleteWebhook', {
+      drop_pending_updates: dropPendingUpdates,
+    });
+  }
+
   getMe()         { return this.call('getMe'); }
   getChat(chatId) { return this.call('getChat', { chat_id: chatId }); }
 

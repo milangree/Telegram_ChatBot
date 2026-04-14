@@ -74,13 +74,9 @@ export async function onRequest({ request, env }) {
         if (!totp) return err(t('auth.missingTotp'), 401);
         if (!await verifyTOTP(totp, user.totp_secret)) return err(t('auth.invalidTotp'), 401);
       } else {
-        // Normal: username + password (+ TOTP if enabled)
+        // Normal: username + password only
         if (!password) return err(t('auth.missingPassword'));
         if (!await verifyPw(password, user.password_hash)) return err(t('auth.invalidCredentials'), 401);
-        if (user.totp_enabled) {
-          if (!totp) return err(t('auth.totpRequired'), 401);
-          if (!await verifyTOTP(totp, user.totp_secret)) return err(t('auth.invalidTotp'), 401);
-        }
       }
 
       const token = await createSession(kv, user.id);
@@ -219,11 +215,13 @@ export async function onRequest({ request, env }) {
   if (path === '/settings' && request.method === 'PUT') {
     try {
       const body = await request.json();
+      const previousSettings = await db.getAllSettings();
+      const previousBotToken = String(previousSettings.BOT_TOKEN || '');
       const allowed = [
         'BOT_TOKEN', 'FORUM_GROUP_ID', 'ADMIN_IDS',
         'VERIFICATION_ENABLED', 'VERIFICATION_TIMEOUT', 'MAX_VERIFICATION_ATTEMPTS',
         'AUTO_UNBLOCK_ENABLED', 'MAX_MESSAGES_PER_MINUTE',
-        'INLINE_KB_MSG_DELETE_SECONDS',
+        'INLINE_KB_MSG_DELETE_ENABLED', 'INLINE_KB_MSG_DELETE_SECONDS',
         'CAPTCHA_TYPE', 'CAPTCHA_SITE_URL',
         'WELCOME_ENABLED', 'WELCOME_MESSAGE', 'BOT_COMMAND_FILTER', 'WHITELIST_ENABLED',
         'ADMIN_NOTIFY_ENABLED',
@@ -239,6 +237,15 @@ export async function onRequest({ request, env }) {
           : String(body[key]);
         await db.setSetting(key, value);
         if (key === 'BOT_TOKEN' || key === 'BOT_LOCALE') shouldRefreshCommands = true;
+      }
+
+      const nextBotToken = body.BOT_TOKEN === undefined ? previousBotToken : String(body.BOT_TOKEN || '');
+      if (body.BOT_TOKEN !== undefined && previousBotToken && previousBotToken !== nextBotToken) {
+        try {
+          await new TG(previousBotToken).deleteWebhook({ dropPendingUpdates: false });
+        } catch (e) {
+          console.error('delete old webhook after bot token change failed:', e);
+        }
       }
 
       if (shouldRefreshCommands) {
@@ -316,6 +323,24 @@ export async function onRequest({ request, env }) {
       return j({ ok: true, active: target });
     } catch (e) {
       return err(t('settings.switchFailed', { error: e.message }), 500);
+    }
+  }
+
+  if (path === '/settings/clear-data' && request.method === 'POST') {
+    try {
+      const botToken = await db.getSetting('BOT_TOKEN');
+      if (botToken) {
+        try {
+          await new TG(botToken).deleteWebhook({ dropPendingUpdates: true });
+        } catch (e) {
+          console.error('delete webhook before clearing data failed:', e);
+        }
+      }
+
+      await db.clearAppDataPreserveWebUsers();
+      return j({ ok: true });
+    } catch (e) {
+      return err(t('settings.clearDataFailed', { error: e.message }), 500);
     }
   }
 

@@ -119,7 +119,7 @@
               <option value="image_alphanumeric">{{ t('settings.verify.imgAlpha') }}</option>
             </select>
           </div>
-          <div v-if="form.CAPTCHA_TYPE !== 'math'" class="form-group">
+          <div class="form-group">
             <label>{{ t('settings.verify.siteUrl') }}</label>
             <input v-model="form.CAPTCHA_SITE_URL" :placeholder="t('settings.verify.siteUrlPh')" />
             <div class="form-hint">{{ t('settings.verify.siteUrlHint') }}</div>
@@ -177,11 +177,21 @@
         <div class="divider"></div>
         <div class="toggle-row">
           <div>
-            <div class="toggle-label">{{ t('settings.feature.inlineKbDelete') }}</div>
-            <div class="form-hint">{{ t('settings.feature.inlineKbDeleteHint') }}</div>
+            <div class="toggle-label">{{ t('settings.feature.inlineKbDeleteEnable') }}</div>
+            <div class="form-hint">{{ t('settings.feature.inlineKbDeleteEnableHint') }}</div>
           </div>
-          <input v-model.number="form.INLINE_KB_MSG_DELETE_SECONDS" type="number" min="0" max="600" style="width:90px" @change="clampInlineKbDelete" />
+          <label class="toggle"><input type="checkbox" v-model="inlineKbDeleteEnabled" /><span class="toggle-slider"></span></label>
         </div>
+        <template v-if="inlineKbDeleteEnabled">
+          <div class="divider"></div>
+          <div class="toggle-row">
+            <div>
+              <div class="toggle-label">{{ t('settings.feature.inlineKbDelete') }}</div>
+              <div class="form-hint">{{ t('settings.feature.inlineKbDeleteHint') }}</div>
+            </div>
+            <input v-model.number="form.INLINE_KB_MSG_DELETE_SECONDS" type="number" min="0" max="600" style="width:90px" @change="clampInlineKbDelete" />
+          </div>
+        </template>
       </div>
 
       <!-- 欢迎消息 -->
@@ -216,6 +226,16 @@
         <div v-if="dbSwitching" class="flex gap-2 mt-1"><div class="spinner"></div><span class="text-muted text-sm">{{ t('settings.storage.syncing') }}</span></div>
         <div v-if="dbMsg" class="form-hint mt-1" :class="dbOk ? 'text-success' : 'text-danger'">{{ dbMsg }}</div>
         <div class="form-hint mt-1">{{ t('settings.storage.switchHint') }}</div>
+        <div class="divider"></div>
+        <div class="danger-zone">
+          <div>
+            <div class="toggle-label text-danger">{{ t('settings.storage.clearData') }}</div>
+            <div class="form-hint mt-1">{{ t('settings.storage.clearDataHint') }}</div>
+          </div>
+          <button class="btn-danger btn-sm" @click="clearData" :disabled="clearingData">
+            <span v-if="clearingData" class="spinner"></span>{{ clearingData ? t('settings.storage.clearing') : t('settings.storage.clearData') }}
+          </button>
+        </div>
       </div>
 
       <div style="text-align:right;margin-top:12px">
@@ -229,11 +249,15 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import api from '../stores/api.js'
 import UserSearchPicker from '../components/UserSearchPicker.vue'
 import { useI18nStore } from '../stores/i18n'
+import { useAuthStore } from '../stores/auth.js'
 
 const i18n = useI18nStore()
+const auth = useAuthStore()
+const router = useRouter()
 const t = i18n.t
 
 const form = ref({})
@@ -244,6 +268,7 @@ const chatQuery = ref(''), resolvingCustom = ref(false), customInfo = ref(null)
 const resolvingGroup = ref(false), groupInfo = ref(null), groupErr = ref('')
 const newAdminId = ref('')
 const dbInfo = ref({ active: 'kv', hasD1: false }), dbSwitching = ref(false), dbMsg = ref(''), dbOk = ref(true)
+const clearingData = ref(false)
 
 const boolProp = key => computed({ get: () => form.value[key] === 'true', set: v => { form.value[key] = v ? 'true' : 'false' } })
 const verifyEnabled = boolProp('VERIFICATION_ENABLED')
@@ -251,6 +276,7 @@ const autoUnblock = boolProp('AUTO_UNBLOCK_ENABLED')
 const whitelistEnabled = boolProp('WHITELIST_ENABLED')
 const cmdFilter = boolProp('BOT_COMMAND_FILTER')
 const adminNotifyEnabled = boolProp('ADMIN_NOTIFY_ENABLED')
+const inlineKbDeleteEnabled = boolProp('INLINE_KB_MSG_DELETE_ENABLED')
 const welcomeEnabled = boolProp('WELCOME_ENABLED')
 
 const adminList = computed({
@@ -266,7 +292,9 @@ async function load() {
     const [data, db] = await Promise.all([api.get('/api/settings'), api.get('/api/settings/db')])
     form.value = data
     dbInfo.value = db
-    if (data.WEBHOOK_URL) webhookUrl.value = data.WEBHOOK_URL
+    form.value.WEBHOOK_URL = data.WEBHOOK_URL || ''
+    webhookUrl.value = data.WEBHOOK_URL || ''
+    form.value.CAPTCHA_SITE_URL = data.CAPTCHA_SITE_URL || ''
   } catch (e) {
     saveErr.value = t('settings.loadFailed', { err: e.message })
   } finally {
@@ -289,8 +317,10 @@ async function save() {
   clampInlineKbDelete()
   saving.value = true; saved.value = false; saveErr.value = ''
   try {
+    form.value.WEBHOOK_URL = webhookUrl.value || ''
     await api.put('/api/settings', form.value)
     saved.value = true
+    form.value.WEBHOOK_URL = webhookUrl.value || ''
     setTimeout(() => saved.value = false, 3000)
   } catch (e) {
     saveErr.value = e.message
@@ -316,7 +346,13 @@ async function resolveChat(val, which) {
 }
 async function setWebhook() {
   settingWh.value = true; whResult.value = null
-  try { whResult.value = await api.post('/api/settings/webhook', { webhookUrl: webhookUrl.value }) }
+  try {
+    whResult.value = await api.post('/api/settings/webhook', { webhookUrl: webhookUrl.value })
+    form.value.WEBHOOK_URL = webhookUrl.value || ''
+    if (!form.value.CAPTCHA_SITE_URL && webhookUrl.value) {
+      form.value.CAPTCHA_SITE_URL = new URL(webhookUrl.value).origin
+    }
+  }
   catch (e) { whResult.value = { ok: false, err: e.message } }
   finally { settingWh.value = false }
 }
@@ -334,6 +370,28 @@ async function switchDb(target, sync = true) {
     dbSwitching.value = false
   }
 }
+
+async function clearData() {
+  if (clearingData.value) return
+  if (!confirm(t('settings.storage.clearDataConfirm'))) return
+
+  clearingData.value = true
+  dbMsg.value = ''
+
+  try {
+    await api.post('/api/settings/clear-data', {})
+    dbMsg.value = t('settings.storage.cleared')
+    dbOk.value = true
+    await auth.logout()
+    router.push('/login')
+  } catch (e) {
+    dbMsg.value = '❌ ' + e.message
+    dbOk.value = false
+  } finally {
+    clearingData.value = false
+  }
+}
+
 onMounted(load)
 </script>
 
@@ -344,5 +402,6 @@ onMounted(load)
 .admin-tag{display:flex;align-items:center;gap:4px;background:var(--accent-dim);border:1px solid rgba(79,142,247,.3);color:var(--accent);border-radius:20px;padding:3px 10px;font-size:12px;font-weight:600}
 .admin-tag button{background:none;border:none;color:var(--danger);cursor:pointer;font-size:12px;padding:0 2px}
 .db-status{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.danger-zone{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .page{max-width:720px;margin:0 auto}
 </style>

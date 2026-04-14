@@ -49,6 +49,7 @@ function getUserMsgDeleteSeconds(settings) {
 }
 
 function getInlineKbMsgDeleteSeconds(settings) {
+  if (settings?.INLINE_KB_MSG_DELETE_ENABLED === 'false') return 0;
   // Cloudflare Pages Functions background tasks are short-lived; keeping this <=25s improves reliability.
   return parseBoundedInt(settings?.INLINE_KB_MSG_DELETE_SECONDS || settings?.USER_MSG_DELETE_SECONDS || '15', 15, 0, 25);
 }
@@ -170,6 +171,26 @@ async function editUserKb({ tg, settings, waitUntil, chatId, msgId, kb }) {
   const r = await tg.editKb({ chatId, msgId, kb });
   if (r?.ok) scheduleEditedUserMsgDelete({ tg, settings, waitUntil, chatId, msgId, kb });
   return r;
+}
+
+async function shouldProcessMessageOnce(kv, scope, chatId, msgId, ttlSeconds = 21600) {
+  if (!kv || !chatId || !msgId) return true;
+  const dedupeKey = `dedupe:${scope}:${chatId}:${msgId}`;
+
+  const lock = await withUserLock(
+    kv,
+    `dedupe:${scope}:${chatId}:${msgId}`,
+    async () => {
+      const seen = await kv.get(dedupeKey);
+      if (seen) return false;
+      await kv.put(dedupeKey, '1', { expirationTtl: Math.max(60, ttlSeconds) });
+      return true;
+    },
+    { ttlSeconds: 60, retries: 2, waitMs: 40 },
+  );
+
+  if (!lock.acquired) return false;
+  return lock.value !== false;
 }
 
 async function withUserLock(kv, userLockId, fn, { ttlSeconds = 60, retries = 8, waitMs = 120 } = {}) {
@@ -299,7 +320,7 @@ function adminPanelKb(s, t) {
   const capLabel = s.CAPTCHA_TYPE === 'image_numeric'
     ? t('panel.cap.imageNumeric')
     : (s.CAPTCHA_TYPE === 'image_alphanumeric' ? t('panel.cap.imageAlnum') : t('panel.cap.math'));
-  const inlineKbDeleteSec = parseBoundedInt(s.INLINE_KB_MSG_DELETE_SECONDS || '15', 15, 0, 25);
+  const inlineKbDeleteSec = getInlineKbMsgDeleteSeconds(s);
   return [
     [
       { text: `✅ ${t('panel.verify')}: ${s.VERIFICATION_ENABLED === 'true' ? t('panel.on') : t('panel.off')}`, callback_data: 'adm:tv' },
@@ -369,6 +390,10 @@ async function handleMsg(msg, { tg, db, kv, settings, baseUrl, t, waitUntil }) {
     if (msg.text?.startsWith('/')) return;   // avoid accidental command forwarding
     const target = await db.getUserByThread(msg.message_thread_id);
     if (!target) return;
+
+    const shouldForward = await shouldProcessMessageOnce(kv, 'admin-topic-forward', msg.chat.id, msg.message_id);
+    if (!shouldForward) return;
+
     // Use copyMessage to preserve ALL formatting (code, monospace, quotes, media)
     await tg.copyMsg({ chatId: target.user_id, fromChatId: msg.chat.id, msgId: msg.message_id });
     await db.addMsg({ userId: target.user_id, direction: 'outgoing', content: msg.text || msg.caption || t('content.media'), messageType: msgType(msg) });
@@ -559,6 +584,9 @@ async function handleMsg(msg, { tg, db, kv, settings, baseUrl, t, waitUntil }) {
   const tid = await getOrCreateThread(tg, db, user, groupId, kv, t);
   if (!tid) { await tg.sendMsg({ chatId: user.id, text: t('sendFail') }); return; }
 
+  const shouldForward = await shouldProcessMessageOnce(kv, 'user-to-admin-thread', msg.chat.id, msg.message_id);
+  if (!shouldForward) return;
+
   // Use copyMessage to forward ALL content types with full formatting preserved
   const res = await tg.copyMsg({ chatId: groupId, fromChatId: msg.chat.id, msgId: msg.message_id, threadId: tid });
   if (res.ok) {
@@ -693,14 +721,15 @@ async function handleAdminPrivateMsg(msg, user, { tg, db, kv, settings, groupId,
     return;
   }
 
-  if (settings.ADMIN_NOTIFY_ENABLED !== 'true') return;
+  const shouldForward = await shouldProcessMessageOnce(kv, 'admin-private-notify', msg.chat.id, msg.message_id);
+  if (!shouldForward) return;
 
-  // ADMIN_NOTIFY is ON: forward admin message to forum group (no target thread context in private chat)
+  // Always forward admin private messages to the forum/group.
   const fwdRes = await tg.copyMsg({ chatId: groupId, fromChatId: msg.chat.id, msgId: msg.message_id });
   if (fwdRes.ok) {
     await tg.sendMsg({ chatId: user.id, text: t('admin.forwarded') });
-  } else {
-    // Fallback: show admin control panel if forwarding fails (e.g. bot not in group yet)
+  } else if (settings.ADMIN_NOTIFY_ENABLED === 'true') {
+    // When enabled, fallback to control panel if forwarding fails.
     await sendPanel();
   }
 }
@@ -919,9 +948,12 @@ async function handleVerifyAnswer(q, tg, db, kv, user, chatId, msgId, settings, 
           const p = JSON.parse(pr);
           const tid = await getOrCreateThread(tg, db, user, groupId, kv, t);
           if (tid && p.msgId) {
-            await tg.copyMsg({ chatId: groupId, fromChatId: chatId, msgId: p.msgId, threadId: tid });
-            await db.addMsg({ userId: user.id, direction: 'incoming', content: t('content.verifiedForwarded') });
-            await tg.sendMsg({ chatId: user.id, text: t('sentAfterVerify') });
+            const shouldForward = await shouldProcessMessageOnce(kv, 'verified-user-forward', chatId, p.msgId);
+            if (shouldForward) {
+              await tg.copyMsg({ chatId: groupId, fromChatId: chatId, msgId: p.msgId, threadId: tid });
+              await db.addMsg({ userId: user.id, direction: 'incoming', content: t('content.verifiedForwarded') });
+              await tg.sendMsg({ chatId: user.id, text: t('sentAfterVerify') });
+            }
           }
         }
         await tg.answerCb({ id: q.id }).catch(() => {});
