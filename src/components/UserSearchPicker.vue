@@ -37,6 +37,7 @@
 import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import api from '../stores/api.js'
 import { useI18nStore } from '../stores/i18n'
+import { readLocalCache, writeLocalCache } from '../stores/local-cache.js'
 
 const i18n = useI18nStore()
 const t = i18n.t
@@ -55,6 +56,8 @@ const root = ref(null)
 
 let timer = null
 let searchSeq = 0
+
+const searchCacheKey = keyword => `users:search:${String(keyword || '').trim().toLowerCase()}`
 
 function onInput() {
   emit('update:modelValue', query.value)
@@ -80,12 +83,22 @@ async function doSearch(keyword = String(query.value || '').trim()) {
   }
 
   const currentSeq = ++searchSeq
+  const cacheKey = searchCacheKey(keyword)
+  const cached = readLocalCache(cacheKey, { ttlMs: 5 * 60 * 1000 })
+
+  if (Array.isArray(cached)) {
+    results.value = cached
+    loading.value = false
+    return
+  }
+
   loading.value = true
 
   try {
     const data = await api.get(`/api/users/search?q=${encodeURIComponent(keyword)}`)
     if (currentSeq === searchSeq && keyword === String(query.value || '').trim()) {
       results.value = data
+      writeLocalCache(cacheKey, data)
     }
   } catch {
     if (currentSeq === searchSeq) results.value = []

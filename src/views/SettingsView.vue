@@ -3,7 +3,7 @@
     <div class="page-header">
       <h2 class="page-title">⚙️ {{ t('settings.title') }}</h2>
       <div class="flex gap-2">
-        <button class="btn-ghost btn-sm" @click="load">🔄</button>
+        <button class="btn-ghost btn-sm" @click="load(true)">🔄</button>
         <button class="btn-primary" @click="save" :disabled="saving">
           <span v-if="saving" class="spinner"></span>{{ saving ? t('settings.saving') : `💾 ${t('settings.save')}` }}
         </button>
@@ -185,6 +185,14 @@
         </div>
         <div class="divider"></div>
         <div class="toggle-row">
+          <div>
+            <div class="toggle-label">{{ t('settings.feature.zalgoFilter') }}</div>
+            <div class="form-hint">{{ t('settings.feature.zalgoFilterHint') }}</div>
+          </div>
+          <label class="toggle"><input type="checkbox" v-model="zalgoFilterEnabled" /><span class="toggle-slider"></span></label>
+        </div>
+        <div class="divider"></div>
+        <div class="toggle-row">
           <div class="toggle-label">{{ t('settings.feature.maxPerMin') }}</div>
           <input v-model="form.MAX_MESSAGES_PER_MINUTE" type="number" min="1" max="300" style="width:90px" />
         </div>
@@ -241,6 +249,35 @@
         <div v-if="dbMsg" class="form-hint mt-1" :class="dbOk ? 'text-success' : 'text-danger'">{{ dbMsg }}</div>
         <div class="form-hint mt-1">{{ t('settings.storage.switchHint') }}</div>
         <div class="divider"></div>
+
+        <div class="sql-tools">
+          <div class="sql-tools-header">
+            <div>
+              <div class="toggle-label">{{ t('settings.storage.sqlTools') }}</div>
+              <div class="form-hint mt-1">{{ t('settings.storage.sqlHint') }}</div>
+            </div>
+            <div class="sql-tools-actions">
+              <button class="btn-ghost btn-sm" :disabled="sqlWorking" @click="exportSql">
+                <span v-if="sqlWorking" class="spinner"></span>{{ sqlWorking ? '…' : t('settings.storage.sqlExport') }}
+              </button>
+              <button class="btn-primary btn-sm" :disabled="sqlWorking || !sqlText.trim()" @click="importSql">
+                <span v-if="sqlWorking" class="spinner"></span>{{ sqlWorking ? '…' : t('settings.storage.sqlImport') }}
+              </button>
+            </div>
+          </div>
+          <div class="form-group mt-2 w-full">
+            <textarea
+              v-model="sqlText"
+              rows="10"
+              class="sql-textarea"
+              :placeholder="t('settings.storage.sqlPlaceholder')"
+              spellcheck="false"
+            ></textarea>
+          </div>
+          <div v-if="sqlMsg" class="form-hint mt-1" :class="sqlOk ? 'text-success' : 'text-danger'">{{ sqlMsg }}</div>
+        </div>
+
+        <div class="divider"></div>
         <div class="danger-zone">
           <div>
             <div class="toggle-label text-danger">{{ t('settings.storage.clearData') }}</div>
@@ -268,6 +305,7 @@ import api from '../stores/api.js'
 import UserSearchPicker from '../components/UserSearchPicker.vue'
 import { useI18nStore } from '../stores/i18n'
 import { useAuthStore } from '../stores/auth.js'
+import { readLocalCache, writeLocalCache } from '../stores/local-cache.js'
 
 const i18n = useI18nStore()
 const auth = useAuthStore()
@@ -285,6 +323,10 @@ const adminProfiles = ref({})
 const adminAvatarErrors = ref({})
 const dbInfo = ref({ active: 'kv', hasD1: false }), dbSwitching = ref(false), dbMsg = ref(''), dbOk = ref(true)
 const clearingData = ref(false)
+const sqlText = ref(''), sqlWorking = ref(false), sqlMsg = ref(''), sqlOk = ref(true)
+
+const SETTINGS_CACHE_KEY = 'settings:form'
+const SETTINGS_DB_CACHE_KEY = 'settings:db-info'
 
 let adminProfileSeq = 0
 
@@ -294,6 +336,7 @@ const autoUnblock = boolProp('AUTO_UNBLOCK_ENABLED')
 const whitelistEnabled = boolProp('WHITELIST_ENABLED')
 const cmdFilter = boolProp('BOT_COMMAND_FILTER')
 const adminNotifyEnabled = boolProp('ADMIN_NOTIFY_ENABLED')
+const zalgoFilterEnabled = boolProp('ZALGO_FILTER_ENABLED')
 const inlineKbDeleteEnabled = boolProp('INLINE_KB_MSG_DELETE_ENABLED')
 const welcomeEnabled = boolProp('WELCOME_ENABLED')
 
@@ -377,15 +420,36 @@ async function resolveAdminProfiles() {
   }, {})
 }
 
-async function load() {
+async function load(force = false) {
   loading.value = true
+
+  const cachedSettings = !force ? readLocalCache(SETTINGS_CACHE_KEY, { ttlMs: 5 * 60 * 1000 }) : null
+  const cachedDbInfo = !force ? readLocalCache(SETTINGS_DB_CACHE_KEY, { ttlMs: 5 * 60 * 1000 }) : null
+
+  if (cachedSettings) {
+    form.value = { ...cachedSettings }
+    form.value.WEBHOOK_URL = cachedSettings.WEBHOOK_URL || ''
+    form.value.CAPTCHA_SITE_URL = cachedSettings.CAPTCHA_SITE_URL || ''
+    webhookUrl.value = cachedSettings.WEBHOOK_URL || ''
+    loading.value = false
+    resolveAdminProfiles()
+  }
+  if (cachedDbInfo) dbInfo.value = cachedDbInfo
+
   try {
-    const [data, db] = await Promise.all([api.get('/api/settings'), api.get('/api/settings/db')])
+    const [data, db] = await Promise.all([
+      api.get('/api/settings'),
+      api.get('/api/settings/db'),
+    ])
     form.value = data
     dbInfo.value = db
     form.value.WEBHOOK_URL = data.WEBHOOK_URL || ''
     webhookUrl.value = data.WEBHOOK_URL || ''
     form.value.CAPTCHA_SITE_URL = data.CAPTCHA_SITE_URL || ''
+
+    writeLocalCache(SETTINGS_CACHE_KEY, form.value)
+    writeLocalCache(SETTINGS_DB_CACHE_KEY, dbInfo.value)
+
     resolveAdminProfiles()
   } catch (e) {
     saveErr.value = t('settings.loadFailed', { err: e.message })
@@ -413,6 +477,7 @@ async function save() {
     await api.put('/api/settings', form.value)
     saved.value = true
     form.value.WEBHOOK_URL = webhookUrl.value || ''
+    writeLocalCache(SETTINGS_CACHE_KEY, form.value)
     setTimeout(() => saved.value = false, 3000)
   } catch (e) {
     saveErr.value = e.message
@@ -444,6 +509,7 @@ async function setWebhook() {
     if (!form.value.CAPTCHA_SITE_URL && webhookUrl.value) {
       form.value.CAPTCHA_SITE_URL = new URL(webhookUrl.value).origin
     }
+    writeLocalCache(SETTINGS_CACHE_KEY, form.value)
   }
   catch (e) { whResult.value = { ok: false, err: e.message } }
   finally { settingWh.value = false }
@@ -453,6 +519,7 @@ async function switchDb(target, sync = true) {
   try {
     await api.post('/api/settings/db/switch', { target, sync })
     dbInfo.value.active = target
+    writeLocalCache(SETTINGS_DB_CACHE_KEY, dbInfo.value)
     dbMsg.value = t('settings.storage.switched', { target: target === 'd1' ? t('settings.storage.d1Short') : t('settings.storage.kvShort') })
     dbOk.value = true
   } catch (e) {
@@ -460,6 +527,49 @@ async function switchDb(target, sync = true) {
     dbOk.value = false
   } finally {
     dbSwitching.value = false
+  }
+}
+
+async function exportSql() {
+  if (sqlWorking.value) return
+  sqlWorking.value = true
+  sqlMsg.value = ''
+
+  try {
+    const result = await api.get('/api/settings/sql/export')
+    sqlText.value = result?.sql || ''
+    sqlMsg.value = t('settings.storage.sqlExported')
+    sqlOk.value = true
+  } catch (e) {
+    sqlMsg.value = '❌ ' + e.message
+    sqlOk.value = false
+  } finally {
+    sqlWorking.value = false
+  }
+}
+
+async function importSql() {
+  if (sqlWorking.value) return
+  if (!sqlText.value.trim()) {
+    sqlMsg.value = t('settings.storage.sqlEmpty')
+    sqlOk.value = false
+    return
+  }
+  if (!confirm(t('settings.storage.sqlImportConfirm'))) return
+
+  sqlWorking.value = true
+  sqlMsg.value = ''
+
+  try {
+    await api.post('/api/settings/sql/import', { sql: sqlText.value })
+    await load(true)
+    sqlMsg.value = t('settings.storage.sqlImported')
+    sqlOk.value = true
+  } catch (e) {
+    sqlMsg.value = '❌ ' + e.message
+    sqlOk.value = false
+  } finally {
+    sqlWorking.value = false
   }
 }
 
@@ -509,6 +619,10 @@ onMounted(load)
 .admin-card-remove{align-self:center;padding:4px 8px;line-height:1}
 .db-status{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .danger-zone{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.sql-tools{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:12px;padding:8px 0}
+.sql-tools-header{width:100%;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.sql-tools-actions{display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap}
+.sql-textarea{max-width:100%;min-height:220px;font-family:'JetBrains Mono','Fira Code',Consolas,monospace;font-size:12px}
 .settings-card{margin-bottom:18px}
 .page{max-width:720px;margin:0 auto}
 </style>

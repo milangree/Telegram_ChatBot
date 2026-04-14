@@ -94,7 +94,7 @@ export async function syncDbData({ kvStore, d1Store }, from, to) {
   // Users (upsertUser uses ON CONFLICT / overwrite — safe)
   for (const u of await src.getAllUsersRaw()) await dst.upsertUser(u)
 
-  // Whitelist: use INSERT OR REPLACE in D1, overwrite in KV
+  // Whitelist: use INSERT OR REPLACE in D1, overwrite in KV while preserving timestamps
   const wl = await src.getWhitelistRaw()
   if (to === 'd1') {
     for (const e of wl) {
@@ -104,10 +104,17 @@ export async function syncDbData({ kvStore, d1Store }, from, to) {
       )
     }
   } else {
-    for (const e of wl) await kvStore.addToWhitelist(e.user_id, e.reason, e.added_by)
+    for (const e of wl) {
+      await kvStore.kv.put(`whitelist:${e.user_id}`, JSON.stringify({
+        user_id: e.user_id,
+        reason: e.reason || '',
+        added_by: e.added_by || '',
+        created_at: e.created_at || new Date().toISOString(),
+      }))
+    }
   }
 
-  // Messages: INSERT OR IGNORE in D1 (keyed by id), overwrite in KV
+  // Messages: preserve original IDs/timestamps in both directions
   const msgs = await src.getAllMsgsRaw()
   if (to === 'd1') {
     for (const m of msgs) {
@@ -119,7 +126,36 @@ export async function syncDbData({ kvStore, d1Store }, from, to) {
       )
     }
   } else {
-    for (const m of msgs) await kvStore.addMsg(m)
+    for (const m of msgs) {
+      await kvStore.kv.put(`msg:${m.user_id}:${m.id}`, JSON.stringify({
+        id: m.id,
+        user_id: m.user_id,
+        direction: m.direction,
+        content: m.content || '',
+        message_type: m.message_type || 'text',
+        telegram_message_id: m.telegram_message_id || null,
+        created_at: m.created_at || new Date().toISOString(),
+      }))
+    }
+  }
+
+  const recent = await src.getAllRecentRaw()
+  if (to === 'd1') {
+    for (const r of recent) {
+      await d1Store.exec(
+        'INSERT OR REPLACE INTO recent_convs(user_id,last_message,last_direction,last_at) VALUES(?,?,?,?)',
+        r.user_id, r.last_message || '', r.last_direction || 'incoming', r.last_at || new Date().toISOString()
+      )
+    }
+  } else {
+    for (const r of recent) {
+      await kvStore.kv.put(`recent:${r.user_id}`, JSON.stringify({
+        user_id: r.user_id,
+        last_message: r.last_message || '',
+        last_direction: r.last_direction || 'incoming',
+        last_at: r.last_at || new Date().toISOString(),
+      }))
+    }
   }
 
   // Web users — preserve original ID to avoid UNIQUE re-insert on repeated sync

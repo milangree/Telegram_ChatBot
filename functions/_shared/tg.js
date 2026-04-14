@@ -1,4 +1,6 @@
 // functions/_shared/tg.js
+import { getDisplayName } from '../../shared/display-name.js'
+
 export class TG {
   constructor(token) {
     this.token = token;
@@ -160,9 +162,11 @@ export class TG {
 export const esc = t =>
   String(t ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-export const name = u =>
-  [u.first_name, u.last_name].filter(Boolean).join(' ') ||
-  u.username || `User ${u.user_id ?? u.id}`;
+export const name = (u, options = {}) =>
+  getDisplayName(u, {
+    stripZalgo: options?.stripZalgo === true,
+    fallback: options?.fallback || '',
+  });
 
 export const msgType = m => {
   if (m.text)           return 'text';

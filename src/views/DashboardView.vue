@@ -2,7 +2,7 @@
   <div class="page">
     <div class="page-header">
       <h2 class="page-title">📊 {{ t('dashboard.title') }}</h2>
-      <button class="btn-ghost btn-sm" @click="load">🔄 {{ t('dashboard.refresh') }}</button>
+      <button class="btn-ghost btn-sm" @click="load(true)">🔄 {{ t('dashboard.refresh') }}</button>
     </div>
 
     <div v-if="loading" class="flex-center mt-3"><div class="spinner"></div></div>
@@ -70,6 +70,7 @@ import { ref, computed, onMounted } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import api from '../stores/api.js'
 import { useI18nStore } from '../stores/i18n'
+import { getLatestTimestamp, mergeByKey, readLocalCache, writeLocalCache } from '../stores/local-cache.js'
 
 const router = useRouter()
 const i18n = useI18nStore()
@@ -77,6 +78,11 @@ const t = i18n.t
 
 const stats = ref({}), convs = ref([]), settings = ref({}), bot = ref(null)
 const loading = ref(true), avatars = ref({})
+
+const DASHBOARD_STATS_CACHE_KEY = 'dashboard:stats'
+const DASHBOARD_SETTINGS_CACHE_KEY = 'dashboard:settings'
+const DASHBOARD_BOT_CACHE_KEY = 'dashboard:bot'
+const DASHBOARD_CONVS_CACHE_KEY = 'conversations:list'
 
 const statCards = computed(() => [
   { icon: '👥', label: t('dashboard.totalUsers'), val: stats.value.totalUsers ?? '—', cls: '', to: '/users' },
@@ -98,17 +104,45 @@ function tryLoadAvatar(uid) {
   img.src = `/api/users/${uid}/avatar`
 }
 
-async function load() {
+async function load(force = false) {
   loading.value = true
+
+  const cachedStats = readLocalCache(DASHBOARD_STATS_CACHE_KEY, { ttlMs: 60 * 1000 })
+  const cachedSettings = readLocalCache(DASHBOARD_SETTINGS_CACHE_KEY, { ttlMs: 5 * 60 * 1000 })
+  const cachedBot = readLocalCache(DASHBOARD_BOT_CACHE_KEY, { ttlMs: 5 * 60 * 1000 })
+  const cachedConvs = readLocalCache(DASHBOARD_CONVS_CACHE_KEY)
+
+  if (cachedStats) stats.value = cachedStats
+  if (cachedSettings) settings.value = cachedSettings
+  if (cachedBot !== null) bot.value = cachedBot
+  if (Array.isArray(cachedConvs) && cachedConvs.length) {
+    convs.value = cachedConvs
+    for (const c of cachedConvs) tryLoadAvatar(c.user_id)
+    loading.value = false
+  }
+
   try {
-    const [st, cv, se] = await Promise.all([
-      api.get('/api/stats'),
-      api.get('/api/conversations'),
-      api.get('/api/settings'),
+    const since = !force ? getLatestTimestamp(convs.value, 'last_at') : ''
+    const [st, cv, se, botInfo] = await Promise.all([
+      !force && cachedStats ? Promise.resolve(cachedStats) : api.get('/api/stats'),
+      api.get(`/api/conversations${since ? `?since=${encodeURIComponent(since)}` : ''}`),
+      !force && cachedSettings ? Promise.resolve(cachedSettings) : api.get('/api/settings'),
+      !force && cachedBot !== null ? Promise.resolve(cachedBot) : api.get('/api/tg/me').then(r => r.bot).catch(() => null),
     ])
-    stats.value = st; convs.value = cv; settings.value = se
-    bot.value = await api.get('/api/tg/me').then(r => r.bot).catch(() => null)
-    for (const c of cv) tryLoadAvatar(c.user_id)
+
+    stats.value = st
+    convs.value = since
+      ? mergeByKey(convs.value, Array.isArray(cv?.items) ? cv.items : [], 'user_id', (a, b) => new Date(b.last_at || 0) - new Date(a.last_at || 0))
+      : (Array.isArray(cv?.items) ? cv.items : [])
+    settings.value = se
+    bot.value = botInfo
+
+    writeLocalCache(DASHBOARD_STATS_CACHE_KEY, st)
+    writeLocalCache(DASHBOARD_CONVS_CACHE_KEY, convs.value)
+    writeLocalCache(DASHBOARD_SETTINGS_CACHE_KEY, se)
+    writeLocalCache(DASHBOARD_BOT_CACHE_KEY, bot.value)
+
+    for (const c of convs.value) tryLoadAvatar(c.user_id)
   } finally { loading.value = false }
 }
 

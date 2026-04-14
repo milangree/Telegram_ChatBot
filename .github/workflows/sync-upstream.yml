@@ -34,14 +34,32 @@ jobs:
       - name: Fast-forward sync from upstream
         shell: bash
         env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
           INPUT_UPSTREAM_REPO: ${{ github.event.inputs.upstream_repo }}
           INPUT_UPSTREAM_BRANCH: ${{ github.event.inputs.upstream_branch }}
           INPUT_TARGET_BRANCH: ${{ github.event.inputs.target_branch }}
-          VAR_UPSTREAM_REPO: ${{ vars.UPSTREAM_REPO }}
-          VAR_UPSTREAM_BRANCH: ${{ vars.UPSTREAM_BRANCH }}
-          VAR_TARGET_BRANCH: ${{ vars.TARGET_BRANCH }}
+          REPO_VARS_JSON: ${{ toJson(vars) }}
         run: |
           set -euo pipefail
+
+          VAR_UPSTREAM_REPO="$(python3 - <<'PY'
+          import json, os
+          data = json.loads(os.environ.get('REPO_VARS_JSON') or '{}')
+          print(data.get('UPSTREAM_REPO', ''))
+          PY
+          )"
+          VAR_UPSTREAM_BRANCH="$(python3 - <<'PY'
+          import json, os
+          data = json.loads(os.environ.get('REPO_VARS_JSON') or '{}')
+          print(data.get('UPSTREAM_BRANCH', ''))
+          PY
+          )"
+          VAR_TARGET_BRANCH="$(python3 - <<'PY'
+          import json, os
+          data = json.loads(os.environ.get('REPO_VARS_JSON') or '{}')
+          print(data.get('TARGET_BRANCH', ''))
+          PY
+          )"
 
           UPSTREAM_REPO="${INPUT_UPSTREAM_REPO:-${VAR_UPSTREAM_REPO:-milangree/Telegram_ChatBot}}"
           UPSTREAM_BRANCH="${INPUT_UPSTREAM_BRANCH:-${VAR_UPSTREAM_BRANCH:-main}}"
@@ -50,6 +68,12 @@ jobs:
           echo "Upstream repo: ${UPSTREAM_REPO}"
           echo "Upstream branch: ${UPSTREAM_BRANCH}"
           echo "Target branch: ${TARGET_BRANCH}"
+          echo "Current repository: ${GITHUB_REPOSITORY:-unknown}"
+
+          if [ "${GITHUB_REPOSITORY:-}" = "${UPSTREAM_REPO}" ]; then
+            echo "::warning title=Sync skipped::Current repository is the upstream repository itself (${UPSTREAM_REPO}), skipping sync."
+            exit 0
+          fi
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -67,7 +91,7 @@ jobs:
           git fetch upstream "${UPSTREAM_BRANCH}"
 
           if ! git merge-base --is-ancestor HEAD "upstream/${UPSTREAM_BRANCH}"; then
-            echo "Non fast-forward situation detected. Skip auto sync."
+            echo "::warning title=Sync skipped::Non fast-forward situation detected between origin/${TARGET_BRANCH} and upstream/${UPSTREAM_BRANCH}. Automatic sync was skipped."
             exit 0
           fi
 

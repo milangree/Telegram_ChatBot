@@ -85,6 +85,7 @@ import { ref, computed, onMounted, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import api from '../stores/api.js'
 import { useI18nStore } from '../stores/i18n'
+import { getLatestTimestamp, limitToLast, mergeByKey, readLocalCache, removeLocalCache, writeLocalCache } from '../stores/local-cache.js'
 
 const route = useRoute()
 const i18n = useI18nStore()
@@ -94,6 +95,9 @@ const convs = ref([]), msgs = ref([]), selUser = ref(null), selId = ref(null)
 const search = ref(''), loadingList = ref(true), loadingMsgs = ref(false), msgRef = ref(null)
 const mobileView = ref('list')
 const avatars = ref({})
+
+const CONV_LIST_CACHE_KEY = 'conversations:list'
+const convMessagesCacheKey = uid => `conversations:messages:${uid}`
 
 const filtered = computed(() => {
   if (!search.value) return convs.value
@@ -131,8 +135,26 @@ const dedupedMsgs = computed(() => {
 
 async function loadConvs() {
   loadingList.value = true
+
+  const cached = readLocalCache(CONV_LIST_CACHE_KEY)
+  if (Array.isArray(cached) && cached.length) {
+    convs.value = cached
+    loadingList.value = false
+    for (const c of cached) tryLoadAvatar(c.user_id)
+  }
+
   try {
-    convs.value = await api.get('/api/conversations')
+    const since = getLatestTimestamp(convs.value, 'last_at')
+    const query = since ? `?since=${encodeURIComponent(since)}` : ''
+    const data = await api.get(`/api/conversations${query}`)
+    const items = Array.isArray(data?.items) ? data.items : []
+
+    convs.value = since
+      ? mergeByKey(convs.value, items, 'user_id', (a, b) => new Date(b.last_at || 0) - new Date(a.last_at || 0))
+      : items
+
+    writeLocalCache(CONV_LIST_CACHE_KEY, convs.value)
+
     for (const c of convs.value) tryLoadAvatar(c.user_id)
   } finally { loadingList.value = false }
 }
@@ -145,11 +167,36 @@ function tryLoadAvatar(uid) {
 }
 
 async function selectUser(c) {
-  selId.value = c.user_id; loadingMsgs.value = true; mobileView.value = 'detail'
+  selId.value = c.user_id
+  mobileView.value = 'detail'
+
+  const cacheKey = convMessagesCacheKey(c.user_id)
+  const cached = readLocalCache(cacheKey)
+  if (cached?.user) {
+    selUser.value = cached.user
+    msgs.value = Array.isArray(cached.messages) ? cached.messages : []
+    loadingMsgs.value = false
+  } else {
+    loadingMsgs.value = true
+  }
+
   try {
-    const d = await api.get(`/api/conversations/${c.user_id}`)
-    selUser.value = d.user; msgs.value = d.messages
+    const since = getLatestTimestamp(msgs.value, 'created_at')
+    const query = since ? `?since=${encodeURIComponent(since)}` : ''
+    const d = await api.get(`/api/conversations/${c.user_id}${query}`)
+    const incomingMessages = Array.isArray(d?.messages) ? d.messages : []
+
+    selUser.value = d.user || c
+    msgs.value = since
+      ? limitToLast(
+        mergeByKey(msgs.value, incomingMessages, 'id', (a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0)),
+        200,
+      )
+      : incomingMessages
+
+    writeLocalCache(cacheKey, { user: selUser.value, messages: msgs.value })
     tryLoadAvatar(c.user_id)
+    updateConv(c.user_id, { ...(d.user || {}), ...c })
     await nextTick()
     if (msgRef.value) msgRef.value.scrollTop = msgRef.value.scrollHeight
   } finally { loadingMsgs.value = false }
@@ -163,6 +210,8 @@ async function deleteConv() {
   try {
     const r = await api.delete(`/api/conversations/${uid}`)
     convs.value = convs.value.filter(c => c.user_id !== uid)
+    writeLocalCache(CONV_LIST_CACHE_KEY, convs.value)
+    removeLocalCache(convMessagesCacheKey(uid))
     selUser.value = null; selId.value = null; msgs.value = []
     mobileView.value = 'list'
     if (r.reVerifyRequired) alert(t('conv.deleteSuccessReverify'))
@@ -184,7 +233,14 @@ async function unblockUser() {
 }
 function updateConv(uid, patch) {
   const i = convs.value.findIndex(c => c.user_id === uid)
-  if (i >= 0) Object.assign(convs.value[i], patch)
+  if (i >= 0) {
+    Object.assign(convs.value[i], patch)
+    writeLocalCache(CONV_LIST_CACHE_KEY, convs.value)
+  }
+  if (selUser.value?.user_id === uid) {
+    selUser.value = { ...selUser.value, ...patch }
+    writeLocalCache(convMessagesCacheKey(uid), { user: selUser.value, messages: msgs.value })
+  }
 }
 
 function fmtShort(ts) {

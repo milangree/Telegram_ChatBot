@@ -68,10 +68,16 @@ export class DB {
   async addToWhitelist(uid, r, by) { return (await this._store()).addToWhitelist(uid, r, by) }
   async removeFromWhitelist(uid) { return (await this._store()).removeFromWhitelist(uid) }
   async getWhitelist(p, ps) { return (await this._store()).getWhitelist(p, ps) }
+  async getAllUsersRaw() { return (await this._store()).getAllUsersRaw() }
+  async getWhitelistRaw() { return (await this._store()).getWhitelistRaw() }
 
   async addMsg(opts) { return (await this._store()).addMsg(opts) }
   async getMsgs(uid, lim, off) { return (await this._store()).getMsgs(uid, lim, off) }
+  async getMsgsSince(uid, since, lim) { return (await this._store()).getMsgsSince(uid, since, lim) }
   async getRecentConvs(lim) { return (await this._store()).getRecentConvs(lim) }
+  async getRecentConvsSince(since, lim) { return (await this._store()).getRecentConvsSince(since, lim) }
+  async getAllMsgsRaw() { return (await this._store()).getAllMsgsRaw() }
+  async getAllRecentRaw() { return (await this._store()).getAllRecentRaw() }
   async deleteUserMsgs(uid) { return (await this._store()).deleteUserMsgs(uid) }
   async clearUserThread(uid) { return (await this._store()).clearUserThread(uid) }
   async getStats() { return (await this._store()).getStats() }

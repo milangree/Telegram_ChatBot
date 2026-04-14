@@ -1,12 +1,27 @@
 // src/stores/api.js
 import axios from 'axios'
 import { createT, normalizeLocale } from '../../shared/i18n.js'
+import { isZalgoFilterEnabled, sanitizeDataTree } from '../../shared/display-name.js'
+import { clearLocalCache, readLocalCache } from './local-cache.js'
 
 const api = axios.create({ timeout: 30000, headers: { 'Content-Type': 'application/json' }, withCredentials: true })
 
 function t(key) {
   const locale = normalizeLocale(localStorage.getItem('ui_locale') || 'zh-hans')
   return createT(locale)(key)
+}
+
+function shouldSanitizeDisplayNames(payload = null) {
+  if (payload && typeof payload === 'object' && !Array.isArray(payload) && 'ZALGO_FILTER_ENABLED' in payload) {
+    return isZalgoFilterEnabled(payload)
+  }
+
+  const cachedSettings = readLocalCache('settings:form', { ttlMs: 5 * 60 * 1000 })
+  if (cachedSettings && typeof cachedSettings === 'object' && 'ZALGO_FILTER_ENABLED' in cachedSettings) {
+    return isZalgoFilterEnabled(cachedSettings)
+  }
+
+  return true
 }
 
 api.interceptors.request.use(config => {
@@ -16,7 +31,7 @@ api.interceptors.request.use(config => {
 })
 
 api.interceptors.response.use(
-  r => r.data,
+  r => sanitizeDataTree(r.data, shouldSanitizeDisplayNames(r.data)),
   error => {
     const status  = error.response?.status
     const message = error.response?.data?.error || error.message || t('store.api.requestFailed')
@@ -24,6 +39,7 @@ api.interceptors.response.use(
       localStorage.removeItem('token')
       localStorage.removeItem('username')
       localStorage.removeItem('isAdmin')
+      clearLocalCache()
     }
     return Promise.reject(new Error(message))
   }

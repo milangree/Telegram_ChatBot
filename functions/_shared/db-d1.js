@@ -147,8 +147,14 @@ export class D1Store {
   async getMsgs(userId, limit = 50, offset = 0) {
     return this.all('SELECT * FROM messages WHERE user_id=? ORDER BY created_at ASC LIMIT ? OFFSET ?', userId, limit, offset)
   }
+  async getMsgsSince(userId, since, limit = 50) {
+    return this.all('SELECT * FROM messages WHERE user_id=? AND created_at>? ORDER BY created_at ASC LIMIT ?', userId, since, limit)
+  }
   async getRecentConvs(limit = 40) {
     return this.all(`SELECT r.*, u.username, u.first_name, u.last_name, u.is_blocked FROM recent_convs r LEFT JOIN users u ON r.user_id=u.user_id ORDER BY r.last_at DESC LIMIT ?`, limit)
+  }
+  async getRecentConvsSince(since, limit = 40) {
+    return this.all(`SELECT r.*, u.username, u.first_name, u.last_name, u.is_blocked FROM recent_convs r LEFT JOIN users u ON r.user_id=u.user_id WHERE r.last_at>? ORDER BY r.last_at DESC LIMIT ?`, since, limit)
   }
   async getAllMsgsRaw() { return this.all('SELECT * FROM messages') }
   async getAllRecentRaw() { return this.all('SELECT * FROM recent_convs') }

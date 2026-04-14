@@ -20,6 +20,7 @@ export const DEFAULT_SETTINGS = {
   WHITELIST_ENABLED: 'false',
   ADMIN_NOTIFY_ENABLED: 'false',
   BOT_LOCALE: 'zh-hans', // zh-hans | zh-hant | en
+  ZALGO_FILTER_ENABLED: 'true',
   ACTIVE_DB: 'kv', // kv | d1
   WEBHOOK_URL: '',
 }

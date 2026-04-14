@@ -204,6 +204,10 @@ export class KVStore {
     msgs.sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
     return msgs.slice(offset, offset + limit)
   }
+  async getMsgsSince(userId, since, limit = 50) {
+    const msgs = await this.getMsgs(userId, Number.MAX_SAFE_INTEGER, 0)
+    return msgs.filter(msg => String(msg?.created_at || '') > since).slice(0, limit)
+  }
   async getRecentConvs(limit = 40) {
     const convs = (await Promise.all((await kvListAll(this.kv, 'recent:')).map(async k => {
       const d = await this.kv.get(k.name)
@@ -214,6 +218,10 @@ export class KVStore {
     }))).filter(Boolean)
     convs.sort((a, b) => new Date(b.last_at) - new Date(a.last_at))
     return convs.slice(0, limit)
+  }
+  async getRecentConvsSince(since, limit = 40) {
+    const convs = await this.getRecentConvs(Number.MAX_SAFE_INTEGER)
+    return convs.filter(conv => String(conv?.last_at || '') > since).slice(0, limit)
   }
   async getAllMsgsRaw() {
     return (await Promise.all((await kvListAll(this.kv, 'msg:')).map(k => this.kv.get(k.name).then(d => d ? JSON.parse(d) : null)))).filter(Boolean)

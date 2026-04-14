@@ -2,6 +2,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { createT, normalizeLocale } from '../../shared/i18n.js'
+import { clearLocalCache } from './local-cache.js'
 
 function t(key) {
   const locale = normalizeLocale(localStorage.getItem('ui_locale') || 'zh-hans')
@@ -40,6 +41,7 @@ export const useAuthStore = defineStore('auth', () => {
     try { await fetch('/api/auth/logout', { method: 'POST' }) } catch { /* noop */ }
     token.value = ''; username.value = ''; isAdmin.value = false
     localStorage.removeItem('token'); localStorage.removeItem('username'); localStorage.removeItem('isAdmin')
+    clearLocalCache()
   }
 
   async function checkAuth() {

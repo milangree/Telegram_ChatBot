@@ -6,6 +6,7 @@ import { verifyTOTP, generateTOTPSecret } from '../_shared/totp.js';
 import { renderCaptchaPNG } from '../_shared/captcha.js';
 import { setupCommands } from '../_shared/bot.js';
 import { normalizeBotLocale } from '../_shared/bot-i18n.js';
+import { exportBusinessDataSql, importBusinessDataSql } from '../_shared/db-sql.js';
 import { createT, normalizeLocale } from '../../shared/i18n.js';
 
 export async function onRequest({ request, env }) {
@@ -226,6 +227,7 @@ export async function onRequest({ request, env }) {
         'WELCOME_ENABLED', 'WELCOME_MESSAGE', 'BOT_COMMAND_FILTER', 'WHITELIST_ENABLED',
         'ADMIN_NOTIFY_ENABLED',
         'BOT_LOCALE',
+        'ZALGO_FILTER_ENABLED',
         'WEBHOOK_URL',
       ];
 
@@ -341,6 +343,42 @@ export async function onRequest({ request, env }) {
       return j({ ok: true });
     } catch (e) {
       return err(t('settings.clearDataFailed', { error: e.message }), 500);
+    }
+  }
+
+  if (path === '/settings/sql/export' && request.method === 'GET') {
+    try {
+      const active = await db.getActiveDb();
+      const sql = await exportBusinessDataSql(db, active);
+      return j({ ok: true, sql, active });
+    } catch (e) {
+      return err(t('settings.sqlExportFailed', { error: e.message }), 500);
+    }
+  }
+
+  if (path === '/settings/sql/import' && request.method === 'POST') {
+    try {
+      const { sql } = await request.json();
+      if (!sql || !String(sql).trim()) return err(t('common.missingParams'), 400);
+
+      const active = await db.getActiveDb();
+
+      await db.clearAppDataPreserveWebUsers();
+      await importBusinessDataSql({
+        sqlText: String(sql),
+        target: active,
+        kvStore: db._kv,
+        d1Store: db._d1,
+      });
+
+      if (db._d1) {
+        const other = active === 'kv' ? 'd1' : 'kv';
+        await db.syncData(active, other);
+      }
+
+      return j({ ok: true, active });
+    } catch (e) {
+      return err(t('settings.sqlImportFailed', { error: e.message }), 500);
     }
   }
 
@@ -462,15 +500,30 @@ export async function onRequest({ request, env }) {
 
   // Conversations
   if (path === '/conversations' && request.method === 'GET') {
-    return j(await db.getRecentConvs(50));
+    const since = String(url.searchParams.get('since') || '').trim();
+    const items = since ? await db.getRecentConvsSince(since, 50) : await db.getRecentConvs(50);
+    return j({
+      items,
+      mode: since ? 'delta' : 'full',
+      serverTime: new Date().toISOString(),
+    });
   }
 
   const convMatch = path.match(/^\/conversations\/(\d+)$/);
   if (convMatch && request.method === 'GET') {
     const uid = parseInt(convMatch[1], 10);
+    const since = String(url.searchParams.get('since') || '').trim();
     const page = parseInt(url.searchParams.get('page') || '1', 10);
-    const [user, messages] = await Promise.all([db.getUser(uid), db.getMsgs(uid, 50, (page - 1) * 50)]);
-    return j({ user, messages });
+    const [user, messages] = await Promise.all([
+      db.getUser(uid),
+      since ? db.getMsgsSince(uid, since, 50) : db.getMsgs(uid, 50, (page - 1) * 50),
+    ]);
+    return j({
+      user,
+      messages,
+      mode: since ? 'delta' : 'full',
+      serverTime: new Date().toISOString(),
+    });
   }
 
   // Delete a conversation: wipe messages, recent entry, reset verification, optionally close TG topic
