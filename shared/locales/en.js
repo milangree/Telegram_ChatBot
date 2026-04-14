@@ -269,6 +269,8 @@ const messages = {
   "settings.feature.cmdFilterHint": "Do not forward /xxx commands to admins",
   "settings.feature.adminNotify": "Receive admin private messages",
   "settings.feature.adminNotifyHint": "Admin private messages will still be forwarded to topics; when enabled, the control panel will open automatically if forwarding fails",
+  "settings.feature.zalgoFilter": "Filter Zalgo text",
+  "settings.feature.zalgoFilterHint": "Clean names and messages containing excessive combining marks to avoid garbled display and UI pollution",
   "settings.feature.maxPerMin": "Max messages per minute",
   "settings.feature.inlineKbDeleteEnable": "Enable auto delete for button messages",
   "settings.feature.inlineKbDeleteEnableHint": "When disabled, messages with inline buttons will not be auto-deleted.",
