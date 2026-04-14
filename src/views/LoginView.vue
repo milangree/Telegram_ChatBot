@@ -5,8 +5,27 @@
         <select class="lang-select login-lang-select" v-model="selectedLocale" :title="t('app.language')">
           <option v-for="opt in localeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
         </select>
-        <button class="btn-icon login-theme-btn" type="button" @click="toggleTheme" :title="isDark ? t('app.toggleLight') : t('app.toggleDark')">
-          {{ isDark ? '☀️' : '🌙' }}
+        <div class="theme-menu-wrap login-theme-wrap">
+          <button class="btn-icon theme-trigger" type="button" @click.stop="toggleThemeMenu" :title="t('app.toggleTheme')">
+            {{ currentThemeOption.icon }}
+          </button>
+          <div v-if="themeMenuOpen" class="theme-menu">
+            <button
+              v-for="option in themeOptions"
+              :key="option.value"
+              class="theme-menu-item"
+              :class="{ active: themeMode === option.value }"
+              type="button"
+              @click.stop="applyTheme(option.value)"
+            >
+              <span class="theme-menu-icon">{{ option.icon }}</span>
+              <span class="theme-menu-label">{{ option.label }}</span>
+              <span class="theme-menu-check">{{ themeMode === option.value ? '✓' : '' }}</span>
+            </button>
+          </div>
+        </div>
+        <button class="btn-icon glass-toggle-btn login-glass-btn" type="button" @click="toggleGlass" :title="glassEnabled ? t('app.disableGlass') : t('app.enableGlass')">
+          <span class="glass-toggle-icon" :class="{ active: glassEnabled }" aria-hidden="true"></span>
         </button>
       </div>
 
@@ -107,9 +126,13 @@ const error = ref('')
 const needsRegistration = ref(false)
 const totpAvailable = ref(false)
 const isDark = ref(true)
+const themeMode = ref('system')
+const themeMenuOpen = ref(false)
+const glassEnabled = ref(false)
 
 let totpStatusTimer = null
 let totpStatusSeq = 0
+let systemThemeQuery = null
 
 const localeOptions = computed(() =>
   i18n.localeOptions.map((locale) => {
@@ -124,20 +147,68 @@ const selectedLocale = computed({
   set: (next) => i18n.setLocale(next),
 })
 
+const themeOptions = computed(() => [
+  { value: 'light', label: t('app.themeLight'), icon: '☀️' },
+  { value: 'dark', label: t('app.themeDark'), icon: '🌙' },
+  { value: 'system', label: t('app.themeSystem'), icon: '🖥️' },
+])
+
+const currentThemeOption = computed(() => (
+  themeOptions.value.find((option) => option.value === themeMode.value) || themeOptions.value[2]
+))
+
 function switchMode(nextMode) {
   if (nextMode === 'totp_only' && !totpAvailable.value) return
   mode.value = nextMode
   error.value = ''
 }
 
-function applyTheme(modeName) {
-  isDark.value = modeName !== 'light'
-  document.documentElement.classList.toggle('light', modeName === 'light')
-  localStorage.setItem('theme', isDark.value ? 'dark' : 'light')
+function toggleThemeMenu() {
+  themeMenuOpen.value = !themeMenuOpen.value
 }
 
-function toggleTheme() {
-  applyTheme(isDark.value ? 'light' : 'dark')
+function closeThemeMenu() {
+  themeMenuOpen.value = false
+}
+
+function resolveThemeMode(modeName) {
+  if (modeName === 'system') {
+    const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+    return prefersDark ? 'dark' : 'light'
+  }
+  return modeName === 'light' ? 'light' : 'dark'
+}
+
+function applyResolvedTheme(resolved) {
+  isDark.value = resolved !== 'light'
+  document.documentElement.classList.toggle('light', resolved === 'light')
+}
+
+function applyTheme(modeName) {
+  const normalized = ['light', 'dark', 'system'].includes(modeName) ? modeName : 'system'
+  themeMode.value = normalized
+  const resolved = resolveThemeMode(normalized)
+  applyResolvedTheme(resolved)
+  localStorage.setItem('theme_mode', normalized)
+  localStorage.setItem('theme', resolved)
+  themeMenuOpen.value = false
+}
+
+function handleSystemThemeChange() {
+  if (themeMode.value !== 'system') return
+  const resolved = resolveThemeMode('system')
+  applyResolvedTheme(resolved)
+  localStorage.setItem('theme', resolved)
+}
+
+function applyGlass(enabled) {
+  glassEnabled.value = !!enabled
+  document.documentElement.classList.toggle('glass', glassEnabled.value)
+  localStorage.setItem('visual_glass', glassEnabled.value ? 'true' : 'false')
+}
+
+function toggleGlass() {
+  applyGlass(!glassEnabled.value)
 }
 
 async function loadAuthStatus() {
@@ -242,11 +313,35 @@ watch(username, (next) => {
 
 onMounted(() => {
   loadAuthStatus()
-  isDark.value = !document.documentElement.classList.contains('light')
+
+  const savedMode = localStorage.getItem('theme_mode')
+  const legacyTheme = localStorage.getItem('theme')
+
+  if (savedMode === 'light' || savedMode === 'dark' || savedMode === 'system') {
+    applyTheme(savedMode)
+  } else if (legacyTheme === 'light' || legacyTheme === 'dark') {
+    applyTheme(legacyTheme)
+  } else {
+    applyTheme('system')
+  }
+
+  applyGlass(localStorage.getItem('visual_glass') === 'true')
+
+  if (window.matchMedia) {
+    systemThemeQuery = window.matchMedia('(prefers-color-scheme: dark)')
+    if (systemThemeQuery.addEventListener) systemThemeQuery.addEventListener('change', handleSystemThemeChange)
+    else if (systemThemeQuery.addListener) systemThemeQuery.addListener(handleSystemThemeChange)
+  }
+
+  document.addEventListener('click', closeThemeMenu)
 })
 
 onBeforeUnmount(() => {
   if (totpStatusTimer) clearTimeout(totpStatusTimer)
+  document.removeEventListener('click', closeThemeMenu)
+
+  if (systemThemeQuery?.removeEventListener) systemThemeQuery.removeEventListener('change', handleSystemThemeChange)
+  else if (systemThemeQuery?.removeListener) systemThemeQuery.removeListener(handleSystemThemeChange)
 })
 </script>
 
@@ -254,7 +349,7 @@ onBeforeUnmount(() => {
 .login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);padding:20px}
 .login-card{width:100%;max-width:380px;padding:20px 28px 36px}
 .login-topbar{display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-bottom:12px}
-.login-theme-btn{flex-shrink:0}
+.login-theme-wrap,.login-glass-btn{flex-shrink:0}
 .login-logo{font-size:44px;text-align:center;margin-bottom:12px}
 .login-title{font-size:21px;font-weight:700;text-align:center;margin-bottom:22px}
 .login-links{margin-bottom:18px;display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:13px}
