@@ -220,6 +220,8 @@ const messages = {
   "settings.verify.siteUrlHint": "設定 Webhook 後會自動填入，通常無需手動輸入",
   "settings.feature.adminNotify": "接收管理員私聊訊息",
   "settings.feature.adminNotifyHint": "管理員私聊訊息仍會轉發到話題；開啟後若轉發失敗，會自動顯示控制台",
+  "settings.feature.zalgoFilter": "過濾 Zalgo 異常文字",
+  "settings.feature.zalgoFilterHint": "清理含有大量組合附加符號的異常暱稱與文字，避免內容顯示錯亂或污染介面",
   "settings.feature.maxPerMin": "每分鐘最大訊息數",
   "settings.feature.inlineKbDeleteEnable": "啟用帶按鈕訊息自動撤回",
   "settings.feature.inlineKbDeleteEnableHint": "關閉後，不會自動撤回帶內聯按鈕的訊息。",

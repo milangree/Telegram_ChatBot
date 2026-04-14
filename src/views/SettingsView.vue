@@ -69,7 +69,7 @@
 
         <div class="form-group">
           <label>{{ t('settings.adminIds') }}</label>
-          <div v-if="adminList.length" class="admin-tags">
+          <div v-if="adminList.length" class="admin-tags" :class="{ 'admin-tags-single': adminList.length === 1 }">
             <div v-for="(id, i) in adminList" :key="id" class="admin-card">
               <div class="admin-card-avatar">
                 <img
@@ -594,7 +594,7 @@ async function importSql(fileName = 'SQL') {
   sqlMsg.value = ''
 
   try {
-    await api.post('/api/settings/sql/import', { sql: sqlText.value })
+    await api.post('/api/settings/sql/import', { sql: sqlText.value }, { timeout: 5 * 60 * 1000 })
     await load(true)
     sqlMsg.value = t('settings.storage.sqlImported', { name: fileName })
     sqlOk.value = true
@@ -653,8 +653,9 @@ onMounted(load)
 .settings-inline-row{align-items:stretch}
 .settings-inline-row input{min-height:38px}
 .settings-inline-btn{min-width:96px;min-height:38px;justify-content:center}
-.admin-tags{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,max-content));gap:10px;margin-bottom:10px;justify-content:flex-start}
-.admin-card{width:min(100%,360px);display:grid;grid-template-columns:42px minmax(0,1fr) auto;align-items:center;column-gap:12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--r);padding:12px 14px}
+.admin-tags{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:10px}
+.admin-tags-single{grid-template-columns:minmax(0,1fr)}
+.admin-card{width:100%;min-width:0;display:grid;grid-template-columns:42px minmax(0,1fr) auto;align-items:center;column-gap:12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--r);padding:12px 14px}
 .admin-card-avatar{width:42px;height:42px;border-radius:50%;background:var(--accent-dim);color:var(--accent);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;overflow:hidden}
 .admin-card-avatar-img{width:100%;height:100%;object-fit:cover}
 .admin-card-info{min-width:0;display:flex;flex-direction:column;justify-content:center;gap:2px;text-align:left}
@@ -662,6 +663,15 @@ onMounted(load)
 .admin-card-meta{font-size:12px;color:var(--text2);word-break:break-all}
 .admin-card-id{font-size:12px;color:var(--text3);word-break:break-all}
 .admin-card-remove{align-self:center;padding:4px 8px;line-height:1}
+@media (max-width:640px){
+  .admin-tags{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  .admin-tags-single{grid-template-columns:minmax(0,1fr)}
+  .admin-card{grid-template-columns:36px minmax(0,1fr) auto;column-gap:8px;padding:10px}
+  .admin-card-avatar{width:36px;height:36px;font-size:13px}
+  .admin-card-name{font-size:12px}
+  .admin-card-meta,.admin-card-id{font-size:11px}
+  .admin-card-remove{padding:3px 6px}
+}
 .db-status{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .danger-zone{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .sql-tools{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:12px;padding:8px 0}

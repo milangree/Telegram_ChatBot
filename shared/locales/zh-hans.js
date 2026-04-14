@@ -269,6 +269,8 @@ const messages = {
   "settings.feature.cmdFilterHint": "不将 /xxx 指令转发给管理员",
   "settings.feature.adminNotify": "接收管理员私聊消息",
   "settings.feature.adminNotifyHint": "管理员私聊消息仍会转发到话题；开启后若转发失败，会自动显示控制台",
+  "settings.feature.zalgoFilter": "过滤 Zalgo 异常文本",
+  "settings.feature.zalgoFilterHint": "清理带有大量组合附加符号的异常昵称和文本，避免内容显示错乱或污染界面",
   "settings.feature.maxPerMin": "每分钟最大消息数",
   "settings.feature.inlineKbDeleteEnable": "启用带按钮消息自动撤回",
   "settings.feature.inlineKbDeleteEnableHint": "关闭后不会自动撤回带内联按钮的消息。",
