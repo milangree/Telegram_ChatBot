@@ -46,8 +46,8 @@
             </button>
           </div>
         </div>
-        <button class="btn-icon" @click="toggleGlass" :title="glassEnabled ? t('app.disableGlass') : t('app.enableGlass')">
-          {{ glassEnabled ? '💎' : '🫧' }}
+        <button class="btn-icon glass-toggle-btn" @click="toggleGlass" :title="glassEnabled ? t('app.disableGlass') : t('app.enableGlass')">
+          <span class="glass-toggle-icon" :class="{ active: glassEnabled }" aria-hidden="true"></span>
         </button>
         <button class="btn-icon" @click="handleLogout" :title="t('app.logout')" style="color:var(--danger)">🚪</button>
       </div>
@@ -78,7 +78,9 @@
           </button>
         </div>
       </div>
-      <button class="btn-icon" @click="toggleGlass" :title="glassEnabled ? t('app.disableGlass') : t('app.enableGlass')">{{ glassEnabled ? '💎' : '🫧' }}</button>
+      <button class="btn-icon glass-toggle-btn" @click="toggleGlass" :title="glassEnabled ? t('app.disableGlass') : t('app.enableGlass')">
+        <span class="glass-toggle-icon" :class="{ active: glassEnabled }" aria-hidden="true"></span>
+      </button>
       <button class="btn-icon" @click="handleLogout" :title="t('app.logoutLogin')" style="color:var(--danger)">🚪</button>
     </div>
 
@@ -111,8 +113,8 @@
           </button>
         </div>
       </div>
-      <button class="btn-icon" @click="toggleGlass" :title="glassEnabled ? t('app.disableGlass') : t('app.enableGlass')">
-        {{ glassEnabled ? '💎' : '🫧' }}
+      <button class="btn-icon glass-toggle-btn" @click="toggleGlass" :title="glassEnabled ? t('app.disableGlass') : t('app.enableGlass')">
+        <span class="glass-toggle-icon" :class="{ active: glassEnabled }" aria-hidden="true"></span>
       </button>
     </div>
     <RouterView />

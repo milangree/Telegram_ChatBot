@@ -260,9 +260,16 @@
               <button class="btn-ghost btn-sm" :disabled="sqlWorking" @click="exportSql">
                 <span v-if="sqlWorking" class="spinner"></span>{{ sqlWorking ? '…' : t('settings.storage.sqlExport') }}
               </button>
-              <button class="btn-primary btn-sm" :disabled="sqlWorking || !sqlText.trim()" @click="importSql">
+              <button class="btn-primary btn-sm" :disabled="sqlWorking" @click="pickSqlFile">
                 <span v-if="sqlWorking" class="spinner"></span>{{ sqlWorking ? '…' : t('settings.storage.sqlImport') }}
               </button>
+              <input
+                ref="sqlFileInput"
+                type="file"
+                accept=".sql,text/sql"
+                class="sql-file-input"
+                @change="handleSqlFileChange"
+              />
             </div>
           </div>
           <div class="form-group mt-2 w-full">
@@ -324,6 +331,7 @@ const adminAvatarErrors = ref({})
 const dbInfo = ref({ active: 'kv', hasD1: false }), dbSwitching = ref(false), dbMsg = ref(''), dbOk = ref(true)
 const clearingData = ref(false)
 const sqlText = ref(''), sqlWorking = ref(false), sqlMsg = ref(''), sqlOk = ref(true)
+const sqlFileInput = ref(null)
 
 const SETTINGS_CACHE_KEY = 'settings:form'
 const SETTINGS_DB_CACHE_KEY = 'settings:db-info'
@@ -530,6 +538,28 @@ async function switchDb(target, sync = true) {
   }
 }
 
+function buildSqlFileName(active) {
+  const kind = String(active || dbInfo.value.active || 'kv').toUpperCase()
+  return `${kind}.sql`
+}
+
+function downloadSqlFile(content, fileName) {
+  const blob = new Blob([content], { type: 'text/sql;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = fileName
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
+}
+
+function pickSqlFile() {
+  if (sqlWorking.value) return
+  sqlFileInput.value?.click()
+}
+
 async function exportSql() {
   if (sqlWorking.value) return
   sqlWorking.value = true
@@ -537,8 +567,11 @@ async function exportSql() {
 
   try {
     const result = await api.get('/api/settings/sql/export')
-    sqlText.value = result?.sql || ''
-    sqlMsg.value = t('settings.storage.sqlExported')
+    const sql = result?.sql || ''
+    const fileName = buildSqlFileName(result?.active)
+    sqlText.value = sql
+    downloadSqlFile(sql, fileName)
+    sqlMsg.value = t('settings.storage.sqlExported', { name: fileName })
     sqlOk.value = true
   } catch (e) {
     sqlMsg.value = '❌ ' + e.message
@@ -548,7 +581,7 @@ async function exportSql() {
   }
 }
 
-async function importSql() {
+async function importSql(fileName = 'SQL') {
   if (sqlWorking.value) return
   if (!sqlText.value.trim()) {
     sqlMsg.value = t('settings.storage.sqlEmpty')
@@ -563,13 +596,25 @@ async function importSql() {
   try {
     await api.post('/api/settings/sql/import', { sql: sqlText.value })
     await load(true)
-    sqlMsg.value = t('settings.storage.sqlImported')
+    sqlMsg.value = t('settings.storage.sqlImported', { name: fileName })
     sqlOk.value = true
   } catch (e) {
     sqlMsg.value = '❌ ' + e.message
     sqlOk.value = false
   } finally {
     sqlWorking.value = false
+  }
+}
+
+async function handleSqlFileChange(event) {
+  const file = event?.target?.files?.[0]
+  if (!file) return
+
+  try {
+    sqlText.value = await file.text()
+    await importSql(file.name)
+  } finally {
+    if (event?.target) event.target.value = ''
   }
 }
 
@@ -623,6 +668,7 @@ onMounted(load)
 .sql-tools-header{width:100%;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
 .sql-tools-actions{display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap}
 .sql-textarea{max-width:100%;min-height:220px;font-family:'JetBrains Mono','Fira Code',Consolas,monospace;font-size:12px}
+.sql-file-input{display:none}
 .settings-card{margin-bottom:18px}
 .page{max-width:720px;margin:0 auto}
 </style>
