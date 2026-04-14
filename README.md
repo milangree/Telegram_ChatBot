@@ -172,6 +172,7 @@ https://你的Pages地址/webhook
 
 **Q：如何找回密码？**
 - A：若已启用 2FA，可在登录页点击「找回密码」，通过 TOTP 验证码重置。若未启用 2FA，需在 Cloudflare KV 中手动删除对应的 `webuser:` 键后重新注册。
+
 **Q：如何更新代码？**
 - A：仓库已内置 `.github/workflows/sync-upstream.yml`，默认每 6 小时自动尝试 fast-forward 同步上游 `milangree/Telegram_ChatBot` 的 `main` 分支；同步成功后 Cloudflare Pages 会自动触发重部署。也可在 Actions 页面手动运行并指定上游仓库/分支。
 
