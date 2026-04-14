@@ -54,7 +54,7 @@
 
   <!-- Auth pages (login/register etc.) -->
   <div v-else class="main-content no-sidebar">
-    <div v-if="showAuthControls" class="auth-topbar">
+    <div v-if="routeReady && showAuthControls" class="auth-topbar">
       <select class="lang-select auth-lang-select" v-model="selectedLocale" :title="t('app.language')">
         <option v-for="opt in localeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
       </select>
@@ -79,6 +79,7 @@ const router      = useRouter()
 const route       = useRoute()
 const sidebarOpen = ref(false)
 const isDark      = ref(true)
+const routeReady  = ref(false)
 
 const t = i18n.t
 
@@ -130,7 +131,7 @@ async function handleLogout() {
   router.push('/login')
 }
 
-onMounted(() => {
+onMounted(async () => {
   const saved = localStorage.getItem('theme')
   if (saved === 'light' || saved === 'dark') {
     applyTheme(saved)
@@ -140,6 +141,8 @@ onMounted(() => {
   }
   i18n.setLocale(i18n.locale)
   document.title = t('app.title')
+  await router.isReady()
+  routeReady.value = true
 })
 
 // Close sidebar on route change
