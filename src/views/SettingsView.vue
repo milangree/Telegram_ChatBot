@@ -237,6 +237,14 @@
           <div class="divider"></div>
           <div class="toggle-row">
             <div>
+              <div class="toggle-label">{{ t('settings.feature.loginSessionTtl') }}</div>
+              <div class="form-hint">{{ t('settings.feature.loginSessionTtlHint') }}</div>
+            </div>
+            <input v-model.number="form.LOGIN_SESSION_TTL" type="number" min="300" max="2592000" style="width:110px" @change="clampLoginSessionTtl" />
+          </div>
+          <div class="divider"></div>
+          <div class="toggle-row">
+            <div>
               <div class="toggle-label">{{ t('settings.feature.inlineKbDeleteEnable') }}</div>
               <div class="form-hint">{{ t('settings.feature.inlineKbDeleteEnableHint') }}</div>
             </div>
@@ -683,9 +691,17 @@ function clampInlineKbDelete() {
   else form.value.INLINE_KB_MSG_DELETE_SECONDS = String(v)
 }
 
+function clampLoginSessionTtl() {
+  const v = parseInt(form.value.LOGIN_SESSION_TTL, 10)
+  if (isNaN(v) || v < 300) form.value.LOGIN_SESSION_TTL = '300'
+  else if (v > 2592000) form.value.LOGIN_SESSION_TTL = '2592000'
+  else form.value.LOGIN_SESSION_TTL = String(v)
+}
+
 async function save() {
   clampTimeout()
   clampInlineKbDelete()
+  clampLoginSessionTtl()
   saving.value = true; saved.value = false; saveErr.value = ''
   try {
     form.value.WEBHOOK_URL = webhookUrl.value || ''

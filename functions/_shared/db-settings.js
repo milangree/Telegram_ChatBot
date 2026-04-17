@@ -18,6 +18,7 @@ export const DEFAULT_SETTINGS = {
   BOT_COMMAND_FILTER: 'true',
   WHITELIST_ENABLED: 'false',
   ADMIN_NOTIFY_ENABLED: 'false',
+  LOGIN_SESSION_TTL: '86400',
   BOT_LOCALE: 'zh-hans', // 机器人语言：简中 / 繁中 / 英文
   ZALGO_FILTER_ENABLED: 'true',
   MESSAGE_FILTER_RULES: '[]',

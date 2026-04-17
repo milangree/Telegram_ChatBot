@@ -149,6 +149,13 @@ export class KVStore {
   }
   async getBlockedUsers(page = 1, pageSize = 10) {
     const all = (await Promise.all((await kvListAll(this.kv, 'user:')).map(k => this.kv.get(k.name).then(d => d ? JSON.parse(d) : null)))).filter(u => u?.is_blocked)
+    all.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+    const start = (page - 1) * pageSize
+    return { users: all.slice(start, start + pageSize), total: all.length }
+  }
+  async getNormalUsers(page = 1, pageSize = 20) {
+    const all = (await Promise.all((await kvListAll(this.kv, 'user:')).map(k => this.kv.get(k.name).then(d => d ? JSON.parse(d) : null)))).filter(u => u && !u.is_blocked)
+    all.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
     const start = (page - 1) * pageSize
     return { users: all.slice(start, start + pageSize), total: all.length }
   }
@@ -194,8 +201,9 @@ export class KVStore {
   // Messages
   async addMsg({ userId, direction, content, messageType = 'text', telegramMessageId }) {
     const id = `${Date.now()}_${Math.random().toString(36).substr(2, 6)}`
-    const compact = compactMessageContent(content)
-    const msg = { id, user_id: userId, direction, content: compact, message_type: messageType, telegram_message_id: telegramMessageId, created_at: new Date().toISOString() }
+    const fullContent = typeof content === 'string' ? content : (content == null ? '' : String(content))
+    const compact = compactMessageContent(fullContent)
+    const msg = { id, user_id: userId, direction, content: fullContent, message_type: messageType, telegram_message_id: telegramMessageId, created_at: new Date().toISOString() }
     await this.kv.put(`msg:${userId}:${id}`, JSON.stringify(msg))
     await this.kv.put(`recent:${userId}`, JSON.stringify({ user_id: userId, last_message: compact, last_direction: direction, last_at: msg.created_at }))
   }

@@ -40,8 +40,15 @@ router.beforeEach(async (to, from, next) => {
   const auth = useAuthStore()
   const token = localStorage.getItem('token')
 
-  if (token && !auth.isLoggedIn) {
-    await auth.checkAuth()
+  if (token && !to.meta.public) {
+    const ok = await auth.checkAuth()
+    if (ok) {
+      if (to.meta.public) return next('/')
+      return next()
+    }
+  } else if (auth.isLoggedIn) {
+    if (to.meta.public) return next('/')
+    return next()
   }
 
   if (auth.isLoggedIn) {

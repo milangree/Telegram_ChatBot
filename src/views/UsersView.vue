@@ -5,11 +5,16 @@
         <AppIcon name="users" :size="20" />
         {{ t('users.title') }}
       </h2>
-      <div class="flex gap-2 flex-wrap">
-        <select v-model="filter" style="width:110px">
+      <div class="toolbar-controls">
+        <select v-model="filter" class="toolbar-select">
           <option value="">{{ t('users.filter.all') }}</option>
           <option value="blocked">{{ t('users.filter.blocked') }}</option>
           <option value="normal">{{ t('users.filter.normal') }}</option>
+        </select>
+        <select v-model.number="pageSize" class="toolbar-select">
+          <option v-for="size in pageSizeOptions" :key="size" :value="size">
+            {{ t('users.pageSizeOption', { n: size }) }}
+          </option>
         </select>
         <button class="btn-ghost btn-sm" @click="load">
           <AppIcon name="refresh" :size="14" />
@@ -67,74 +72,71 @@
       <div v-if="loading" class="flex-center" style="padding:30px"><div class="spinner"></div></div>
       <template v-else>
         <div style="overflow-x:auto">
-          <table class="table">
+          <table class="table compact-users-table">
             <thead>
               <tr>
                 <th style="width:36px"><input type="checkbox" :checked="allSelected" @change="toggleAll" class="cb" /></th>
                 <th>{{ t('users.table.user') }}</th>
-                <th class="hide-mobile">{{ t('users.table.id') }}</th>
+                <th>{{ t('users.table.id') }}</th>
                 <th>{{ t('users.table.status') }}</th>
-                <th class="hide-mobile">{{ t('users.table.username') }}</th>
-                <th class="hide-mobile">{{ t('users.table.firstContact') }}</th>
+                <th>{{ t('users.table.firstContact') }}</th>
                 <th>{{ t('users.table.actions') }}</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="u in displayUsers" :key="u.user_id" :class="{ 'row-sel': selected.includes(u.user_id) }">
+              <tr v-for="u in users" :key="u.user_id" :class="{ 'row-sel': selected.includes(u.user_id) }">
                 <td><input type="checkbox" :checked="selected.includes(u.user_id)" @change="toggleSelect(u.user_id)" class="cb" /></td>
                 <td>
-                  <div class="user-cell" @click="openDetail(u)" style="cursor:pointer">
+                  <div class="user-cell" @click="openDetail(u)">
                     <div class="u-ava" :class="{ blocked: u.is_blocked }">
                       <img v-if="avatars[u.user_id]" :src="avatars[u.user_id]" class="ava-img" @error="avatars[u.user_id] = ''" />
                       <span v-else>{{ (u.first_name || u.username || '?')[0].toUpperCase() }}</span>
                     </div>
-                    <div class="user-cell-line">
-                      <span class="u-name">{{ u.first_name }} {{ u.last_name }}</span>
-                      <span class="user-cell-sep">·</span>
-                      <span class="user-cell-meta">{{ u.username ? '@' + u.username : t('users.detail.noUsername') }}</span>
+                    <div class="user-summary">
+                      <div class="u-name">{{ formatDisplayName(u) }}</div>
+                      <div class="u-username">{{ u.username ? '@' + u.username : t('users.detail.noUsername') }}</div>
                     </div>
                   </div>
                 </td>
-                <td class="hide-mobile"><code style="font-size:12px">{{ u.user_id }}</code></td>
+                <td><code class="user-id">{{ u.user_id }}</code></td>
                 <td>
                   <span class="badge" :class="u.is_blocked ? 'badge-danger' : 'badge-success'">
                     {{ u.is_blocked ? (u.is_permanent_block ? t('users.status.permanent') : t('users.status.blocked')) : t('users.status.normal') }}
                   </span>
                 </td>
-                <td class="hide-mobile">
-                  <span class="text-sm text-muted">{{ u.username || '—' }}</span>
-                </td>
-                <td class="hide-mobile text-muted text-sm">{{ fmtDate(u.created_at) }}</td>
+                <td class="text-muted text-sm">{{ fmtDate(u.created_at) }}</td>
                 <td>
                   <div class="row-actions">
                     <button v-if="!u.is_blocked" class="btn-danger btn-sm" @click.stop="blockOne(u)">
                       <AppIcon name="block" :size="14" />
-                      {{ t('users.block') }}
                     </button>
                     <button v-else class="btn-success btn-sm" @click.stop="unblockOne(u)">
                       <AppIcon name="unblock" :size="14" />
-                      {{ t('users.unblock') }}
                     </button>
                     <button class="btn-ghost btn-sm" @click.stop="toggleWhitelistOne(u)" :title="t('users.addWhitelist')">
                       <AppIcon name="whitelist" :size="14" />
                     </button>
-                    <RouterLink :to="`/conversations?user=${u.user_id}`" class="btn-ghost btn-sm action-link" style="text-decoration:none">
+                    <RouterLink :to="`/conversations?user=${u.user_id}`" class="btn-ghost btn-sm action-link action-link-icon" :title="t('users.messages')">
                       <AppIcon name="conversations" :size="14" />
-                      {{ t('users.messages') }}
                     </RouterLink>
                   </div>
                 </td>
               </tr>
-              <tr v-if="!displayUsers.length">
-                <td colspan="7" class="text-center text-muted" style="padding:24px">{{ t('users.empty') }}</td>
+              <tr v-if="!users.length">
+                <td colspan="6" class="text-center text-muted" style="padding:24px">{{ t('users.empty') }}</td>
               </tr>
             </tbody>
           </table>
         </div>
-        <div class="pagination" v-if="total > pageSize">
-          <button class="btn-ghost btn-sm" :disabled="page <= 1" @click="page--; load()">◀</button>
-          <span class="text-muted text-sm">{{ t('users.pageInfo', { page, total }) }}</span>
-          <button class="btn-ghost btn-sm" :disabled="page * pageSize >= total" @click="page++; load()">▶</button>
+
+        <div class="pagination-bar" v-if="total > 0">
+          <div class="pagination-meta">
+            <span class="text-muted text-sm">{{ t('users.pageInfo', { page, total }) }}</span>
+          </div>
+          <div class="pagination-actions">
+            <button class="btn-ghost btn-sm" :disabled="page <= 1" @click="goPrevPage">{{ t('users.prevPage') }}</button>
+            <button class="btn-ghost btn-sm" :disabled="page >= totalPages" @click="goNextPage">{{ t('users.nextPage') }}</button>
+          </div>
         </div>
       </template>
     </div>
@@ -220,37 +222,64 @@ const route = useRoute()
 const i18n = useI18nStore()
 const t = i18n.t
 
-const users = ref([]), total = ref(0), page = ref(1), pageSize = 20
-const loading = ref(true), filter = ref('')
-const quickId = ref(''), quickReason = ref(''), quickMsg = ref(''), quickOk = ref(true)
+const users = ref([])
+const total = ref(0)
+const page = ref(1)
+const pageSize = ref(20)
+const pageSizeOptions = [10, 20, 50, 100]
+const loading = ref(true)
+const filter = ref('')
+const quickId = ref('')
+const quickReason = ref('')
+const quickMsg = ref('')
+const quickOk = ref(true)
 const avatars = ref({})
 const selected = ref([])
-const detailUser = ref(null), detailIsWl = ref(false)
+const detailUser = ref(null)
+const detailIsWl = ref(false)
 
-const displayUsers = computed(() => {
-  if (filter.value === 'blocked') return users.value.filter(u => u.is_blocked)
-  if (filter.value === 'normal') return users.value.filter(u => !u.is_blocked)
-  return users.value
-})
+const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
 const allSelected = computed(() =>
-  displayUsers.value.length > 0 && displayUsers.value.every(u => selected.value.includes(u.user_id))
+  users.value.length > 0 && users.value.every(u => selected.value.includes(u.user_id)),
 )
 
-function toggleAll(e) {
-  selected.value = e.target.checked ? displayUsers.value.map(u => u.user_id) : []
+function formatDisplayName(u) {
+  const name = [u.first_name, u.last_name].filter(Boolean).join(' ').trim()
+  return name || (u.username ? '@' + u.username : String(u.user_id))
 }
+
+function toggleAll(e) {
+  selected.value = e.target.checked ? users.value.map(u => u.user_id) : []
+}
+
 function toggleSelect(uid) {
   const i = selected.value.indexOf(uid)
-  if (i >= 0) selected.value.splice(i, 1); else selected.value.push(uid)
+  if (i >= 0) selected.value.splice(i, 1)
+  else selected.value.push(uid)
 }
 
 async function load() {
   loading.value = true
   try {
-    const d = await api.get(`/api/users?page=${page.value}`)
-    users.value = d.users; total.value = d.total; selected.value = []
-    for (const u of d.users) loadAvatar(u.user_id)
-  } finally { loading.value = false }
+    const params = new URLSearchParams({
+      page: String(page.value),
+      pageSize: String(pageSize.value),
+    })
+    if (filter.value) params.set('filter', filter.value)
+
+    const d = await api.get(`/api/users?${params.toString()}`)
+    users.value = Array.isArray(d?.users) ? d.users : []
+    total.value = Number(d?.total || 0)
+    selected.value = []
+    for (const u of users.value) loadAvatar(u.user_id)
+
+    if (page.value > totalPages.value) {
+      page.value = totalPages.value
+      await load()
+    }
+  } finally {
+    loading.value = false
+  }
 }
 
 function loadAvatar(uid) {
@@ -261,53 +290,124 @@ function loadAvatar(uid) {
 }
 
 async function openDetail(u) {
-  detailUser.value = { ...u }; detailIsWl.value = false
+  detailUser.value = { ...u }
+  detailIsWl.value = false
   loadAvatar(u.user_id)
-  try { const r = await api.get(`/api/whitelist/check/${u.user_id}`); detailIsWl.value = r.whitelisted } catch {}
+  try {
+    const r = await api.get(`/api/whitelist/check/${u.user_id}`)
+    detailIsWl.value = r.whitelisted
+  } catch {}
 }
 
-function flash(msg, ok = true) { quickMsg.value = msg; quickOk.value = ok; setTimeout(() => quickMsg.value = '', 4000) }
-async function batchBlock() {
-  const reason = prompt(t('users.batchBlockReasonPrompt')); if (reason === null) return
-  await Promise.all(selected.value.map(uid => api.put(`/api/users/${uid}/block`, { reason, permanent: true })))
-  flash(t('users.flash.blocked')); selected.value = []; await load()
+function flash(msg, ok = true) {
+  quickMsg.value = msg
+  quickOk.value = ok
+  setTimeout(() => { quickMsg.value = '' }, 4000)
 }
+
+async function batchBlock() {
+  const reason = prompt(t('users.batchBlockReasonPrompt'))
+  if (reason === null) return
+  await Promise.all(selected.value.map(uid => api.put(`/api/users/${uid}/block`, { reason, permanent: true })))
+  flash(t('users.flash.blocked'))
+  selected.value = []
+  await load()
+}
+
 async function batchUnblock() {
   await Promise.all(selected.value.map(uid => api.put(`/api/users/${uid}/unblock`, {})))
-  flash(t('users.flash.unblocked')); selected.value = []; await load()
+  flash(t('users.flash.unblocked'))
+  selected.value = []
+  await load()
 }
+
 async function batchWhitelist() {
   await Promise.all(selected.value.map(uid => api.post(`/api/whitelist/${uid}`, { reason: 'batch' })))
-  flash(t('users.flash.addedWhitelist')); selected.value = []
+  flash(t('users.flash.addedWhitelist'))
+  selected.value = []
 }
 
-async function quickBlock() { try { await api.put(`/api/users/${quickId.value}/block`, { reason: quickReason.value || 'quick_block', permanent: true }); flash(t('users.flash.blocked')); await load() } catch (e) { flash(e.message, false) } }
-async function quickUnblock() { try { await api.put(`/api/users/${quickId.value}/unblock`, {}); flash(t('users.flash.unblocked')); await load() } catch (e) { flash(e.message, false) } }
-async function quickWhitelist() { try { await api.post(`/api/whitelist/${quickId.value}`, { reason: 'quick_add' }); flash(t('users.flash.addedWhitelist')) } catch (e) { flash(e.message, false) } }
+async function quickBlock() {
+  try {
+    await api.put(`/api/users/${quickId.value}/block`, { reason: quickReason.value || 'quick_block', permanent: true })
+    flash(t('users.flash.blocked'))
+    await load()
+  } catch (e) {
+    flash(e.message, false)
+  }
+}
+
+async function quickUnblock() {
+  try {
+    await api.put(`/api/users/${quickId.value}/unblock`, {})
+    flash(t('users.flash.unblocked'))
+    await load()
+  } catch (e) {
+    flash(e.message, false)
+  }
+}
+
+async function quickWhitelist() {
+  try {
+    await api.post(`/api/whitelist/${quickId.value}`, { reason: 'quick_add' })
+    flash(t('users.flash.addedWhitelist'))
+  } catch (e) {
+    flash(e.message, false)
+  }
+}
 
 async function blockOne(u) {
-  const r = prompt(t('users.blockReasonPrompt')); if (r === null) return
+  const r = prompt(t('users.blockReasonPrompt'))
+  if (r === null) return
   await api.put(`/api/users/${u.user_id}/block`, { reason: r, permanent: true })
-  u.is_blocked = 1; u.is_permanent_block = 1; u.block_reason = r
+  u.is_blocked = 1
+  u.is_permanent_block = 1
+  u.block_reason = r
 }
-async function unblockOne(u) { await api.put(`/api/users/${u.user_id}/unblock`, {}); u.is_blocked = 0; u.is_permanent_block = 0 }
+
+async function unblockOne(u) {
+  await api.put(`/api/users/${u.user_id}/unblock`, {})
+  u.is_blocked = 0
+  u.is_permanent_block = 0
+}
+
 async function toggleWhitelistOne(u) {
   try {
     const r = await api.get(`/api/whitelist/check/${u.user_id}`)
-    if (r.whitelisted) { await api.delete(`/api/whitelist/${u.user_id}`); flash(t('users.flash.removedWhitelist')) }
-    else { await api.post(`/api/whitelist/${u.user_id}`, { reason: 'manual' }); flash(t('users.flash.addedWhitelist')) }
-  } catch (e) { flash(e.message, false) }
+    if (r.whitelisted) {
+      await api.delete(`/api/whitelist/${u.user_id}`)
+      flash(t('users.flash.removedWhitelist'))
+    } else {
+      await api.post(`/api/whitelist/${u.user_id}`, { reason: 'manual' })
+      flash(t('users.flash.addedWhitelist'))
+    }
+  } catch (e) {
+    flash(e.message, false)
+  }
 }
 
 async function blockDetail() {
-  const r = prompt(t('users.blockReasonPrompt')); if (r === null) return
+  const r = prompt(t('users.blockReasonPrompt'))
+  if (r === null) return
   await api.put(`/api/users/${detailUser.value.user_id}/block`, { reason: r, permanent: true })
-  detailUser.value.is_blocked = 1; await load()
+  detailUser.value.is_blocked = 1
+  await load()
 }
-async function unblockDetail() { await api.put(`/api/users/${detailUser.value.user_id}/unblock`, {}); detailUser.value.is_blocked = 0; await load() }
+
+async function unblockDetail() {
+  await api.put(`/api/users/${detailUser.value.user_id}/unblock`, {})
+  detailUser.value.is_blocked = 0
+  await load()
+}
+
 async function toggleWlDetail() {
-  if (detailIsWl.value) { await api.delete(`/api/whitelist/${detailUser.value.user_id}`); detailIsWl.value = false }
-  else { await api.post(`/api/whitelist/${detailUser.value.user_id}`, { reason: 'manual' }); detailIsWl.value = true }
+  if (detailIsWl.value) {
+    await api.delete(`/api/whitelist/${detailUser.value.user_id}`)
+    detailIsWl.value = false
+  } else {
+    await api.post(`/api/whitelist/${detailUser.value.user_id}`, { reason: 'manual' })
+    detailIsWl.value = true
+  }
 }
 
 async function copyText(text, label) {
@@ -321,7 +421,8 @@ async function copyText(text, label) {
       ta.style.position = 'fixed'
       ta.style.opacity = '0'
       document.body.appendChild(ta)
-      ta.focus(); ta.select()
+      ta.focus()
+      ta.select()
       document.execCommand('copy')
       document.body.removeChild(ta)
     }
@@ -331,6 +432,18 @@ async function copyText(text, label) {
   }
 }
 
+function goPrevPage() {
+  if (page.value <= 1) return
+  page.value -= 1
+  load()
+}
+
+function goNextPage() {
+  if (page.value >= totalPages.value) return
+  page.value += 1
+  load()
+}
+
 function fmtDate(ts) {
   if (!ts) return '—'
   const d = new Date(new Date(ts).getTime() + 8 * 3600000)
@@ -338,11 +451,21 @@ function fmtDate(ts) {
   return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`
 }
 
-watch(filter, () => { page.value = 1; load() })
+watch(filter, () => {
+  page.value = 1
+  load()
+})
+
+watch(pageSize, () => {
+  page.value = 1
+  load()
+})
+
 watch(() => route.query.filter, (v) => {
   const next = v === 'blocked' || v === 'normal' ? v : ''
   if (filter.value !== next) filter.value = next
 })
+
 onMounted(() => {
   const qf = route.query.filter
   filter.value = qf === 'blocked' || qf === 'normal' ? qf : ''
@@ -351,35 +474,43 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.page{max-width:720px;margin:0 auto}
+.page{max-width:980px;margin:0 auto}
 .page-title-with-icon,
 .sec-title-with-icon,
 .inline-icon-text,
 .action-link{display:inline-flex;align-items:center;gap:8px}
+.toolbar-controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.toolbar-select{width:auto;min-width:110px}
 .quick-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.user-cell{display:flex;align-items:center;gap:10px;min-width:0}
-.user-cell-line{min-width:0;display:flex;align-items:center;gap:6px;white-space:nowrap}
-.u-name{min-width:0;font-weight:500;font-size:13px;text-decoration:underline;text-decoration-color:transparent;transition:.15s;overflow:hidden;text-overflow:ellipsis}
-.user-cell:hover .u-name{text-decoration-color:var(--accent)}
-.user-cell-meta{min-width:0;font-size:12px;color:var(--text2);overflow:hidden;text-overflow:ellipsis}
-.user-cell-sep{color:var(--text3);flex-shrink:0}
+.user-cell{display:flex;align-items:center;gap:10px;min-width:0;cursor:pointer}
+.user-summary{min-width:0;display:flex;flex-direction:column;gap:2px}
+.u-name{font-weight:600;font-size:13px;line-height:1.35;word-break:break-word}
+.u-username{font-size:12px;color:var(--text2);line-height:1.35;word-break:break-word}
 .u-ava{width:34px;height:34px;border-radius:50%;flex-shrink:0;background:var(--accent-dim);color:var(--accent);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;overflow:hidden}
 .u-ava.blocked{background:rgba(247,79,79,.15);color:var(--danger)}
 .ava-img{width:100%;height:100%;object-fit:cover}
+.user-id{font-size:12px;display:inline-block;max-width:130px;overflow:auto}
 .cb{width:14px;height:14px;cursor:pointer;accent-color:var(--accent)}
 .row-sel td{background:rgba(79,142,247,.07)!important}
 .batch-bar{display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--accent-dim);border:1px solid rgba(79,142,247,.3);border-radius:var(--rs);flex-wrap:wrap}
 .batch-actions{align-items:center}
 .batch-actions button{white-space:nowrap}
+.compact-users-table th,
+.compact-users-table td{vertical-align:middle}
 .row-actions{display:flex;align-items:center;gap:4px;flex-wrap:nowrap;white-space:nowrap}
 .row-actions .btn-sm,
 .row-actions .action-link{flex:0 0 auto}
+.action-link-icon{display:inline-flex;align-items:center;justify-content:center;text-decoration:none}
+.pagination-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-top:14px;flex-wrap:wrap}
+.pagination-actions{display:flex;align-items:center;gap:8px}
 @media (max-width:768px){
+  .page{max-width:100%}
+  .toolbar-controls{width:100%}
+  .toolbar-select{flex:1;min-width:0}
   .batch-actions{width:100%}
   .batch-actions button{flex:0 1 auto;max-width:100%}
-  .user-cell-line{gap:4px}
-  .u-name,.user-cell-meta{font-size:12px}
   .row-actions{gap:3px}
+  .compact-users-table{min-width:760px}
 }
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px}
 .modal-card{width:100%;max-width:440px;padding:24px;max-height:90vh;overflow-y:auto}

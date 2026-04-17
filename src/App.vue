@@ -136,7 +136,7 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { RouterLink, RouterView, useRouter, useRoute } from 'vue-router'
-import { useAuthStore } from './stores/auth'
+import { AUTH_EXPIRED_EVENT, useAuthStore } from './stores/auth'
 import { useI18nStore } from './stores/i18n'
 import AppIcon from './components/AppIcon.vue'
 import api from './stores/api'
@@ -241,6 +241,13 @@ function toggleGlass() {
   applyGlass(!glassEnabled.value)
 }
 
+async function handleAuthExpired() {
+  await auth.logout({ skipRequest: true, keepNotice: true })
+  if (route.path !== '/login') {
+    router.replace('/login')
+  }
+}
+
 async function syncLocaleToBackend() {
   if (!auth.isLoggedIn) return
   try {
@@ -276,6 +283,7 @@ onMounted(async () => {
   }
 
   document.addEventListener('click', closeThemeMenu)
+  window.addEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired)
 
   await router.isReady()
   routeReady.value = true
@@ -284,6 +292,7 @@ onMounted(async () => {
 onUnmounted(() => {
   if (syncLocaleTimer) clearTimeout(syncLocaleTimer)
   document.removeEventListener('click', closeThemeMenu)
+  window.removeEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired)
 
   if (systemThemeQuery?.removeEventListener) systemThemeQuery.removeEventListener('change', handleSystemThemeChange)
   else if (systemThemeQuery?.removeListener) systemThemeQuery.removeListener(handleSystemThemeChange)

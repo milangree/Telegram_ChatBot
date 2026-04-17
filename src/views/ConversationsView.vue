@@ -316,11 +316,11 @@ onMounted(async () => {
 .msg-wrap{display:flex}
 .msg-wrap.incoming{justify-content:flex-start}
 .msg-wrap.outgoing{justify-content:flex-end}
-.msg-bubble{max-width:72%;padding:9px 13px;border-radius:14px;font-size:13px;word-break:break-word}
+.msg-bubble{max-width:min(82%,100%);padding:9px 13px;border-radius:14px;font-size:13px;word-break:break-word;overflow-wrap:anywhere}
 .incoming .msg-bubble{background:var(--bg3);border-bottom-left-radius:4px}
 .outgoing .msg-bubble{background:var(--accent-dim);border:1px solid rgba(79,142,247,.25);border-bottom-right-radius:4px}
 .msg-type-badge{font-size:11px;color:var(--text3);margin-bottom:3px}
-.msg-text{white-space:pre-wrap}
+.msg-text{white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere}
 .msg-meta{font-size:10px;color:var(--text3);margin-top:4px;text-align:right}
 .conv-placeholder{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;color:var(--text3)}
 .placeholder-icon{color:var(--text3)}
