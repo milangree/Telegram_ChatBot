@@ -387,7 +387,22 @@ const messages = {
   "bot.filter.promptText": "請傳送要屏蔽的文字關鍵字。",
   "bot.filter.promptRegex": "請傳送正則規則，例如：<code>/https?:\\/\\//i</code>",
   "bot.filter.promptJson": "請傳送 JSON 規則，例如：<code>{\"contact\":true}</code>",
-  "bot.filter.promptRemove": "請傳送要刪除的規則序號或規則 ID。"
+  "bot.filter.promptRemove": "請傳送要刪除的規則序號或規則 ID。",
+  "bot.user.contact": "📨 聯絡管理員",
+  "bot.user.statusBtn": "📋 我的狀態",
+  "bot.user.close": "✖️ 關閉",
+  "bot.user.menuHint": "請選擇下方選單操作。",
+  "bot.user.contactText": "📨 <b>聯絡管理員</b>\n\n請直接傳送文字、圖片、檔案或其他訊息內容，管理員會盡快回覆。",
+  "bot.user.helpText": "❓ <b>說明</b>\n\n直接傳送訊息即可聯絡管理員。\n傳送 /start 可重新開啟選單。",
+  "bot.user.closed": "✅ 選單已關閉，可傳送 /start 重新開啟。",
+  "bot.admin.close": "✖️ 關閉",
+  "bot.admin.menu.features": "⚙️ 功能設定",
+  "bot.admin.menu.lists": "📚 資料列表",
+  "bot.admin.menu.filters": "🛡 關鍵字過濾",
+  "bot.admin.menuHint": "請選擇要進入的管理選單。",
+  "bot.admin.featureHint": "可在此快速切換機器人核心功能設定。",
+  "bot.admin.listHint": "可在此查看統計、黑名單與使用者列表。",
+  "bot.admin.closed": "✅ 控制台已關閉，傳送 /panel 可重新開啟。"
 };
 
 export default messages;

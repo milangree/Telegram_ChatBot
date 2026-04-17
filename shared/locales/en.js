@@ -399,6 +399,21 @@ const messages = {
   "bot.filter.promptRegex": "Send a regex rule, for example: <code>/https?:\\/\\//i</code>",
   "bot.filter.promptJson": "Send a JSON rule, for example: <code>{\"contact\":true}</code>",
   "bot.filter.promptRemove": "Send the rule index or rule ID to remove.",
+  "bot.user.contact": "📨 Contact Admin",
+  "bot.user.statusBtn": "📋 My Status",
+  "bot.user.close": "✖️ Close",
+  "bot.user.menuHint": "Choose an action from the menu below.",
+  "bot.user.contactText": "📨 <b>Contact Admin</b>\n\nSend text, photos, files, or any other message directly, and an admin will reply as soon as possible.",
+  "bot.user.helpText": "❓ <b>Help</b>\n\nSend a message directly to contact the admin.\nSend /start to reopen the menu.",
+  "bot.user.closed": "✅ Menu closed. Send /start to open it again.",
+  "bot.admin.close": "✖️ Close",
+  "bot.admin.menu.features": "⚙️ Features",
+  "bot.admin.menu.lists": "📚 Lists",
+  "bot.admin.menu.filters": "🛡 Keyword Filter",
+  "bot.admin.menuHint": "Choose an admin menu to continue.",
+  "bot.admin.featureHint": "Use this menu to quickly toggle core bot features.",
+  "bot.admin.listHint": "Use this menu to view stats, blacklist, and user list.",
+  "bot.admin.closed": "✅ Panel closed. Send /panel to open it again.",
   "bot.cmd.start": "Start / show welcome",
   "bot.cmd.help": "Show help",
   "bot.cmd.status": "Check current status",
@@ -408,7 +423,10 @@ const messages = {
   "bot.cmd.wl": "[Admin] Add whitelist /wl <uid>",
   "bot.cmd.unwl": "[Admin] Remove whitelist /unwl <uid>",
   "bot.cmd.info": "[Admin] User info /info <uid>",
-  "bot.cmd.panel": "[Admin] Open panel"
+  "bot.cmd.panel": "[Admin] Open panel",
+  "bot.cmd.filters": "[Admin] Show filter rules",
+  "bot.cmd.addfilter": "[Admin] Add filter rule /addfilter <type> <value>",
+  "bot.cmd.delfilter": "[Admin] Delete filter rule /delfilter <index or id>"
 };
 
 export default messages;
