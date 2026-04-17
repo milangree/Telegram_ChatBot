@@ -378,7 +378,16 @@ const messages = {
   "webhook.ok": "OK",
   "webhook.internalServerError": "伺服器內部錯誤",
   "store.api.requestFailed": "請求失敗",
-  "store.auth.loginFailed": "登入失敗"
+  "store.auth.loginFailed": "登入失敗",
+  "bot.filter.manageHint": "可直接點擊側邊按鈕新增文字 / 正則 / JSON 規則，或刪除既有規則。輸入過程中傳送 /cancel 可取消。",
+  "bot.filter.type.text": "文字",
+  "bot.filter.type.regex": "正則",
+  "bot.filter.type.json": "JSON",
+  "bot.filter.removeAction": "刪除規則",
+  "bot.filter.promptText": "請傳送要屏蔽的文字關鍵字。",
+  "bot.filter.promptRegex": "請傳送正則規則，例如：<code>/https?:\\/\\//i</code>",
+  "bot.filter.promptJson": "請傳送 JSON 規則，例如：<code>{\"contact\":true}</code>",
+  "bot.filter.promptRemove": "請傳送要刪除的規則序號或規則 ID。"
 };
 
 export default messages;
