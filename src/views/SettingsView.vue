@@ -22,425 +22,443 @@
       </transition>
       <div v-if="saveErr" class="alert alert-error">{{ saveErr }}</div>
 
-      <div class="card section settings-card">
-        <button type="button" class="settings-card-toggle" @click="toggleSection('bot')">
-          <h3 class="sec-title sec-title-with-icon">
-            <AppIcon name="bot" :size="18" />
-            {{ t('settings.section.bot') }}
-          </h3>
-          <span class="settings-card-toggle-indicator">{{ isSectionOpen('bot') ? '−' : '+' }}</span>
-        </button>
-        <div v-show="isSectionOpen('bot')" class="settings-card-body">
-          <div class="form-group">
-            <label>{{ t('settings.config.botToken') }} <span class="req">*</span></label>
-            <div class="row-g settings-inline-row">
-              <input v-model="form.BOT_TOKEN" type="password" :placeholder="t('settings.token.placeholder')" autocomplete="off" />
-              <button class="btn-ghost btn-sm settings-inline-btn" @click="testToken" :disabled="testingTok">{{ testingTok ? '…' : t('settings.token.test') }}</button>
-            </div>
-            <div v-if="tokResult" class="form-hint" :class="tokResult.ok ? 'text-success' : 'text-danger'">
-              {{ tokResult.ok ? t('settings.token.valid', { username: tokResult.bot.username, id: tokResult.bot.id }) : tokResult.err }}
-            </div>
-          </div>
+      <div class="settings-layout">
+        <aside class="settings-nav card">
+          <button
+            v-for="item in settingsNavItems"
+            :key="item.key"
+            type="button"
+            class="settings-nav-item"
+            :class="{ active: activeSection === item.key }"
+            @click="activeSection = item.key"
+          >
+            <AppIcon :name="item.icon" :size="16" />
+            <span>{{ item.label }}</span>
+          </button>
+        </aside>
 
-          <div class="form-group">
-            <label>{{ t('settings.topicGroupId') }} <span class="req">*</span></label>
-            <div class="row-g settings-inline-row">
-              <input v-model="form.FORUM_GROUP_ID" :placeholder="t('settings.topicGroupPh')" />
-              <button class="btn-ghost btn-sm utility-btn settings-inline-btn" @click="resolveChat(form.FORUM_GROUP_ID, 'group')" :disabled="resolvingGroup">
-                {{ resolvingGroup ? '…' : t('settings.resolve') }}
-              </button>
-            </div>
-            <div v-if="groupInfo" class="resolve-card">
-              <AppIcon :name="groupInfo.type === 'supergroup' ? 'users' : 'conversations'" :size="18" />
-              <div>
-                <div style="font-weight:600">{{ groupInfo.title }}</div>
-                <div class="text-muted text-sm">{{ t('common.id') }}: <code>{{ groupInfo.id }}</code></div>
-              </div>
-              <button class="btn-primary btn-sm utility-btn" @click="form.FORUM_GROUP_ID = String(groupInfo.id)">{{ t('settings.use') }}</button>
-            </div>
-            <div v-if="groupErr" class="form-hint text-danger">{{ groupErr }}</div>
-          </div>
-
-          <div class="form-group">
-            <label>{{ t('settings.queryChat') }}</label>
-            <div class="row-g settings-inline-row">
-              <input v-model="chatQuery" :placeholder="t('settings.queryPh')" />
-              <button class="btn-ghost btn-sm utility-btn settings-inline-btn" @click="resolveChat(chatQuery, 'custom')" :disabled="resolvingCustom">{{ resolvingCustom ? '…' : t('settings.query') }}</button>
-            </div>
-            <div v-if="customInfo" class="resolve-card">
-              <AppIcon :name="{ supergroup: 'users', channel: 'link' }[customInfo.type] || 'conversations'" :size="18" />
-              <div style="flex:1">
-                <div>{{ customInfo.title || customInfo.first_name }}</div>
-                <div class="text-muted text-sm">{{ t('common.id') }}: {{ customInfo.id }}</div>
-              </div>
-              <button class="btn-ghost btn-sm utility-btn" @click="form.FORUM_GROUP_ID = String(customInfo.id)">{{ t('settings.useId') }}</button>
-              <button class="btn-ghost btn-sm utility-btn" @click="addAdmin(String(customInfo.id))">{{ t('settings.setAdmin') }}</button>
-            </div>
-          </div>
-
-          <div class="form-group">
-            <label>{{ t('settings.adminIds') }}</label>
-            <div v-if="adminList.length" class="admin-tags" :class="{ 'admin-tags-single': adminList.length === 1 }">
-              <div v-for="(id, i) in adminList" :key="id" class="admin-card">
-                <div class="admin-card-avatar">
-                  <img
-                    v-if="!adminAvatarErrors[id]"
-                    :src="`/api/users/${id}/avatar`"
-                    alt=""
-                    class="admin-card-avatar-img"
-                    @error="markAdminAvatarError(id)"
-                  />
-                  <span v-else>{{ adminInitial(id) }}</span>
+        <div class="settings-main">
+          <div v-show="activeSection === 'bot'" class="card section settings-card">
+            <button type="button" class="settings-card-toggle" @click="toggleSection('bot')">
+              <h3 class="sec-title sec-title-with-icon">
+                <AppIcon name="bot" :size="18" />
+                {{ t('settings.section.bot') }}
+              </h3>
+              <span class="settings-card-toggle-indicator">{{ isSectionOpen('bot') ? '−' : '+' }}</span>
+            </button>
+            <div v-show="isSectionOpen('bot')" class="settings-card-body">
+              <div class="form-group">
+                <label>{{ t('settings.config.botToken') }} <span class="req">*</span></label>
+                <div class="row-g settings-inline-row">
+                  <input v-model="form.BOT_TOKEN" type="password" :placeholder="t('settings.token.placeholder')" autocomplete="off" />
+                  <button class="btn-ghost btn-sm settings-inline-btn" @click="testToken" :disabled="testingTok">{{ testingTok ? '…' : t('settings.token.test') }}</button>
                 </div>
-                <div class="admin-card-info">
-                  <div class="admin-card-line">
-                    <span class="admin-card-name">{{ adminDisplayName(id) }}</span>
-                    <span class="admin-card-sep">·</span>
-                    <span class="admin-card-meta">{{ adminSecondaryLine(id) }}</span>
-                    <span class="admin-card-sep">·</span>
-                    <span class="admin-card-id">{{ t('common.id') }}: {{ id }}</span>
+                <div v-if="tokResult" class="form-hint" :class="tokResult.ok ? 'text-success' : 'text-danger'">
+                  {{ tokResult.ok ? t('settings.token.valid', { username: tokResult.bot.username, id: tokResult.bot.id }) : tokResult.err }}
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label>{{ t('settings.topicGroupId') }} <span class="req">*</span></label>
+                <div class="row-g settings-inline-row">
+                  <input v-model="form.FORUM_GROUP_ID" :placeholder="t('settings.topicGroupPh')" />
+                  <button class="btn-ghost btn-sm utility-btn settings-inline-btn" @click="resolveChat(form.FORUM_GROUP_ID, 'group')" :disabled="resolvingGroup">
+                    {{ resolvingGroup ? '…' : t('settings.resolve') }}
+                  </button>
+                </div>
+                <div v-if="groupInfo" class="resolve-card">
+                  <AppIcon :name="groupInfo.type === 'supergroup' ? 'users' : 'conversations'" :size="18" />
+                  <div>
+                    <div style="font-weight:600">{{ groupInfo.title }}</div>
+                    <div class="text-muted text-sm">{{ t('common.id') }}: <code>{{ groupInfo.id }}</code></div>
+                  </div>
+                  <button class="btn-primary btn-sm utility-btn" @click="form.FORUM_GROUP_ID = String(groupInfo.id)">{{ t('settings.use') }}</button>
+                </div>
+                <div v-if="groupErr" class="form-hint text-danger">{{ groupErr }}</div>
+              </div>
+
+              <div class="form-group">
+                <label>{{ t('settings.queryChat') }}</label>
+                <div class="row-g settings-inline-row">
+                  <input v-model="chatQuery" :placeholder="t('settings.queryPh')" />
+                  <button class="btn-ghost btn-sm utility-btn settings-inline-btn" @click="resolveChat(chatQuery, 'custom')" :disabled="resolvingCustom">{{ resolvingCustom ? '…' : t('settings.query') }}</button>
+                </div>
+                <div v-if="customInfo" class="resolve-card">
+                  <AppIcon :name="{ supergroup: 'users', channel: 'link' }[customInfo.type] || 'conversations'" :size="18" />
+                  <div style="flex:1">
+                    <div>{{ customInfo.title || customInfo.first_name }}</div>
+                    <div class="text-muted text-sm">{{ t('common.id') }}: {{ customInfo.id }}</div>
+                  </div>
+                  <button class="btn-ghost btn-sm utility-btn" @click="form.FORUM_GROUP_ID = String(customInfo.id)">{{ t('settings.useId') }}</button>
+                  <button class="btn-ghost btn-sm utility-btn" @click="addAdmin(String(customInfo.id))">{{ t('settings.setAdmin') }}</button>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label>{{ t('settings.adminIds') }}</label>
+                <div v-if="adminList.length" class="admin-tags" :class="{ 'admin-tags-single': adminList.length === 1 }">
+                  <div v-for="(id, i) in adminList" :key="id" class="admin-card">
+                    <div class="admin-card-avatar">
+                      <img
+                        v-if="!adminAvatarErrors[id]"
+                        :src="`/api/users/${id}/avatar`"
+                        alt=""
+                        class="admin-card-avatar-img"
+                        @error="markAdminAvatarError(id)"
+                      />
+                      <span v-else>{{ adminInitial(id) }}</span>
+                    </div>
+                    <div class="admin-card-info">
+                      <div class="admin-card-line">
+                        <span class="admin-card-name">{{ adminDisplayName(id) }}</span>
+                        <span class="admin-card-sep">·</span>
+                        <span class="admin-card-meta">{{ adminSecondaryLine(id) }}</span>
+                        <span class="admin-card-sep">·</span>
+                        <span class="admin-card-id">{{ t('common.id') }}: {{ id }}</span>
+                      </div>
+                    </div>
+                    <button class="btn-ghost btn-sm admin-card-remove" @click="removeAdmin(i)">
+                      <AppIcon name="close" :size="14" />
+                    </button>
                   </div>
                 </div>
-                <button class="btn-ghost btn-sm admin-card-remove" @click="removeAdmin(i)">
-                  <AppIcon name="close" :size="14" />
-                </button>
-              </div>
-            </div>
-            <div class="row-g">
-              <UserSearchPicker v-model="newAdminId" @selected="u => newAdminId = String(u.user_id)" />
-              <button class="btn-ghost btn-sm utility-btn" @click="addAdmin(newAdminId)">{{ t('settings.add') }}</button>
-            </div>
-            <div class="form-hint">{{ t('settings.adminHint') }}</div>
-          </div>
-        </div>
-      </div>
-
-      <div class="card section settings-card">
-        <button type="button" class="settings-card-toggle" @click="toggleSection('webhook')">
-          <h3 class="sec-title sec-title-with-icon">
-            <AppIcon name="webhook" :size="18" />
-            {{ t('settings.section.webhook') }}
-          </h3>
-          <span class="settings-card-toggle-indicator">{{ isSectionOpen('webhook') ? '−' : '+' }}</span>
-        </button>
-        <div v-show="isSectionOpen('webhook')" class="settings-card-body">
-          <div class="form-group">
-            <label>{{ t('settings.webhookUrl') }}</label>
-            <div class="row-g">
-              <input v-model="webhookUrl" :placeholder="t('settings.webhook.placeholder')" />
-              <button class="btn-primary btn-sm" @click="setWebhook" :disabled="settingWh">{{ settingWh ? '…' : t('settings.webhookSet') }}</button>
-            </div>
-            <div v-if="whResult" class="form-hint" :class="whResult.ok ? 'text-success' : 'text-danger'">
-              {{ whResult.ok ? whResult.message : whResult.err }}
-            </div>
-            <div class="form-hint">{{ t('settings.webhookHint') }}</div>
-          </div>
-        </div>
-      </div>
-
-      <div class="card section settings-card">
-        <button type="button" class="settings-card-toggle" @click="toggleSection('verify')">
-          <h3 class="sec-title sec-title-with-icon">
-            <AppIcon name="verify" :size="18" />
-            {{ t('settings.section.verify') }}
-          </h3>
-          <span class="settings-card-toggle-indicator">{{ isSectionOpen('verify') ? '−' : '+' }}</span>
-        </button>
-        <div v-show="isSectionOpen('verify')" class="settings-card-body">
-          <div class="toggle-row">
-            <div>
-              <div class="toggle-label">{{ t('settings.verifyEnable') }}</div>
-              <div class="form-hint">{{ t('settings.verifyEnableHint') }}</div>
-            </div>
-            <label class="toggle"><input type="checkbox" v-model="verifyEnabled" /><span class="toggle-slider"></span></label>
-          </div>
-          <template v-if="verifyEnabled">
-            <div class="divider"></div>
-            <div class="form-group">
-              <label>{{ t('settings.verifyType') }}</label>
-              <select v-model="form.CAPTCHA_TYPE">
-                <option value="math">{{ t('settings.verify.math') }}</option>
-                <option value="image_numeric">{{ t('settings.verify.imgNum') }}</option>
-                <option value="image_alphanumeric">{{ t('settings.verify.imgAlpha') }}</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label>{{ t('settings.verify.siteUrl') }}</label>
-              <input v-model="form.CAPTCHA_SITE_URL" :placeholder="t('settings.verify.siteUrlPh')" />
-              <div class="form-hint">{{ t('settings.verify.siteUrlHint') }}</div>
-            </div>
-            <div class="toggle-row">
-              <div class="toggle-label">{{ t('settings.verify.timeout') }}</div>
-              <input v-model.number="form.VERIFICATION_TIMEOUT" type="number" min="60" max="3600" style="width:90px" @change="clampTimeout" />
-            </div>
-            <div class="toggle-row">
-              <div class="toggle-label">{{ t('settings.verify.maxAttempts') }}</div>
-              <input v-model="form.MAX_VERIFICATION_ATTEMPTS" type="number" min="1" max="10" style="width:90px" />
-            </div>
-          </template>
-        </div>
-      </div>
-
-      <div class="card section settings-card">
-        <button type="button" class="settings-card-toggle" @click="toggleSection('feature')">
-          <h3 class="sec-title sec-title-with-icon">
-            <AppIcon name="feature" :size="18" />
-            {{ t('settings.section.feature') }}
-          </h3>
-          <span class="settings-card-toggle-indicator">{{ isSectionOpen('feature') ? '−' : '+' }}</span>
-        </button>
-        <div v-show="isSectionOpen('feature')" class="settings-card-body">
-          <div class="toggle-row">
-            <div>
-              <div class="toggle-label">{{ t('settings.feature.autoUnblock') }}</div>
-              <div class="form-hint">{{ t('settings.feature.autoUnblockHint') }}</div>
-            </div>
-            <label class="toggle"><input type="checkbox" v-model="autoUnblock" /><span class="toggle-slider"></span></label>
-          </div>
-          <div class="divider"></div>
-          <div class="toggle-row">
-            <div>
-              <div class="toggle-label">{{ t('settings.feature.whitelist') }}</div>
-              <div class="form-hint">{{ t('settings.feature.whitelistHint') }}</div>
-            </div>
-            <label class="toggle"><input type="checkbox" v-model="whitelistEnabled" /><span class="toggle-slider"></span></label>
-          </div>
-          <div class="divider"></div>
-          <div class="toggle-row">
-            <div>
-              <div class="toggle-label">{{ t('settings.feature.cmdFilter') }}</div>
-              <div class="form-hint">{{ t('settings.feature.cmdFilterHint') }}</div>
-            </div>
-            <label class="toggle"><input type="checkbox" v-model="cmdFilter" /><span class="toggle-slider"></span></label>
-          </div>
-          <div class="divider"></div>
-          <div class="toggle-row">
-            <div>
-              <div class="toggle-label">{{ t('settings.feature.adminNotify') }}</div>
-              <div class="form-hint">{{ t('settings.feature.adminNotifyHint') }}</div>
-            </div>
-            <label class="toggle"><input type="checkbox" v-model="adminNotifyEnabled" /><span class="toggle-slider"></span></label>
-          </div>
-          <div class="divider"></div>
-          <div class="toggle-row">
-            <div>
-              <div class="toggle-label">{{ t('settings.feature.zalgoFilter') }}</div>
-              <div class="form-hint">{{ t('settings.feature.zalgoFilterHint') }}</div>
-            </div>
-            <label class="toggle"><input type="checkbox" v-model="zalgoFilterEnabled" /><span class="toggle-slider"></span></label>
-          </div>
-          <div class="divider"></div>
-          <div class="toggle-row">
-            <div class="toggle-label">{{ t('settings.feature.maxPerMin') }}</div>
-            <input v-model="form.MAX_MESSAGES_PER_MINUTE" type="number" min="1" max="300" style="width:90px" />
-          </div>
-          <div class="divider"></div>
-          <div class="toggle-row">
-            <div>
-              <div class="toggle-label">{{ t('settings.feature.loginSessionTtl') }}</div>
-              <div class="form-hint">{{ t('settings.feature.loginSessionTtlHint') }}</div>
-            </div>
-            <input v-model.number="form.LOGIN_SESSION_TTL" type="number" min="300" max="2592000" style="width:110px" @change="clampLoginSessionTtl" />
-          </div>
-          <div class="divider"></div>
-          <div class="toggle-row">
-            <div>
-              <div class="toggle-label">{{ t('settings.feature.inlineKbDeleteEnable') }}</div>
-              <div class="form-hint">{{ t('settings.feature.inlineKbDeleteEnableHint') }}</div>
-            </div>
-            <label class="toggle"><input type="checkbox" v-model="inlineKbDeleteEnabled" /><span class="toggle-slider"></span></label>
-          </div>
-          <template v-if="inlineKbDeleteEnabled">
-            <div class="divider"></div>
-            <div class="toggle-row">
-              <div>
-                <div class="toggle-label">{{ t('settings.feature.inlineKbDelete') }}</div>
-                <div class="form-hint">{{ t('settings.feature.inlineKbDeleteHint') }}</div>
-              </div>
-              <input v-model.number="form.INLINE_KB_MSG_DELETE_SECONDS" type="number" min="0" max="600" style="width:90px" @change="clampInlineKbDelete" />
-            </div>
-          </template>
-        </div>
-      </div>
-
-      <div class="card section settings-card">
-        <button type="button" class="settings-card-toggle" @click="toggleSection('messageFilter')">
-          <h3 class="sec-title sec-title-with-icon">
-            <AppIcon name="block" :size="18" />
-            {{ t('settings.section.messageFilter') }}
-          </h3>
-          <span class="settings-card-toggle-indicator">{{ isSectionOpen('messageFilter') ? '−' : '+' }}</span>
-        </button>
-        <div v-show="isSectionOpen('messageFilter')" class="settings-card-body">
-          <div class="form-hint">{{ t('settings.feature.messageFilterHint') }}</div>
-
-          <div class="message-filter-guide">
-            <div class="message-filter-guide-item">
-              <div class="message-filter-guide-type"><code>text</code></div>
-              <div class="message-filter-guide-content">
-                <div>{{ t('settings.feature.messageFilterTextHelp') }}</div>
-                <code>{{ t('settings.feature.messageFilterTextExample') }}</code>
-              </div>
-            </div>
-            <div class="message-filter-guide-item">
-              <div class="message-filter-guide-type"><code>regex</code></div>
-              <div class="message-filter-guide-content">
-                <div>{{ t('settings.feature.messageFilterRegexHelp') }}</div>
-                <code>{{ t('settings.feature.messageFilterRegexExample') }}</code>
-              </div>
-            </div>
-            <div class="message-filter-guide-item">
-              <div class="message-filter-guide-type"><code>json</code></div>
-              <div class="message-filter-guide-content">
-                <div>{{ t('settings.feature.messageFilterJsonHelp') }}</div>
-                <code>{{ t('settings.feature.messageFilterJsonExample') }}</code>
-              </div>
-            </div>
-          </div>
-
-          <div class="divider"></div>
-
-          <div class="message-filter-form">
-            <div class="form-group">
-              <label>{{ t('settings.feature.messageFilterType') }}</label>
-              <select v-model="messageFilterType">
-                <option v-for="type in messageFilterTypes" :key="type" :value="type">{{ type }}</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label>{{ t('settings.feature.messageFilterValue') }}</label>
-              <textarea
-                v-model="messageFilterValue"
-                rows="4"
-                style="resize:vertical;font-family:monospace;font-size:13px"
-                :placeholder="t('settings.feature.messageFilterValuePlaceholder')"
-              ></textarea>
-            </div>
-            <div class="message-filter-actions">
-              <button class="btn-primary btn-sm" @click="addMessageFilterRule">
-                <AppIcon name="add" :size="14" />
-                {{ t('settings.feature.messageFilterAdd') }}
-              </button>
-            </div>
-            <div v-if="messageFilterErr" class="form-hint text-danger">{{ messageFilterErr }}</div>
-          </div>
-
-          <div class="divider"></div>
-
-          <div v-if="messageFilterRules.length" class="message-filter-list">
-            <div v-for="rule in messageFilterRules" :key="rule.id" class="message-filter-card">
-              <div class="message-filter-card-header">
-                <div class="message-filter-card-meta">
-                  <span class="badge">{{ rule.type }}</span>
-                  <code class="message-filter-card-id">{{ t('settings.feature.messageFilterRuleId') }}: {{ rule.id }}</code>
+                <div class="row-g">
+                  <UserSearchPicker v-model="newAdminId" @selected="u => newAdminId = String(u.user_id)" />
+                  <button class="btn-ghost btn-sm utility-btn" @click="addAdmin(newAdminId)">{{ t('settings.add') }}</button>
                 </div>
-                <button
-                  class="btn-ghost btn-sm utility-btn"
-                  :title="t('settings.feature.messageFilterRemove')"
-                  @click="removeMessageFilterRule(rule.id)"
-                >
-                  <AppIcon name="close" :size="14" />
+                <div class="form-hint">{{ t('settings.adminHint') }}</div>
+              </div>
+            </div>
+          </div>
+
+          <div v-show="activeSection === 'webhook'" class="card section settings-card">
+            <button type="button" class="settings-card-toggle" @click="toggleSection('webhook')">
+              <h3 class="sec-title sec-title-with-icon">
+                <AppIcon name="webhook" :size="18" />
+                {{ t('settings.section.webhook') }}
+              </h3>
+              <span class="settings-card-toggle-indicator">{{ isSectionOpen('webhook') ? '−' : '+' }}</span>
+            </button>
+            <div v-show="isSectionOpen('webhook')" class="settings-card-body">
+              <div class="form-group">
+                <label>{{ t('settings.webhookUrl') }}</label>
+                <div class="row-g">
+                  <input v-model="webhookUrl" :placeholder="t('settings.webhook.placeholder')" />
+                  <button class="btn-primary btn-sm" @click="setWebhook" :disabled="settingWh">{{ settingWh ? '…' : t('settings.webhookSet') }}</button>
+                </div>
+                <div v-if="whResult" class="form-hint" :class="whResult.ok ? 'text-success' : 'text-danger'">
+                  {{ whResult.ok ? whResult.message : whResult.err }}
+                </div>
+                <div class="form-hint">{{ t('settings.webhookHint') }}</div>
+              </div>
+            </div>
+          </div>
+
+          <div v-show="activeSection === 'verify'" class="card section settings-card">
+            <button type="button" class="settings-card-toggle" @click="toggleSection('verify')">
+              <h3 class="sec-title sec-title-with-icon">
+                <AppIcon name="verify" :size="18" />
+                {{ t('settings.section.verify') }}
+              </h3>
+              <span class="settings-card-toggle-indicator">{{ isSectionOpen('verify') ? '−' : '+' }}</span>
+            </button>
+            <div v-show="isSectionOpen('verify')" class="settings-card-body">
+              <div class="toggle-row">
+                <div>
+                  <div class="toggle-label">{{ t('settings.verifyEnable') }}</div>
+                  <div class="form-hint">{{ t('settings.verifyEnableHint') }}</div>
+                </div>
+                <label class="toggle"><input type="checkbox" v-model="verifyEnabled" /><span class="toggle-slider"></span></label>
+              </div>
+              <template v-if="verifyEnabled">
+                <div class="divider"></div>
+                <div class="form-group">
+                  <label>{{ t('settings.verifyType') }}</label>
+                  <select v-model="form.CAPTCHA_TYPE">
+                    <option value="math">{{ t('settings.verify.math') }}</option>
+                    <option value="image_numeric">{{ t('settings.verify.imgNum') }}</option>
+                    <option value="image_alphanumeric">{{ t('settings.verify.imgAlpha') }}</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>{{ t('settings.verify.siteUrl') }}</label>
+                  <input v-model="form.CAPTCHA_SITE_URL" :placeholder="t('settings.verify.siteUrlPh')" />
+                  <div class="form-hint">{{ t('settings.verify.siteUrlHint') }}</div>
+                </div>
+                <div class="toggle-row">
+                  <div class="toggle-label">{{ t('settings.verify.timeout') }}</div>
+                  <input v-model.number="form.VERIFICATION_TIMEOUT" type="number" min="60" max="3600" style="width:90px" @change="clampTimeout" />
+                </div>
+                <div class="toggle-row">
+                  <div class="toggle-label">{{ t('settings.verify.maxAttempts') }}</div>
+                  <input v-model="form.MAX_VERIFICATION_ATTEMPTS" type="number" min="1" max="10" style="width:90px" />
+                </div>
+              </template>
+            </div>
+          </div>
+
+          <div v-show="activeSection === 'feature'" class="card section settings-card">
+            <button type="button" class="settings-card-toggle" @click="toggleSection('feature')">
+              <h3 class="sec-title sec-title-with-icon">
+                <AppIcon name="feature" :size="18" />
+                {{ t('settings.section.feature') }}
+              </h3>
+              <span class="settings-card-toggle-indicator">{{ isSectionOpen('feature') ? '−' : '+' }}</span>
+            </button>
+            <div v-show="isSectionOpen('feature')" class="settings-card-body">
+              <div class="toggle-row">
+                <div>
+                  <div class="toggle-label">{{ t('settings.feature.autoUnblock') }}</div>
+                  <div class="form-hint">{{ t('settings.feature.autoUnblockHint') }}</div>
+                </div>
+                <label class="toggle"><input type="checkbox" v-model="autoUnblock" /><span class="toggle-slider"></span></label>
+              </div>
+              <div class="divider"></div>
+              <div class="toggle-row">
+                <div>
+                  <div class="toggle-label">{{ t('settings.feature.whitelist') }}</div>
+                  <div class="form-hint">{{ t('settings.feature.whitelistHint') }}</div>
+                </div>
+                <label class="toggle"><input type="checkbox" v-model="whitelistEnabled" /><span class="toggle-slider"></span></label>
+              </div>
+              <div class="divider"></div>
+              <div class="toggle-row">
+                <div>
+                  <div class="toggle-label">{{ t('settings.feature.cmdFilter') }}</div>
+                  <div class="form-hint">{{ t('settings.feature.cmdFilterHint') }}</div>
+                </div>
+                <label class="toggle"><input type="checkbox" v-model="cmdFilter" /><span class="toggle-slider"></span></label>
+              </div>
+              <div class="divider"></div>
+              <div class="toggle-row">
+                <div>
+                  <div class="toggle-label">{{ t('settings.feature.adminNotify') }}</div>
+                  <div class="form-hint">{{ t('settings.feature.adminNotifyHint') }}</div>
+                </div>
+                <label class="toggle"><input type="checkbox" v-model="adminNotifyEnabled" /><span class="toggle-slider"></span></label>
+              </div>
+              <div class="divider"></div>
+              <div class="toggle-row">
+                <div>
+                  <div class="toggle-label">{{ t('settings.feature.zalgoFilter') }}</div>
+                  <div class="form-hint">{{ t('settings.feature.zalgoFilterHint') }}</div>
+                </div>
+                <label class="toggle"><input type="checkbox" v-model="zalgoFilterEnabled" /><span class="toggle-slider"></span></label>
+              </div>
+              <div class="divider"></div>
+              <div class="toggle-row">
+                <div class="toggle-label">{{ t('settings.feature.maxPerMin') }}</div>
+                <input v-model="form.MAX_MESSAGES_PER_MINUTE" type="number" min="1" max="300" style="width:90px" />
+              </div>
+              <div class="divider"></div>
+              <div class="toggle-row">
+                <div>
+                  <div class="toggle-label">{{ t('settings.feature.loginSessionTtl') }}</div>
+                  <div class="form-hint">{{ t('settings.feature.loginSessionTtlHint') }}</div>
+                </div>
+                <input v-model.number="form.LOGIN_SESSION_TTL" type="number" min="300" max="2592000" style="width:110px" @change="clampLoginSessionTtl" />
+              </div>
+              <div class="divider"></div>
+              <div class="toggle-row">
+                <div>
+                  <div class="toggle-label">{{ t('settings.feature.inlineKbDeleteEnable') }}</div>
+                  <div class="form-hint">{{ t('settings.feature.inlineKbDeleteEnableHint') }}</div>
+                </div>
+                <label class="toggle"><input type="checkbox" v-model="inlineKbDeleteEnabled" /><span class="toggle-slider"></span></label>
+              </div>
+              <template v-if="inlineKbDeleteEnabled">
+                <div class="divider"></div>
+                <div class="toggle-row">
+                  <div>
+                    <div class="toggle-label">{{ t('settings.feature.inlineKbDelete') }}</div>
+                    <div class="form-hint">{{ t('settings.feature.inlineKbDeleteHint') }}</div>
+                  </div>
+                  <input v-model.number="form.INLINE_KB_MSG_DELETE_SECONDS" type="number" min="0" max="600" style="width:90px" @change="clampInlineKbDelete" />
+                </div>
+              </template>
+            </div>
+          </div>
+
+          <div v-show="activeSection === 'messageFilter'" class="card section settings-card">
+            <button type="button" class="settings-card-toggle" @click="toggleSection('messageFilter')">
+              <h3 class="sec-title sec-title-with-icon">
+                <AppIcon name="block" :size="18" />
+                {{ t('settings.section.messageFilter') }}
+              </h3>
+              <span class="settings-card-toggle-indicator">{{ isSectionOpen('messageFilter') ? '−' : '+' }}</span>
+            </button>
+            <div v-show="isSectionOpen('messageFilter')" class="settings-card-body">
+              <div class="form-hint">{{ t('settings.feature.messageFilterHint') }}</div>
+
+              <div class="message-filter-guide">
+                <div class="message-filter-guide-item">
+                  <div class="message-filter-guide-type"><code>text</code></div>
+                  <div class="message-filter-guide-content">
+                    <div>{{ t('settings.feature.messageFilterTextHelp') }}</div>
+                    <code>{{ t('settings.feature.messageFilterTextExample') }}</code>
+                  </div>
+                </div>
+                <div class="message-filter-guide-item">
+                  <div class="message-filter-guide-type"><code>regex</code></div>
+                  <div class="message-filter-guide-content">
+                    <div>{{ t('settings.feature.messageFilterRegexHelp') }}</div>
+                    <code>{{ t('settings.feature.messageFilterRegexExample') }}</code>
+                  </div>
+                </div>
+                <div class="message-filter-guide-item">
+                  <div class="message-filter-guide-type"><code>json</code></div>
+                  <div class="message-filter-guide-content">
+                    <div>{{ t('settings.feature.messageFilterJsonHelp') }}</div>
+                    <code>{{ t('settings.feature.messageFilterJsonExample') }}</code>
+                  </div>
+                </div>
+              </div>
+
+              <div class="divider"></div>
+
+              <div class="message-filter-form">
+                <div class="form-group">
+                  <label>{{ t('settings.feature.messageFilterType') }}</label>
+                  <select v-model="messageFilterType">
+                    <option v-for="type in messageFilterTypes" :key="type" :value="type">{{ formatRuleType(type) }}</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>{{ t('settings.feature.messageFilterValue') }}</label>
+                  <textarea
+                    v-model="messageFilterValue"
+                    rows="4"
+                    style="resize:vertical;font-family:monospace;font-size:13px"
+                    :placeholder="t('settings.feature.messageFilterValuePlaceholder')"
+                  ></textarea>
+                </div>
+                <div class="message-filter-actions">
+                  <button class="btn-primary btn-sm" @click="addMessageFilterRule">
+                    <AppIcon name="add" :size="14" />
+                    {{ t('settings.feature.messageFilterAdd') }}
+                  </button>
+                </div>
+                <div v-if="messageFilterErr" class="form-hint text-danger">{{ messageFilterErr }}</div>
+              </div>
+
+              <div class="divider"></div>
+
+              <div v-if="messageFilterRules.length" class="message-filter-list">
+                <div v-for="rule in messageFilterRules" :key="rule.id" class="message-filter-card">
+                  <div class="message-filter-card-header">
+                    <div class="message-filter-card-meta">
+                      <span class="badge">{{ formatRuleType(rule.type) }}</span>
+                      <code class="message-filter-card-id">{{ t('settings.feature.messageFilterRuleId') }}: {{ rule.id }}</code>
+                    </div>
+                    <button
+                      class="btn-ghost btn-sm utility-btn"
+                      :title="t('settings.feature.messageFilterRemove')"
+                      @click="removeMessageFilterRule(rule.id)"
+                    >
+                      <AppIcon name="close" :size="14" />
+                    </button>
+                  </div>
+                  <pre class="message-filter-card-value"><code>{{ rule.value }}</code></pre>
+                </div>
+              </div>
+              <div v-else class="message-filter-empty">{{ t('settings.feature.messageFilterEmpty') }}</div>
+            </div>
+          </div>
+
+          <div v-show="activeSection === 'welcome'" class="card section settings-card">
+            <button type="button" class="settings-card-toggle" @click="toggleSection('welcome')">
+              <h3 class="sec-title sec-title-with-icon">
+                <AppIcon name="welcome" :size="18" />
+                {{ t('settings.section.welcome') }}
+              </h3>
+              <span class="settings-card-toggle-indicator">{{ isSectionOpen('welcome') ? '−' : '+' }}</span>
+            </button>
+            <div v-show="isSectionOpen('welcome')" class="settings-card-body">
+              <div class="toggle-row">
+                <div class="toggle-label">{{ t('settings.welcome.enable') }}</div>
+                <label class="toggle"><input type="checkbox" v-model="welcomeEnabled" /><span class="toggle-slider"></span></label>
+              </div>
+              <div class="form-group mt-1" v-if="welcomeEnabled">
+                <label>{{ t('settings.welcome.content') }}</label>
+                <textarea v-model="form.WELCOME_MESSAGE" rows="5" style="resize:vertical;font-family:monospace;font-size:13px"></textarea>
+              </div>
+            </div>
+          </div>
+
+          <div v-show="activeSection === 'storage'" class="card section settings-card">
+            <button type="button" class="settings-card-toggle" @click="toggleSection('storage')">
+              <h3 class="sec-title sec-title-with-icon">
+                <AppIcon name="storage" :size="18" />
+                {{ t('settings.section.storage') }}
+              </h3>
+              <span class="settings-card-toggle-indicator">{{ isSectionOpen('storage') ? '−' : '+' }}</span>
+            </button>
+            <div v-show="isSectionOpen('storage')" class="settings-card-body">
+              <div class="db-status">
+                <div>
+                  <div class="toggle-label">
+                    {{ t('settings.storage.current') }}
+                    <span :class="dbInfo.active === 'd1' ? 'text-success' : 'text-warn'">{{ dbInfo.active === 'd1' ? t('settings.storage.currentD1') : t('settings.storage.currentKv') }}</span>
+                  </div>
+                  <div class="form-hint" v-if="!dbInfo.hasD1">{{ t('settings.storage.noD1') }}</div>
+                </div>
+                <div class="flex gap-2" v-if="dbInfo.hasD1">
+                  <button class="btn-ghost btn-sm" :class="{ 'btn-primary': dbInfo.active === 'kv' }" :disabled="dbSwitching || dbInfo.active === 'kv'" @click="switchDb('kv', true)">{{ t('settings.storage.kvShort') }}</button>
+                  <button class="btn-ghost btn-sm" :class="{ 'btn-primary': dbInfo.active === 'd1' }" :disabled="dbSwitching || dbInfo.active === 'd1'" @click="switchDb('d1', true)">{{ t('settings.storage.d1Short') }}</button>
+                </div>
+              </div>
+              <div v-if="dbSwitching" class="flex gap-2 mt-1"><div class="spinner"></div><span class="text-muted text-sm">{{ t('settings.storage.syncing') }}</span></div>
+              <div v-if="dbMsg" class="form-hint mt-1" :class="dbOk ? 'text-success' : 'text-danger'">{{ dbMsg }}</div>
+              <div class="form-hint mt-1">{{ t('settings.storage.switchHint') }}</div>
+              <div class="divider"></div>
+
+              <div class="sql-tools">
+                <div class="sql-tools-header">
+                  <div>
+                    <div class="toggle-label">{{ t('settings.storage.sqlTools') }}</div>
+                    <div class="form-hint mt-1">{{ t('settings.storage.sqlHint') }}</div>
+                  </div>
+                  <div class="sql-tools-actions">
+                    <button class="btn-ghost btn-sm" :disabled="sqlBusy" @click="exportSql">
+                      <span v-if="sqlExporting" class="spinner"></span>{{ sqlExporting ? '…' : t('settings.storage.sqlExport') }}
+                    </button>
+                    <button class="btn-primary btn-sm" :disabled="sqlBusy" @click="pickSqlFile">
+                      <span v-if="sqlImporting" class="spinner"></span>{{ sqlImporting ? '…' : t('settings.storage.sqlImport') }}
+                    </button>
+                    <input
+                      ref="sqlFileInput"
+                      type="file"
+                      accept=".sql,text/sql"
+                      class="sql-file-input"
+                      @change="handleSqlFileChange"
+                    />
+                  </div>
+                </div>
+                <div v-if="sqlFileName" class="form-hint mt-1 sql-file-name">
+                  <code>{{ sqlFileName }}</code>
+                </div>
+                <div v-if="sqlMsg" class="form-hint mt-1" :class="sqlOk ? 'text-success' : 'text-danger'">{{ sqlMsg }}</div>
+              </div>
+
+              <div class="divider"></div>
+              <div class="danger-zone">
+                <div>
+                  <div class="toggle-label text-danger">{{ t('settings.storage.clearData') }}</div>
+                  <div class="form-hint mt-1">{{ t('settings.storage.clearDataHint') }}</div>
+                </div>
+                <button class="btn-danger btn-sm" @click="clearData" :disabled="clearingData">
+                  <span v-if="clearingData" class="spinner"></span>{{ clearingData ? t('settings.storage.clearing') : t('settings.storage.clearData') }}
                 </button>
               </div>
-              <pre class="message-filter-card-value"><code>{{ rule.value }}</code></pre>
             </div>
-          </div>
-          <div v-else class="message-filter-empty">{{ t('settings.feature.messageFilterEmpty') }}</div>
-        </div>
-      </div>
-
-      <div class="card section settings-card">
-        <button type="button" class="settings-card-toggle" @click="toggleSection('welcome')">
-          <h3 class="sec-title sec-title-with-icon">
-            <AppIcon name="welcome" :size="18" />
-            {{ t('settings.section.welcome') }}
-          </h3>
-          <span class="settings-card-toggle-indicator">{{ isSectionOpen('welcome') ? '−' : '+' }}</span>
-        </button>
-        <div v-show="isSectionOpen('welcome')" class="settings-card-body">
-          <div class="toggle-row">
-            <div class="toggle-label">{{ t('settings.welcome.enable') }}</div>
-            <label class="toggle"><input type="checkbox" v-model="welcomeEnabled" /><span class="toggle-slider"></span></label>
-          </div>
-          <div class="form-group mt-1" v-if="welcomeEnabled">
-            <label>{{ t('settings.welcome.content') }}</label>
-            <textarea v-model="form.WELCOME_MESSAGE" rows="5" style="resize:vertical;font-family:monospace;font-size:13px"></textarea>
-          </div>
-        </div>
-      </div>
-
-      <div class="card section settings-card">
-        <button type="button" class="settings-card-toggle" @click="toggleSection('storage')">
-          <h3 class="sec-title sec-title-with-icon">
-            <AppIcon name="storage" :size="18" />
-            {{ t('settings.section.storage') }}
-          </h3>
-          <span class="settings-card-toggle-indicator">{{ isSectionOpen('storage') ? '−' : '+' }}</span>
-        </button>
-        <div v-show="isSectionOpen('storage')" class="settings-card-body">
-          <div class="db-status">
-            <div>
-              <div class="toggle-label">
-                {{ t('settings.storage.current') }}
-                <span :class="dbInfo.active === 'd1' ? 'text-success' : 'text-warn'">{{ dbInfo.active === 'd1' ? t('settings.storage.currentD1') : t('settings.storage.currentKv') }}</span>
-              </div>
-              <div class="form-hint" v-if="!dbInfo.hasD1">{{ t('settings.storage.noD1') }}</div>
-            </div>
-            <div class="flex gap-2" v-if="dbInfo.hasD1">
-              <button class="btn-ghost btn-sm" :class="{ 'btn-primary': dbInfo.active === 'kv' }" :disabled="dbSwitching || dbInfo.active === 'kv'" @click="switchDb('kv', true)">{{ t('settings.storage.kvShort') }}</button>
-              <button class="btn-ghost btn-sm" :class="{ 'btn-primary': dbInfo.active === 'd1' }" :disabled="dbSwitching || dbInfo.active === 'd1'" @click="switchDb('d1', true)">{{ t('settings.storage.d1Short') }}</button>
-            </div>
-          </div>
-          <div v-if="dbSwitching" class="flex gap-2 mt-1"><div class="spinner"></div><span class="text-muted text-sm">{{ t('settings.storage.syncing') }}</span></div>
-          <div v-if="dbMsg" class="form-hint mt-1" :class="dbOk ? 'text-success' : 'text-danger'">{{ dbMsg }}</div>
-          <div class="form-hint mt-1">{{ t('settings.storage.switchHint') }}</div>
-          <div class="divider"></div>
-
-          <div class="sql-tools">
-            <div class="sql-tools-header">
-              <div>
-                <div class="toggle-label">{{ t('settings.storage.sqlTools') }}</div>
-                <div class="form-hint mt-1">{{ t('settings.storage.sqlHint') }}</div>
-              </div>
-              <div class="sql-tools-actions">
-                <button class="btn-ghost btn-sm" :disabled="sqlWorking" @click="exportSql">
-                  <span v-if="sqlWorking" class="spinner"></span>{{ sqlWorking ? '…' : t('settings.storage.sqlExport') }}
-                </button>
-                <button class="btn-primary btn-sm" :disabled="sqlWorking" @click="pickSqlFile">
-                  <span v-if="sqlWorking" class="spinner"></span>{{ sqlWorking ? '…' : t('settings.storage.sqlImport') }}
-                </button>
-                <input
-                  ref="sqlFileInput"
-                  type="file"
-                  accept=".sql,text/sql"
-                  class="sql-file-input"
-                  @change="handleSqlFileChange"
-                />
-              </div>
-            </div>
-            <div v-if="sqlFileName" class="form-hint mt-1 sql-file-name">
-              <code>{{ sqlFileName }}</code>
-            </div>
-            <div v-if="sqlMsg" class="form-hint mt-1" :class="sqlOk ? 'text-success' : 'text-danger'">{{ sqlMsg }}</div>
           </div>
 
-          <div class="divider"></div>
-          <div class="danger-zone">
-            <div>
-              <div class="toggle-label text-danger">{{ t('settings.storage.clearData') }}</div>
-              <div class="form-hint mt-1">{{ t('settings.storage.clearDataHint') }}</div>
-            </div>
-            <button class="btn-danger btn-sm" @click="clearData" :disabled="clearingData">
-              <span v-if="clearingData" class="spinner"></span>{{ clearingData ? t('settings.storage.clearing') : t('settings.storage.clearData') }}
+          <div style="text-align:right;margin-top:12px">
+            <button class="btn-primary" @click="save" :disabled="saving">
+              <span v-if="saving" class="spinner"></span>{{ saving ? t('settings.saving') : t('settings.saveAll') }}
             </button>
           </div>
         </div>
-      </div>
-
-      <div style="text-align:right;margin-top:12px">
-        <button class="btn-primary" @click="save" :disabled="saving">
-          <span v-if="saving" class="spinner"></span>{{ saving ? t('settings.saving') : t('settings.saveAll') }}
-        </button>
       </div>
     </template>
   </div>
@@ -468,6 +486,7 @@ const router = useRouter()
 const t = i18n.t
 
 const form = ref({})
+const activeSection = ref('bot')
 const loading = ref(true), saving = ref(false), saved = ref(false), saveErr = ref('')
 const testingTok = ref(false), tokResult = ref(null)
 const webhookUrl = ref(''), settingWh = ref(false), whResult = ref(null)
@@ -478,7 +497,7 @@ const adminProfiles = ref({})
 const adminAvatarErrors = ref({})
 const dbInfo = ref({ active: 'kv', hasD1: false }), dbSwitching = ref(false), dbMsg = ref(''), dbOk = ref(true)
 const clearingData = ref(false)
-const sqlWorking = ref(false), sqlMsg = ref(''), sqlOk = ref(true), sqlFileName = ref('')
+const sqlExporting = ref(false), sqlImporting = ref(false), sqlMsg = ref(''), sqlOk = ref(true), sqlFileName = ref('')
 const sqlFileInput = ref(null)
 const messageFilterType = ref('text')
 const messageFilterValue = ref('')
@@ -516,6 +535,18 @@ function toggleSection(key) {
   }
 }
 
+const settingsNavItems = computed(() => [
+  { key: 'bot', icon: 'bot', label: t('settings.section.bot') },
+  { key: 'webhook', icon: 'webhook', label: t('settings.section.webhook') },
+  { key: 'verify', icon: 'verify', label: t('settings.section.verify') },
+  { key: 'feature', icon: 'feature', label: t('settings.section.feature') },
+  { key: 'messageFilter', icon: 'block', label: t('settings.section.messageFilter') },
+  { key: 'welcome', icon: 'welcome', label: t('settings.section.welcome') },
+  { key: 'storage', icon: 'storage', label: t('settings.section.storage') },
+])
+
+const sqlBusy = computed(() => sqlExporting.value || sqlImporting.value)
+
 const boolProp = key => computed({ get: () => form.value[key] === 'true', set: v => { form.value[key] = v ? 'true' : 'false' } })
 const verifyEnabled = boolProp('VERIFICATION_ENABLED')
 const autoUnblock = boolProp('AUTO_UNBLOCK_ENABLED')
@@ -538,6 +569,14 @@ const messageFilterRules = computed({
     form.value.MESSAGE_FILTER_RULES = serializeMessageFilterRules(rules)
   },
 })
+
+function formatRuleType(type) {
+  return {
+    text: t('bot.filter.type.text'),
+    regex: t('bot.filter.type.regex'),
+    json: t('bot.filter.type.json'),
+  }[type] || type
+}
 
 function addAdmin(id) { const v = String(id).trim(); if (v && !adminList.value.includes(v)) adminList.value = [...adminList.value, v]; newAdminId.value = '' }
 function removeAdmin(i) { const a = [...adminList.value]; a.splice(i, 1); adminList.value = a }
@@ -702,7 +741,9 @@ async function save() {
   clampTimeout()
   clampInlineKbDelete()
   clampLoginSessionTtl()
-  saving.value = true; saved.value = false; saveErr.value = ''
+  saving.value = true
+  saved.value = false
+  saveErr.value = ''
   try {
     form.value.WEBHOOK_URL = webhookUrl.value || ''
     form.value.MESSAGE_FILTER_RULES = form.value.MESSAGE_FILTER_RULES || '[]'
@@ -710,7 +751,7 @@ async function save() {
     saved.value = true
     form.value.WEBHOOK_URL = webhookUrl.value || ''
     syncSettingsCache()
-    setTimeout(() => saved.value = false, 3000)
+    setTimeout(() => { saved.value = false }, 3000)
   } catch (e) {
     saveErr.value = e.message
   } finally {
@@ -719,7 +760,8 @@ async function save() {
 }
 
 async function testToken() {
-  testingTok.value = true; tokResult.value = null
+  testingTok.value = true
+  tokResult.value = null
   try { tokResult.value = await api.post('/api/settings/test-token', { token: form.value.BOT_TOKEN }) }
   catch (e) { tokResult.value = { ok: false, err: e.message } }
   finally { testingTok.value = false }
@@ -727,17 +769,29 @@ async function testToken() {
 
 async function resolveChat(val, which) {
   if (!val) return
-  if (which === 'group') { resolvingGroup.value = true; groupInfo.value = null; groupErr.value = '' }
-  else { resolvingCustom.value = true; customInfo.value = null }
+  if (which === 'group') {
+    resolvingGroup.value = true
+    groupInfo.value = null
+    groupErr.value = ''
+  } else {
+    resolvingCustom.value = true
+    customInfo.value = null
+  }
   try {
     const d = await api.post('/api/tg/resolve-chat', { chatId: val })
-    if (which === 'group') groupInfo.value = d.chat; else customInfo.value = d.chat
-  } catch (e) { if (which === 'group') groupErr.value = e.message }
-  finally { if (which === 'group') resolvingGroup.value = false; else resolvingCustom.value = false }
+    if (which === 'group') groupInfo.value = d.chat
+    else customInfo.value = d.chat
+  } catch (e) {
+    if (which === 'group') groupErr.value = e.message
+  } finally {
+    if (which === 'group') resolvingGroup.value = false
+    else resolvingCustom.value = false
+  }
 }
 
 async function setWebhook() {
-  settingWh.value = true; whResult.value = null
+  settingWh.value = true
+  whResult.value = null
   try {
     whResult.value = await api.post('/api/settings/webhook', { webhookUrl: webhookUrl.value })
     form.value.WEBHOOK_URL = webhookUrl.value || ''
@@ -745,12 +799,16 @@ async function setWebhook() {
       form.value.CAPTCHA_SITE_URL = new URL(webhookUrl.value).origin
     }
     syncSettingsCache()
-  } catch (e) { whResult.value = { ok: false, err: e.message } }
-  finally { settingWh.value = false }
+  } catch (e) {
+    whResult.value = { ok: false, err: e.message }
+  } finally {
+    settingWh.value = false
+  }
 }
 
 async function switchDb(target, sync = true) {
-  dbSwitching.value = true; dbMsg.value = ''
+  dbSwitching.value = true
+  dbMsg.value = ''
   try {
     await api.post('/api/settings/db/switch', { target, sync })
     dbInfo.value.active = target
@@ -800,13 +858,13 @@ function downloadSqlFile(blob, fileName) {
 }
 
 function pickSqlFile() {
-  if (sqlWorking.value) return
+  if (sqlBusy.value) return
   sqlFileInput.value?.click()
 }
 
 async function exportSql() {
-  if (sqlWorking.value) return
-  sqlWorking.value = true
+  if (sqlBusy.value) return
+  sqlExporting.value = true
   sqlMsg.value = ''
 
   try {
@@ -838,7 +896,7 @@ async function exportSql() {
     sqlMsg.value = e.message
     sqlOk.value = false
   } finally {
-    sqlWorking.value = false
+    sqlExporting.value = false
   }
 }
 
@@ -851,7 +909,7 @@ async function handleSqlFileChange(event) {
     return
   }
 
-  sqlWorking.value = true
+  sqlImporting.value = true
   sqlMsg.value = ''
   sqlFileName.value = file.name
 
@@ -865,7 +923,7 @@ async function handleSqlFileChange(event) {
     sqlMsg.value = e.message
     sqlOk.value = false
   } finally {
-    sqlWorking.value = false
+    sqlImporting.value = false
     if (event?.target) event.target.value = ''
   }
 }
@@ -922,6 +980,12 @@ onMounted(load)
 .settings-inline-row{align-items:stretch}
 .settings-inline-row input{min-height:38px}
 .settings-inline-btn{min-width:96px;min-height:38px;justify-content:center}
+.settings-layout{display:grid;grid-template-columns:220px minmax(0,1fr);gap:18px;align-items:start}
+.settings-nav{position:sticky;top:16px;padding:10px;display:flex;flex-direction:column;gap:8px}
+.settings-nav-item{display:flex;align-items:center;gap:8px;width:100%;padding:10px 12px;border:1px solid var(--border);background:var(--bg2);border-radius:var(--rs);color:var(--text);cursor:pointer;text-align:left;transition:var(--tr)}
+.settings-nav-item:hover{background:var(--bg3)}
+.settings-nav-item.active{background:var(--accent-dim);border-color:rgba(79,142,247,.35);color:var(--accent)}
+.settings-main{min-width:0}
 .admin-tags{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:10px}
 .admin-tags-single{grid-template-columns:minmax(0,1fr)}
 .admin-card{position:relative;width:100%;min-width:0;display:grid;grid-template-columns:42px minmax(0,1fr);align-items:center;column-gap:12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--r);padding:10px 40px 10px 12px}
@@ -948,6 +1012,10 @@ onMounted(load)
 .message-filter-card-id{max-width:100%;overflow:auto}
 .message-filter-card-value{margin:0;white-space:pre-wrap;word-break:break-word;font-size:12px;line-height:1.5;font-family:monospace;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px}
 .message-filter-empty{padding:16px;text-align:center;color:var(--text3);border:1px dashed var(--border);border-radius:var(--rs);background:var(--bg2)}
+@media (max-width:900px){
+  .settings-layout{grid-template-columns:1fr}
+  .settings-nav{position:static;display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}
+}
 @media (max-width:640px){
   .admin-tags{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
   .admin-tags-single{grid-template-columns:minmax(0,1fr)}
@@ -970,7 +1038,7 @@ onMounted(load)
 .settings-card-toggle:focus-visible{outline:2px solid var(--accent);outline-offset:4px;border-radius:8px}
 .settings-card-toggle-indicator{width:28px;height:28px;border-radius:999px;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:18px;line-height:1;color:var(--text2);flex-shrink:0}
 .settings-card-body{padding-top:14px}
-.page{max-width:720px;margin:0 auto}
+.page{max-width:1100px;margin:0 auto}
 .page-title-with-icon,
 .sec-title-with-icon{display:flex;align-items:center;gap:8px}
 .sec-title-with-icon{margin:0}

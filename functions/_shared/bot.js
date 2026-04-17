@@ -109,6 +109,32 @@ async function clearAdminNumericInput(kv, adminId) {
   await kv.delete(getAdminNumericInputKey(adminId)).catch(() => {});
 }
 
+function getAdminFilterInputKey(adminId) {
+  return `pending:admin_filter:${adminId}`;
+}
+
+async function setAdminFilterInput(kv, adminId, payload) {
+  if (!kv) return;
+  await kv.put(getAdminFilterInputKey(adminId), JSON.stringify(payload || {}), { expirationTtl: 600 });
+}
+
+async function getAdminFilterInput(kv, adminId) {
+  if (!kv) return null;
+  const raw = await kv.get(getAdminFilterInputKey(adminId));
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed?.action ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+async function clearAdminFilterInput(kv, adminId) {
+  if (!kv) return;
+  await kv.delete(getAdminFilterInputKey(adminId)).catch(() => {});
+}
+
 function parseStrictInt(raw) {
   const v = String(raw || '').trim();
   if (!/^-?\d+$/.test(v)) return null;
@@ -132,17 +158,56 @@ function findBlockedRuleForMessage(settings, message) {
   return findMatchedMessageFilterRule(rules, message);
 }
 
+function getMessageFilterTypeLabel(type, t) {
+  return {
+    text: t('filter.type.text'),
+    regex: t('filter.type.regex'),
+    json: t('filter.type.json'),
+  }[type] || type;
+}
+
+function getLocalizedMessageFilterRuleLabel(rule, t) {
+  const normalized = normalizeMessageFilterRule(rule);
+  return `${getMessageFilterTypeLabel(normalized.type, t)}: ${normalized.value}`;
+}
+
 function buildMessageFilterListText(settings, t) {
   const rules = getMessageFilterRules(settings);
   if (!rules.length) return t('filter.empty');
 
-  const lines = rules.map((rule, index) => `${index + 1}. <code>${esc(rule.id)}</code>\n${esc(getMessageFilterRuleLabel(rule))}`);
+  const lines = rules.map((rule, index) => {
+    const normalized = normalizeMessageFilterRule(rule);
+    return `${index + 1}. <b>${esc(getMessageFilterTypeLabel(normalized.type, t))}</b>\n<code>${esc(normalized.id)}</code>\n${esc(normalized.value)}`;
+  });
   return `${t('filter.title')}\n\n${lines.join('\n\n')}`;
 }
 
 function buildMessageBlockedText(rule, t) {
   if (!rule) return t('filter.blocked');
-  return t('filter.blockedWithRule', { rule: getMessageFilterRuleLabel(rule) });
+  return t('filter.blockedWithRule', { rule: getLocalizedMessageFilterRuleLabel(rule, t) });
+}
+
+function buildMessageFilterManageKb(t) {
+  return [
+    [{ text: `📝 ${t('filter.type.text')}`, callback_data: 'adm:mf:add:text' }],
+    [{ text: `🔣 ${t('filter.type.regex')}`, callback_data: 'adm:mf:add:regex' }],
+    [{ text: `🧩 ${t('filter.type.json')}`, callback_data: 'adm:mf:add:json' }],
+    [{ text: `➖ ${t('filter.removeAction')}`, callback_data: 'adm:mf:remove' }],
+    [{ text: `🔄 ${t('kb.refresh')}`, callback_data: 'adm:mf' }],
+    [{ text: `← ${t('cb.back')}`, callback_data: 'adm:bk' }],
+  ];
+}
+
+function buildMessageFilterManageText(settings, t) {
+  return `${buildMessageFilterListText(settings, t)}\n\n${t('filter.help')}\n${t('filter.manageHint')}`;
+}
+
+function buildMessageFilterInputPrompt(action, type, t) {
+  if (action === 'remove') return t('filter.promptRemove');
+
+  if (type === 'regex') return t('filter.promptRegex');
+  if (type === 'json') return t('filter.promptJson');
+  return t('filter.promptText');
 }
 
 function parseMessageFilterInput(raw) {
@@ -161,10 +226,6 @@ function parseMessageFilterInput(raw) {
   }
 
   return { type: 'text', value: input };
-}
-
-function buildMessageFilterManageText(settings, t) {
-  return `${buildMessageFilterListText(settings, t)}\n\n${t('filter.help')}`;
 }
 
 async function saveMessageFilterRules(db, rules) {
@@ -923,6 +984,60 @@ async function handleAdminPrivateMsg(msg, user, { tg, db, kv, settings, groupId,
     }
   }
 
+  const pendingFilter = await getAdminFilterInput(kv, user.id);
+  if (pendingFilter) {
+    if (msg.text?.trim() === '/cancel') {
+      await clearAdminFilterInput(kv, user.id);
+      const latest = await db.getAllSettings();
+      await tg.sendMsg({ chatId: user.id, text: buildMessageFilterManageText(latest, t), kb: buildMessageFilterManageKb(t) });
+      return;
+    }
+
+    if (!msg.text || msg.text.startsWith('/')) {
+      await tg.sendMsg({ chatId: user.id, text: buildMessageFilterInputPrompt(pendingFilter.action, pendingFilter.type, t) });
+      return;
+    }
+
+    if (pendingFilter.action === 'remove') {
+      const latest = await db.getAllSettings();
+      const { removed } = await removeMessageFilterRule(db, latest, msg.text.trim());
+      await clearAdminFilterInput(kv, user.id);
+
+      if (!removed) {
+        await tg.sendMsg({ chatId: user.id, text: t('filter.notFound') });
+      } else {
+        await tg.sendMsg({
+          chatId: user.id,
+          text: t('filter.removed', { rule: getLocalizedMessageFilterRuleLabel(removed, t) }),
+        });
+      }
+
+      const refreshed = await db.getAllSettings();
+      await tg.sendMsg({ chatId: user.id, text: buildMessageFilterManageText(refreshed, t), kb: buildMessageFilterManageKb(t) });
+      return;
+    }
+
+    try {
+      const latest = await db.getAllSettings();
+      const nextRules = await addMessageFilterRule(db, latest, {
+        type: pendingFilter.type || 'text',
+        value: msg.text.trim(),
+      });
+      await clearAdminFilterInput(kv, user.id);
+      const addedRule = nextRules[nextRules.length - 1];
+      await tg.sendMsg({
+        chatId: user.id,
+        text: t('filter.added', { rule: getLocalizedMessageFilterRuleLabel(addedRule, t) }),
+      });
+      const refreshed = await db.getAllSettings();
+      await tg.sendMsg({ chatId: user.id, text: buildMessageFilterManageText(refreshed, t), kb: buildMessageFilterManageKb(t) });
+    } catch (e) {
+      await tg.sendMsg({ chatId: user.id, text: t('filter.invalid', { error: e?.message || '' }) });
+      await tg.sendMsg({ chatId: user.id, text: buildMessageFilterInputPrompt(pendingFilter.action, pendingFilter.type, t) });
+    }
+    return;
+  }
+
   if (msg.text?.startsWith('/')) {
     const parts = msg.text.trim().split(/\s+/);
     const cmd   = parts[0].split('@')[0].slice(1).toLowerCase();
@@ -977,7 +1092,7 @@ async function handleAdminPrivateMsg(msg, user, { tg, db, kv, settings, groupId,
     }
     if (cmd === 'filters') {
       const latest = await db.getAllSettings();
-      await tg.sendMsg({ chatId: user.id, text: buildMessageFilterManageText(latest, t) });
+      await tg.sendMsg({ chatId: user.id, text: buildMessageFilterManageText(latest, t), kb: buildMessageFilterManageKb(t) });
       return;
     }
     if (cmd === 'addfilter') {
@@ -994,10 +1109,10 @@ async function handleAdminPrivateMsg(msg, user, { tg, db, kv, settings, groupId,
         const addedRule = nextRules[nextRules.length - 1];
         await tg.sendMsg({
           chatId: user.id,
-          text: t('filter.added', { rule: getMessageFilterRuleLabel(addedRule) }),
+        text: t('filter.added', { rule: getLocalizedMessageFilterRuleLabel(addedRule, t) }),
         });
         const refreshed = await db.getAllSettings();
-        await tg.sendMsg({ chatId: user.id, text: buildMessageFilterManageText(refreshed, t) });
+        await tg.sendMsg({ chatId: user.id, text: buildMessageFilterManageText(refreshed, t), kb: buildMessageFilterManageKb(t) });
       } catch (e) {
         await tg.sendMsg({ chatId: user.id, text: t('filter.invalid', { error: e?.message || '' }) });
       }
@@ -1018,10 +1133,10 @@ async function handleAdminPrivateMsg(msg, user, { tg, db, kv, settings, groupId,
 
       await tg.sendMsg({
         chatId: user.id,
-        text: t('filter.removed', { rule: getMessageFilterRuleLabel(removed) }),
+        text: t('filter.removed', { rule: getLocalizedMessageFilterRuleLabel(removed, t) }),
       });
       const refreshed = await db.getAllSettings();
-      await tg.sendMsg({ chatId: user.id, text: buildMessageFilterManageText(refreshed, t) });
+      await tg.sendMsg({ chatId: user.id, text: buildMessageFilterManageText(refreshed, t), kb: buildMessageFilterManageKb(t) });
       return;
     }
 
@@ -1325,16 +1440,39 @@ async function handleAdmCb(q, action, { tg, db, kv, settings, chatId, msgId, adm
   }
 
   if (action === 'mf') {
+    if (kv && adminId) await clearAdminFilterInput(kv, adminId);
+    const latest = await db.getAllSettings();
     await editUserText({
       tg,
-      settings,
+      settings: latest,
       waitUntil,
       chatId,
       msgId,
-      text: buildMessageFilterManageText(settings, t),
-      kb: [[{ text: t('cb.back'), callback_data: 'adm:bk' }]],
+      text: buildMessageFilterManageText(latest, t),
+      kb: buildMessageFilterManageKb(t),
     });
     await tg.answerCb({ id: q.id });
+    return;
+  }
+
+  if (action.startsWith('mf:add:')) {
+    const type = action.split(':')[2] || 'text';
+    if (kv && adminId) {
+      await clearAdminNumericInput(kv, adminId);
+      await setAdminFilterInput(kv, adminId, { action: 'add', type });
+    }
+    await tg.answerCb({ id: q.id, text: getMessageFilterTypeLabel(type, t) });
+    await tg.sendMsg({ chatId, text: buildMessageFilterInputPrompt('add', type, t) });
+    return;
+  }
+
+  if (action === 'mf:remove') {
+    if (kv && adminId) {
+      await clearAdminNumericInput(kv, adminId);
+      await setAdminFilterInput(kv, adminId, { action: 'remove' });
+    }
+    await tg.answerCb({ id: q.id });
+    await tg.sendMsg({ chatId, text: buildMessageFilterInputPrompt('remove', '', t) });
     return;
   }
 
