@@ -108,6 +108,7 @@ const avatars = ref({})
 const msgRequestToken = ref(0)
 
 const CONV_LIST_CACHE_KEY = 'conversations:list'
+const CONVERSATION_PAGE_SIZE = 50
 
 const filtered = computed(() => {
   if (!search.value) return convs.value
@@ -188,18 +189,30 @@ async function selectUser(c) {
   loadingMsgs.value = true
 
   try {
-    const d = await api.get(`/api/conversations/${uid}`)
+    let page = 1
+    let detail = null
+    const allMessages = []
 
-    if (requestToken !== msgRequestToken.value || selId.value !== uid) return
+    while (true) {
+      const d = await api.get(`/api/conversations/${uid}?page=${page}`)
 
-    const incomingMessages = Array.isArray(d?.messages) ? d.messages : []
-    const nextUser = d.user || c
+      if (requestToken !== msgRequestToken.value || selId.value !== uid) return
+
+      if (!detail) detail = d
+      const batch = Array.isArray(d?.messages) ? d.messages : []
+      allMessages.push(...batch)
+
+      if (batch.length < CONVERSATION_PAGE_SIZE) break
+      page += 1
+    }
+
+    const nextUser = detail?.user || c
 
     selUser.value = nextUser
-    msgs.value = incomingMessages
+    msgs.value = allMessages
 
     tryLoadAvatar(uid)
-    updateConv(uid, { ...c, ...(d.user || {}) })
+    updateConv(uid, { ...c, ...(detail?.user || {}) })
     await nextTick()
     if (msgRef.value) msgRef.value.scrollTop = msgRef.value.scrollHeight
   } finally {
