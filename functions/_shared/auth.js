@@ -1,5 +1,5 @@
 // functions/_shared/auth.js
-const TTL = 86400;
+const DEFAULT_TTL = 86400;
 
 export function genToken(len = 48) {
   const c = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
@@ -23,10 +23,11 @@ export async function verifyPw(pw, stored) {
   return await sha256(`${s}:${pw}`) === h;
 }
 
-export async function createSession(kv, userId) {
+export async function createSession(kv, userId, ttlSeconds = DEFAULT_TTL) {
+  const ttl = Math.max(300, parseInt(ttlSeconds, 10) || DEFAULT_TTL);
   const token = genToken();
-  const sessionData = { userId, exp: Date.now() + TTL * 1000 };
-  await kv.put(`sess:${token}`, JSON.stringify(sessionData), { expirationTtl: TTL });
+  const sessionData = { userId, exp: Date.now() + ttl * 1000 };
+  await kv.put(`sess:${token}`, JSON.stringify(sessionData), { expirationTtl: ttl });
   return token;
 }
 

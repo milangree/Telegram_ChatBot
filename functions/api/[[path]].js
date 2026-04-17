@@ -45,10 +45,11 @@ export async function onRequest({ request, env }) {
       const user = await db.createWebUser(username, await hashPw(password));
       // Disable the fallback admin/admins account so it can no longer log in
       await db.disableDefaultAdmin();
-      const token = await createSession(kv, user.id);
+      const sessionTtl = await getLoginSessionTtl(db);
+      const token = await createSession(kv, user.id, sessionTtl);
       return new Response(JSON.stringify({ token, username: user.username, isAdmin: true }), {
         status: 200,
-        headers: { ...CORS, 'Content-Type': 'application/json', 'Set-Cookie': cookie(token) },
+        headers: { ...CORS, 'Content-Type': 'application/json', 'Set-Cookie': cookie(token, sessionTtl) },
       });
     } catch (e) {
       return err(t('auth.registerFailed', { error: e.message }), 500);
@@ -80,10 +81,11 @@ export async function onRequest({ request, env }) {
         if (!await verifyPw(password, user.password_hash)) return err(t('auth.invalidCredentials'), 401);
       }
 
-      const token = await createSession(kv, user.id);
+      const sessionTtl = await getLoginSessionTtl(db);
+      const token = await createSession(kv, user.id, sessionTtl);
       return new Response(JSON.stringify({ token, username: user.username, isAdmin: Boolean(user.is_admin), totpEnabled: Boolean(user.totp_enabled) }), {
         status: 200,
-        headers: { ...CORS, 'Content-Type': 'application/json', 'Set-Cookie': cookie(token) },
+        headers: { ...CORS, 'Content-Type': 'application/json', 'Set-Cookie': cookie(token, sessionTtl) },
       });
     } catch (e) {
       return err(t('auth.loginFailed', { error: e.message }), 500);
@@ -226,6 +228,7 @@ export async function onRequest({ request, env }) {
         'CAPTCHA_TYPE', 'CAPTCHA_SITE_URL',
         'WELCOME_ENABLED', 'WELCOME_MESSAGE', 'BOT_COMMAND_FILTER', 'WHITELIST_ENABLED',
         'ADMIN_NOTIFY_ENABLED',
+        'LOGIN_SESSION_TTL',
         'BOT_LOCALE',
         'ZALGO_FILTER_ENABLED',
         'MESSAGE_FILTER_RULES',
@@ -447,7 +450,13 @@ export async function onRequest({ request, env }) {
   }
 
   if (path === '/users' && request.method === 'GET') {
-    return j(await db.getAllUsers(parseInt(url.searchParams.get('page') || '1', 10), 20));
+    const page = Math.max(1, parseInt(url.searchParams.get('page') || '1', 10) || 1);
+    const pageSize = clampPageSize(url.searchParams.get('pageSize'));
+    const filter = String(url.searchParams.get('filter') || '').trim();
+
+    if (filter === 'blocked') return j(await db.getBlockedUsers(page, pageSize));
+    if (filter === 'normal') return j(await db.getNormalUsers(page, pageSize));
+    return j(await db.getAllUsers(page, pageSize));
   }
 
   const blockMatch = path.match(/^\/users\/(\d+)\/(block|unblock)$/);
@@ -584,6 +593,17 @@ function getApiTranslator(request, fallbackLocale = 'zh-hans') {
   const normalized = normalizeLocale(String(preferred).split(',')[0].trim());
   const base = createT(normalized);
   return (key, params = {}) => base(`api.${key}`, params);
+}
+
+async function getLoginSessionTtl(db) {
+  const raw = await db.getSetting('LOGIN_SESSION_TTL');
+  return Math.max(300, parseInt(raw || '86400', 10) || 86400);
+}
+
+function clampPageSize(value, fallback = 20, max = 200) {
+  const parsed = parseInt(value || String(fallback), 10);
+  if (!Number.isFinite(parsed) || parsed < 1) return fallback;
+  return Math.min(parsed, max);
 }
 
 function parseAdminIds(str) {

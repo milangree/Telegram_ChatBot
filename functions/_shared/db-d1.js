@@ -113,8 +113,16 @@ export class D1Store {
   async getBlockedUsers(page = 1, pageSize = 10) {
     const offset = (page - 1) * pageSize
     const [users, countRow] = await Promise.all([
-      this.all('SELECT * FROM users WHERE is_blocked=1 ORDER BY user_id DESC LIMIT ? OFFSET ?', pageSize, offset),
+      this.all('SELECT * FROM users WHERE is_blocked=1 ORDER BY created_at DESC LIMIT ? OFFSET ?', pageSize, offset),
       this.first('SELECT COUNT(*) as cnt FROM users WHERE is_blocked=1'),
+    ])
+    return { users, total: countRow?.cnt || 0 }
+  }
+  async getNormalUsers(page = 1, pageSize = 20) {
+    const offset = (page - 1) * pageSize
+    const [users, countRow] = await Promise.all([
+      this.all('SELECT * FROM users WHERE is_blocked=0 ORDER BY created_at DESC LIMIT ? OFFSET ?', pageSize, offset),
+      this.first('SELECT COUNT(*) as cnt FROM users WHERE is_blocked=0'),
     ])
     return { users, total: countRow?.cnt || 0 }
   }
@@ -140,8 +148,9 @@ export class D1Store {
   async addMsg({ userId, direction, content, messageType = 'text', telegramMessageId }) {
     const id = `${Date.now()}_${Math.random().toString(36).substr(2, 6)}`
     const ts = new Date().toISOString()
-    const compact = compactMessageContent(content)
-    await this.exec('INSERT INTO messages(id,user_id,direction,content,message_type,telegram_message_id,created_at) VALUES(?,?,?,?,?,?,?)', id, userId, direction, compact, messageType, telegramMessageId || null, ts)
+    const fullContent = typeof content === 'string' ? content : (content == null ? '' : String(content))
+    const compact = compactMessageContent(fullContent)
+    await this.exec('INSERT INTO messages(id,user_id,direction,content,message_type,telegram_message_id,created_at) VALUES(?,?,?,?,?,?,?)', id, userId, direction, fullContent, messageType, telegramMessageId || null, ts)
     await this.exec('INSERT OR REPLACE INTO recent_convs(user_id,last_message,last_direction,last_at) VALUES(?,?,?,?)', userId, compact, direction, ts)
   }
   async getMsgs(userId, limit = 50, offset = 0) {

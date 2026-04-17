@@ -112,7 +112,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter, RouterLink } from 'vue-router'
 import AppIcon from '../components/AppIcon.vue'
-import { useAuthStore } from '../stores/auth'
+import { AUTH_NOTICE_SESSION_EXPIRED, consumeAuthNotice, useAuthStore } from '../stores/auth'
 import { useI18nStore } from '../stores/i18n'
 
 const auth = useAuthStore()
@@ -315,6 +315,11 @@ watch(username, (next) => {
 })
 
 onMounted(() => {
+  const authNotice = consumeAuthNotice()
+  if (authNotice === AUTH_NOTICE_SESSION_EXPIRED) {
+    error.value = t('auth.login.sessionExpired')
+  }
+
   loadAuthStatus()
 
   const savedMode = localStorage.getItem('theme_mode')
