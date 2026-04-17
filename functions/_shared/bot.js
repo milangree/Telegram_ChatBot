@@ -264,6 +264,22 @@ function hasInlineKeyboard(kb) {
   return Array.isArray(kb) && kb.some(row => Array.isArray(row) && row.length > 0);
 }
 
+function hasActionableInlineKeyboard(kb) {
+  return Array.isArray(kb) && kb.some(row => Array.isArray(row) && row.some(btn =>
+    btn && (
+      btn.callback_data ||
+      btn.url ||
+      btn.web_app ||
+      btn.login_url ||
+      btn.switch_inline_query ||
+      btn.switch_inline_query_current_chat ||
+      btn.switch_inline_query_chosen_chat ||
+      btn.callback_game ||
+      btn.pay
+    ),
+  ));
+}
+
 function isPrivateChatId(chatId) {
   const n = Number(chatId);
   return Number.isFinite(n) && n > 0;
@@ -292,23 +308,15 @@ function scheduleInlineKbMsgDelete({ tg, settings, waitUntil, chatId, msgId }) {
 }
 
 async function sendUserMsg({ tg, settings, waitUntil, chatId, text, kb, parseMode = 'HTML', replyToMsgId, threadId }) {
-  const r = await tg.sendMsg({ chatId, text, kb, parseMode, replyToMsgId, threadId });
-  if (r?.ok && hasInlineKeyboard(kb)) {
-    scheduleInlineKbMsgDelete({ tg, settings, waitUntil, chatId, msgId: r.result?.message_id });
-  }
-  return r;
+  return tg.sendMsg({ chatId, text, kb, parseMode, replyToMsgId, threadId });
 }
 
 async function sendUserPhoto({ tg, settings, waitUntil, chatId, fileId, url, caption, kb, parseMode = 'HTML', threadId }) {
-  const r = await tg.sendPhoto({ chatId, fileId, url, caption, kb, parseMode, threadId });
-  if (r?.ok && hasInlineKeyboard(kb)) {
-    scheduleInlineKbMsgDelete({ tg, settings, waitUntil, chatId, msgId: r.result?.message_id });
-  }
-  return r;
+  return tg.sendPhoto({ chatId, fileId, url, caption, kb, parseMode, threadId });
 }
 
 function scheduleEditedUserMsgDelete({ tg, settings, waitUntil, chatId, msgId, kb }) {
-  if (!hasInlineKeyboard(kb)) return;
+  if (hasActionableInlineKeyboard(kb)) return;
   scheduleInlineKbMsgDelete({ tg, settings, waitUntil, chatId, msgId });
 }
 
