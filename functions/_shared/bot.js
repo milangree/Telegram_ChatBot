@@ -522,7 +522,7 @@ function fullUserKb(uid, u, t) {
   ];
 }
 
-function adminPanelKb(s, t) {
+function adminFeatureMenuKb(s, t) {
   const capLabel = s.CAPTCHA_TYPE === 'image_numeric'
     ? t('panel.cap.imageNumeric')
     : (s.CAPTCHA_TYPE === 'image_alphanumeric' ? t('panel.cap.imageAlnum') : t('panel.cap.math'));
@@ -550,10 +550,74 @@ function adminPanelKb(s, t) {
       { text: `🛡 ${t('panel.messageFilter')}: ${filterCount}`, callback_data: 'adm:mf' },
     ],
     [
+      { text: t('cb.back'), callback_data: 'adm:menu' },
+      { text: t('admin.close'), callback_data: 'adm:close' },
+    ],
+  ];
+}
+
+function adminListMenuKb(t) {
+  return [
+    [
       { text: t('kb.stats'), callback_data: 'adm:st' },
       { text: t('kb.blacklist'), callback_data: 'adm:bk:1' },
     ],
-    [{ text: t('kb.userList'), callback_data: 'adm:ul:1' }],
+    [
+      { text: t('kb.userList'), callback_data: 'adm:ul:1' },
+    ],
+    [
+      { text: t('cb.back'), callback_data: 'adm:menu' },
+      { text: t('admin.close'), callback_data: 'adm:close' },
+    ],
+  ];
+}
+
+function adminMainMenuKb(t) {
+  return [
+    [
+      { text: t('admin.menu.features'), callback_data: 'adm:cfg' },
+      { text: t('admin.menu.lists'), callback_data: 'adm:list' },
+    ],
+    [
+      { text: t('admin.menu.filters'), callback_data: 'adm:mf' },
+    ],
+    [
+      { text: t('admin.close'), callback_data: 'adm:close' },
+    ],
+  ];
+}
+
+function buildAdminHomeText(stats, t) {
+  return `${t('admin.panelCompact', stats)}\n\n${t('admin.menuHint')}`;
+}
+
+function buildUserHomeText(settings, t) {
+  const welcomeText = settings?.WELCOME_MESSAGE || t('defaultWelcome');
+  return `${welcomeText}\n\n${t('user.menuHint')}`;
+}
+
+function buildUserStatusText(u, t) {
+  return t('user.status', {
+    verified: u?.is_verified ? t('user.statusVerified') : t('user.statusUnverified'),
+    blocked: u?.is_blocked ? t('user.statusBlocked') : t('user.statusNotBlocked'),
+  });
+}
+
+function userMenuNavRow(t, backCallback = 'user:menu') {
+  return [
+    { text: t('cb.back'), callback_data: backCallback },
+    { text: t('user.close'), callback_data: 'user:close' },
+  ];
+}
+
+function userMainMenuKb(t) {
+  return [
+    [
+      { text: t('user.contact'), callback_data: 'user:contact' },
+      { text: t('user.statusBtn'), callback_data: 'user:status' },
+    ],
+    [{ text: t('user.help'), callback_data: 'user:help' }],
+    [{ text: t('user.close'), callback_data: 'user:close' }],
   ];
 }
 
@@ -657,23 +721,37 @@ async function handleMsg(msg, { tg, db, kv, settings, baseUrl, t, waitUntil }) {
     const [cmdFull] = msg.text.split(' ');
     const cmd = cmdFull.split('@')[0].slice(1).toLowerCase();
 
-    if (cmd === 'start' || cmd === 'help') {
-      const welcomeText = settings.WELCOME_MESSAGE || t('defaultWelcome');
-      const kb = [[
-        { text: t('user.sendMsg'), callback_data: 'user:msg' },
-        { text: t('user.help'), callback_data: 'user:help' },
-      ]];
-      await sendUserMsg({ tg, settings, waitUntil, chatId: user.id, text: welcomeText, kb });
+    if (cmd === 'start') {
+      await sendUserMsg({
+        tg,
+        settings,
+        waitUntil,
+        chatId: user.id,
+        text: buildUserHomeText(settings, t),
+        kb: userMainMenuKb(t),
+      });
+      return;
+    }
+    if (cmd === 'help') {
+      await sendUserMsg({
+        tg,
+        settings,
+        waitUntil,
+        chatId: user.id,
+        text: t('user.helpText'),
+        kb: [userMenuNavRow(t)],
+      });
       return;
     }
     if (cmd === 'status') {
       const u = await db.getUser(user.id);
-      await tg.sendMsg({
+      await sendUserMsg({
+        tg,
+        settings,
+        waitUntil,
         chatId: user.id,
-        text: t('user.status', {
-          verified: u?.is_verified ? t('user.statusVerified') : t('user.statusUnverified'),
-          blocked: u?.is_blocked ? t('user.statusBlocked') : t('user.statusNotBlocked'),
-        }),
+        text: buildUserStatusText(u, t),
+        kb: [userMenuNavRow(t)],
       });
       return;
     }
@@ -950,8 +1028,8 @@ async function handleAdminPrivateMsg(msg, user, { tg, db, kv, settings, groupId,
       settings: latest,
       waitUntil,
       chatId: user.id,
-      text: t('admin.panel', s),
-      kb: adminPanelKb(latest, t),
+      text: buildAdminHomeText(s, t),
+      kb: adminMainMenuKb(t),
     });
   };
 
@@ -1057,7 +1135,14 @@ async function handleAdminPrivateMsg(msg, user, { tg, db, kv, settings, groupId,
     }
     if (cmd === 'stats') {
       const s = await db.getStats();
-      await tg.sendMsg({ chatId: user.id, text: t('admin.stats', s) });
+      await tg.sendMsg({
+        chatId: user.id,
+        text: t('admin.stats', s),
+        kb: [[
+          { text: t('cb.back'), callback_data: 'adm:list' },
+          { text: t('admin.close'), callback_data: 'adm:close' },
+        ]],
+      });
       return;
     }
     if (cmd === 'ban' && arg) {
@@ -1188,7 +1273,33 @@ async function handleCb(q, { tg, db, kv, settings, t, waitUntil }) {
 
   try {
     // ── User callbacks ────────────────────────────────────────────────────────
-    if (data === 'user:msg') { await tg.answerCb({ id: q.id, text: t('cb.sendText') }); return; }
+    if (data === 'user:msg' || data === 'user:contact') {
+      await editUserText({
+        tg,
+        settings,
+        waitUntil,
+        chatId,
+        msgId,
+        text: t('user.contactText'),
+        kb: [userMenuNavRow(t)],
+      });
+      await tg.answerCb({ id: q.id, text: t('cb.sendText') });
+      return;
+    }
+    if (data === 'user:status') {
+      const u = await db.getUser(user.id);
+      await editUserText({
+        tg,
+        settings,
+        waitUntil,
+        chatId,
+        msgId,
+        text: buildUserStatusText(u, t),
+        kb: [userMenuNavRow(t)],
+      });
+      await tg.answerCb({ id: q.id });
+      return;
+    }
     if (data === 'user:help') {
       await editUserText({
         tg,
@@ -1196,13 +1307,13 @@ async function handleCb(q, { tg, db, kv, settings, t, waitUntil }) {
         waitUntil,
         chatId,
         msgId,
-        text: t('cb.help'),
-        kb: [[{ text: t('cb.back'), callback_data: 'user:back' }]],
+        text: t('user.helpText'),
+        kb: [userMenuNavRow(t)],
       });
       await tg.answerCb({ id: q.id });
       return;
     }
-    if (data === 'user:back') {
+    if (data === 'user:back' || data === 'user:menu') {
       const s = await db.getAllSettings();
       await editUserText({
         tg,
@@ -1210,8 +1321,21 @@ async function handleCb(q, { tg, db, kv, settings, t, waitUntil }) {
         waitUntil,
         chatId,
         msgId,
-        text: s.WELCOME_MESSAGE || t('cb.welcomeFallback'),
-        kb: [[{ text: t('user.sendMsg'), callback_data: 'user:msg' }, { text: t('user.help'), callback_data: 'user:help' }]],
+        text: buildUserHomeText(s, t),
+        kb: userMainMenuKb(t),
+      });
+      await tg.answerCb({ id: q.id });
+      return;
+    }
+    if (data === 'user:close') {
+      await editUserText({
+        tg,
+        settings,
+        waitUntil,
+        chatId,
+        msgId,
+        text: t('user.closed'),
+        kb: [],
       });
       await tg.answerCb({ id: q.id });
       return;
@@ -1422,13 +1546,86 @@ async function handleVerifyAnswer(q, tg, db, kv, user, chatId, msgId, settings, 
 }
 
 async function handleAdmCb(q, action, { tg, db, kv, settings, chatId, msgId, adminId, t, waitUntil }) {
+  const openAdminHome = async () => {
+    const latest = await db.getAllSettings();
+    const stats = await db.getStats();
+    await editUserText({
+      tg,
+      settings: latest,
+      waitUntil,
+      chatId,
+      msgId,
+      text: buildAdminHomeText(stats, t),
+      kb: adminMainMenuKb(t),
+    });
+  };
+
+  const openFeatureMenu = async () => {
+    const latest = await db.getAllSettings();
+    const stats = await db.getStats();
+    await editUserText({
+      tg,
+      settings: latest,
+      waitUntil,
+      chatId,
+      msgId,
+      text: `${t('admin.panel', stats)}\n\n${t('admin.featureHint')}`,
+      kb: adminFeatureMenuKb(latest, t),
+    });
+  };
+
+  const openListMenu = async () => {
+    const latest = await db.getAllSettings();
+    const stats = await db.getStats();
+    await editUserText({
+      tg,
+      settings: latest,
+      waitUntil,
+      chatId,
+      msgId,
+      text: `${t('admin.panelCompact', stats)}\n\n${t('admin.listHint')}`,
+      kb: adminListMenuKb(t),
+    });
+  };
+
   const toggle = async (key, label) => {
     const cur = settings[key] === 'true';
     await db.setSetting(key, cur ? 'false' : 'true');
-    const ns = await db.getAllSettings();
-    await editUserKb({ tg, settings: ns, waitUntil, chatId, msgId, kb: adminPanelKb(ns, t) });
+    await openFeatureMenu();
     await tg.answerCb({ id: q.id, text: t('toggleResult', { label, state: cur ? t('panel.off') : t('panel.on') }) });
   };
+
+  if (action === 'menu' || action === 'bk') {
+    await openAdminHome();
+    await tg.answerCb({ id: q.id }).catch(() => {});
+    return;
+  }
+
+  if (action === 'close') {
+    await editUserText({
+      tg,
+      settings,
+      waitUntil,
+      chatId,
+      msgId,
+      text: t('admin.closed'),
+      kb: [],
+    });
+    await tg.answerCb({ id: q.id }).catch(() => {});
+    return;
+  }
+
+  if (action === 'cfg') {
+    await openFeatureMenu();
+    await tg.answerCb({ id: q.id }).catch(() => {});
+    return;
+  }
+
+  if (action === 'list') {
+    await openListMenu();
+    await tg.answerCb({ id: q.id }).catch(() => {});
+    return;
+  }
 
   if (action === 'tv') return toggle('VERIFICATION_ENABLED', t('panel.verify'));
   if (action === 'ta') return toggle('AUTO_UNBLOCK_ENABLED', t('panel.appeal'));
@@ -1441,8 +1638,7 @@ async function handleAdmCb(q, action, { tg, db, kv, settings, chatId, msgId, adm
     const cur = all.indexOf(settings.CAPTCHA_TYPE || 'math');
     const next = all[(cur + 1) % all.length];
     await db.setSetting('CAPTCHA_TYPE', next);
-    const ns = await db.getAllSettings();
-    await editUserKb({ tg, settings: ns, waitUntil, chatId, msgId, kb: adminPanelKb(ns, t) });
+    await openFeatureMenu();
     await tg.answerCb({ id: q.id, text: t('captchaTypeSwitched') });
     return;
   }
@@ -1507,17 +1703,25 @@ async function handleAdmCb(q, action, { tg, db, kv, settings, chatId, msgId, adm
 
   if (action === 'st') {
     const s = await db.getStats();
-    await editUserText({ tg, settings, waitUntil, chatId, msgId, text: t('admin.stats', s), kb: [[{ text: t('cb.back'), callback_data: 'adm:bk' }]] });
-  } else if (action === 'bk') {
-    const s = await db.getAllSettings(), st = await db.getStats();
-    await editUserText({ tg, settings: s, waitUntil, chatId, msgId, text: t('admin.panelCompact', st), kb: adminPanelKb(s, t) });
+    await editUserText({
+      tg,
+      settings,
+      waitUntil,
+      chatId,
+      msgId,
+      text: t('admin.stats', s),
+      kb: [[
+        { text: t('cb.back'), callback_data: 'adm:list' },
+        { text: t('admin.close'), callback_data: 'adm:close' },
+      ]],
+    });
   } else if (action.startsWith('bk:')) {
     const page = parseInt(action.split(':')[1] || '1', 10), ps = 8;
     const { users, total } = await db.getBlockedUsers(page, ps);
     const tp = Math.ceil(total / ps) || 1;
     const lines = users.map(u => `• <code>${u.user_id}</code> ${esc(name(u))} — ${esc(u.block_reason || t('list.none'))}`).join('\n') || t('list.none');
     const nav = [];
-    if (page > 1)  nav.push({ text: '◀', callback_data: `adm:bk:${page - 1}` });
+    if (page > 1) nav.push({ text: '◀', callback_data: `adm:bk:${page - 1}` });
     if (page < tp) nav.push({ text: '▶', callback_data: `adm:bk:${page + 1}` });
     await editUserText({
       tg,
@@ -1526,7 +1730,13 @@ async function handleAdmCb(q, action, { tg, db, kv, settings, chatId, msgId, adm
       chatId,
       msgId,
       text: `🚫 <b>${t('blacklistTitle', { total, page, tp })}</b>\n\n${lines}`,
-      kb: [nav, [{ text: t('cb.back'), callback_data: 'adm:bk' }]],
+      kb: [
+        nav,
+        [
+          { text: t('cb.back'), callback_data: 'adm:list' },
+          { text: t('admin.close'), callback_data: 'adm:close' },
+        ],
+      ],
     });
   } else if (action.startsWith('ul:')) {
     const page = parseInt(action.split(':')[1] || '1', 10), ps = 8;
@@ -1534,7 +1744,7 @@ async function handleAdmCb(q, action, { tg, db, kv, settings, chatId, msgId, adm
     const tp = Math.ceil(total / ps) || 1;
     const lines = users.map(u => `• <code>${u.user_id}</code> ${esc(name(u))} ${u.is_blocked ? '⛔' : '✅'}`).join('\n') || t('list.none');
     const nav = [];
-    if (page > 1)  nav.push({ text: '◀', callback_data: `adm:ul:${page - 1}` });
+    if (page > 1) nav.push({ text: '◀', callback_data: `adm:ul:${page - 1}` });
     if (page < tp) nav.push({ text: '▶', callback_data: `adm:ul:${page + 1}` });
     await editUserText({
       tg,
@@ -1543,7 +1753,13 @@ async function handleAdmCb(q, action, { tg, db, kv, settings, chatId, msgId, adm
       chatId,
       msgId,
       text: `👥 <b>${t('userListTitle', { total, page, tp })}</b>\n\n${lines}`,
-      kb: [nav, [{ text: t('cb.back'), callback_data: 'adm:bk' }]],
+      kb: [
+        nav,
+        [
+          { text: t('cb.back'), callback_data: 'adm:list' },
+          { text: t('admin.close'), callback_data: 'adm:close' },
+        ],
+      ],
     });
   }
   await tg.answerCb({ id: q.id }).catch(() => {});
