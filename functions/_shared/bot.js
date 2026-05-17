@@ -72,6 +72,7 @@ function getInlineKbMsgDeleteSeconds(settings) {
 }
 
 const ADMIN_EDIT_SYNC_WINDOW_MS = 30 * 1000;
+const MESSAGE_REACTION_EMOJI = '✅';
 
 const ADMIN_NUMERIC_INPUT_FIELDS = {
   VERIFICATION_TIMEOUT: { min: 60, max: 900, unit: 's', labelKey: 'panel.timeout', defaultValue: 300 },
@@ -313,6 +314,11 @@ async function sendUserMsg({ tg, settings, waitUntil, chatId, text, kb, parseMod
 
 async function sendUserPhoto({ tg, settings, waitUntil, chatId, fileId, url, caption, kb, parseMode = 'HTML', threadId }) {
   return tg.sendPhoto({ chatId, fileId, url, caption, kb, parseMode, threadId });
+}
+
+async function reactSentOk({ tg, chatId, msgId, emoji = MESSAGE_REACTION_EMOJI }) {
+  if (!chatId || !msgId) return;
+  await tg.setMessageReaction({ chatId, msgId, emoji }).catch(() => {});
 }
 
 function scheduleEditedUserMsgDelete({ tg, settings, waitUntil, chatId, msgId, kb }) {
@@ -691,6 +697,8 @@ async function handleMsg(msg, { tg, db, kv, settings, baseUrl, t, waitUntil }) {
       forwardedAt: Date.now(),
     });
 
+    await reactSentOk({ tg, chatId: msg.chat.id, msgId: msg.message_id });
+
     const recordTask = db.addMsg({
       userId: target.user_id,
       direction: 'outgoing',
@@ -927,6 +935,7 @@ async function handleMsg(msg, { tg, db, kv, settings, baseUrl, t, waitUntil }) {
     }).catch((e) => console.error('record user msg failed:', e));
     if (waitUntil) waitUntil(recordTask);
     else await recordTask;
+    await reactSentOk({ tg, chatId: msg.chat.id, msgId: msg.message_id });
     await tg.sendMsg({ chatId: user.id, text: t('sentToAdmin') });
   } else {
     // Topic may have been deleted — clear stale thread, recreate, and retry once
@@ -945,6 +954,7 @@ async function handleMsg(msg, { tg, db, kv, settings, baseUrl, t, waitUntil }) {
         }).catch((e) => console.error('record retried user msg failed:', e));
         if (waitUntil) waitUntil(recordTask);
         else await recordTask;
+        await reactSentOk({ tg, chatId: msg.chat.id, msgId: msg.message_id });
         await tg.sendMsg({ chatId: user.id, text: t('sentToAdmin') });
         return;
       }
@@ -962,6 +972,7 @@ async function handleEditedMsg(msg, { tg, db, kv, settings }) {
   const groupId = parseInt(settings.FORUM_GROUP_ID, 10);
   const adminIds = parseAdminIds(settings.ADMIN_IDS);
 
+  // 仅同步管理员在群话题中的编辑；用户私聊编辑不同步。
   if (msg.chat.id !== groupId || !msg.is_topic_message) return;
   if (!adminIds.includes(user.id)) return;
 
