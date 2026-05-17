@@ -264,12 +264,6 @@ const messages = {
   "settings.feature.cmdFilterHint": "不將 /xxx 指令轉發給管理員",
   "settings.feature.adminNotify": "接收管理員私聊訊息",
   "settings.feature.adminNotifyHint": "管理員私聊訊息仍會轉發到話題；開啟後若轉發失敗，會自動顯示控制台",
-  "settings.feature.messageEditSync": "編輯訊息同步",
-  "settings.feature.messageEditSyncHint": "開啟後會同步管理員在話題中的編輯，並可啟用使用者編輯同步功能。",
-  "settings.feature.userEditSync": "使用者編輯訊息同步",
-  "settings.feature.userEditSyncHint": "僅在已開啟「編輯訊息同步」時生效；會將使用者私聊編輯同步到對應話題。",
-  "settings.feature.messageEditSyncWindow": "編輯同步時間窗口（秒）",
-  "settings.feature.messageEditSyncWindowHint": "僅同步該時間窗口內的已轉發訊息編輯，最小 10 秒，最大 86400 秒。",
   "settings.feature.zalgoFilter": "過濾 Zalgo 異常文字",
   "settings.feature.zalgoFilterHint": "清理含有大量組合附加符號的異常暱稱與文字，避免內容顯示錯亂或污染介面",
   "settings.feature.maxPerMin": "每分鐘最大訊息數",
@@ -414,9 +408,6 @@ const messages = {
   "bot.admin.menu.filters": "🛡 關鍵字過濾",
   "bot.admin.menuHint": "請選擇要進入的管理選單。",
   "bot.admin.featureHint": "可在此快速切換機器人核心功能設定。",
-  "bot.panel.messageEditSync": "編輯同步",
-  "bot.panel.userEditSync": "使用者編輯",
-  "bot.panel.messageEditSyncWindow": "編輯窗口",
   "bot.admin.listHint": "可在此查看統計、黑名單與使用者列表。",
   "bot.admin.closed": "✅ 控制台已關閉，傳送 /panel 可重新開啟。"
 };
