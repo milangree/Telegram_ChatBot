@@ -1021,6 +1021,52 @@ async function handleMsg(msg, { tg, db, kv, settings, baseUrl, t, waitUntil }) {
   }
 }
 
+async function syncEditedMappedMessage({
+  tg,
+  sourceMsg,
+  mappedChatId,
+  mappedMsgId,
+  mappedThreadId,
+  fallbackFromChatId,
+  fallbackMsgId,
+}) {
+  if (!mappedChatId || !mappedMsgId) return { ok: false, newMsgId: null };
+
+  // 1) 优先按“对应消息ID”直接编辑，保持目标消息ID不变
+  if (sourceMsg?.text !== undefined && sourceMsg?.text !== null) {
+    const edited = await tg.editText({
+      chatId: mappedChatId,
+      msgId: mappedMsgId,
+      text: sourceMsg.text,
+      parseMode: undefined,
+    }).catch(() => null);
+    if (edited?.ok) return { ok: true, newMsgId: mappedMsgId };
+  }
+
+  const hasCaptionField = Object.prototype.hasOwnProperty.call(sourceMsg || {}, 'caption');
+  if (hasCaptionField) {
+    const edited = await tg.editCaption({
+      chatId: mappedChatId,
+      msgId: mappedMsgId,
+      caption: sourceMsg.caption || '',
+      parseMode: undefined,
+    }).catch(() => null);
+    if (edited?.ok) return { ok: true, newMsgId: mappedMsgId };
+  }
+
+  // 2) 无法直接编辑时，降级为“删除旧消息 + 复制最新消息”
+  await tg.deleteMsg({ chatId: mappedChatId, msgId: mappedMsgId }).catch(() => {});
+  const resent = await tg.copyMsg({
+    chatId: mappedChatId,
+    fromChatId: fallbackFromChatId,
+    msgId: fallbackMsgId,
+    threadId: mappedThreadId,
+  }).catch(() => null);
+
+  if (!resent?.ok) return { ok: false, newMsgId: null };
+  return { ok: true, newMsgId: resent.result?.message_id || null };
+}
+
 async function handleEditedMsg(msg, { tg, db, kv, settings }) {
   if (!msg) return;
   const user = msg.from;
@@ -1050,8 +1096,6 @@ async function handleEditedMsg(msg, { tg, db, kv, settings }) {
     );
     if (!shouldSync) return;
 
-    await tg.deleteMsg({ chatId: mapped.userChatId, msgId: mapped.userMsgId }).catch(() => {});
-
     if (msg.text?.startsWith('/')) {
       await deleteAdminForwardMap(kv, msg.chat.id, msg.message_id);
       return;
@@ -1068,21 +1112,24 @@ async function handleEditedMsg(msg, { tg, db, kv, settings }) {
       return;
     }
 
-    const resendRes = await tg.copyMsg({
-      chatId: mapped.userChatId,
-      fromChatId: msg.chat.id,
-      msgId: msg.message_id,
+    const synced = await syncEditedMappedMessage({
+      tg,
+      sourceMsg: msg,
+      mappedChatId: mapped.userChatId,
+      mappedMsgId: mapped.userMsgId,
+      fallbackFromChatId: msg.chat.id,
+      fallbackMsgId: msg.message_id,
     });
 
-    if (!resendRes?.ok) {
-      console.error('admin topic edited message resend failed:', resendRes);
+    if (!synced.ok) {
+      console.error('admin topic edited message sync failed:', { mapped, sourceMsgId: msg.message_id });
       return;
     }
 
     await saveAdminForwardMap(kv, msg.chat.id, msg.message_id, {
       ...mapped,
       userChatId: mapped.userChatId,
-      userMsgId: resendRes.result?.message_id,
+      userMsgId: synced.newMsgId || mapped.userMsgId,
       threadId: msg.message_thread_id,
       forwardedAt: Date.now(),
     });
@@ -1115,23 +1162,24 @@ async function handleEditedMsg(msg, { tg, db, kv, settings }) {
   );
   if (!shouldSync) return;
 
-  await tg.deleteMsg({ chatId: mapped.groupChatId, msgId: mapped.groupMsgId }).catch(() => {});
-
-  const resendRes = await tg.copyMsg({
-    chatId: mapped.groupChatId,
-    fromChatId: msg.chat.id,
-    msgId: msg.message_id,
-    threadId: mapped.threadId,
+  const synced = await syncEditedMappedMessage({
+    tg,
+    sourceMsg: msg,
+    mappedChatId: mapped.groupChatId,
+    mappedMsgId: mapped.groupMsgId,
+    mappedThreadId: mapped.threadId,
+    fallbackFromChatId: msg.chat.id,
+    fallbackMsgId: msg.message_id,
   });
 
-  if (!resendRes?.ok) {
-    console.error('user private edited message resend to topic failed:', resendRes);
+  if (!synced.ok) {
+    console.error('user private edited message sync to topic failed:', { mapped, sourceMsgId: msg.message_id });
     return;
   }
 
   await saveUserForwardMap(kv, msg.chat.id, msg.message_id, {
     ...mapped,
-    groupMsgId: resendRes.result?.message_id,
+    groupMsgId: synced.newMsgId || mapped.groupMsgId,
     forwardedAt: Date.now(),
   });
 
