@@ -156,7 +156,7 @@ export class TG {
   setWebhook({ url, secret }) {
     return this.call('setWebhook', {
       url, secret_token: secret,
-      allowed_updates: ['message', 'edited_message', 'callback_query'],
+      allowed_updates: ['message', 'callback_query'],
     });
   }
 

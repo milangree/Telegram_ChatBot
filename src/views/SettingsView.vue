@@ -240,32 +240,6 @@
               <div class="divider"></div>
               <div class="toggle-row">
                 <div>
-                  <div class="toggle-label">{{ t('settings.feature.messageEditSync') }}</div>
-                  <div class="form-hint">{{ t('settings.feature.messageEditSyncHint') }}</div>
-                </div>
-                <label class="toggle"><input type="checkbox" v-model="messageEditSyncEnabled" /><span class="toggle-slider"></span></label>
-              </div>
-              <template v-if="messageEditSyncEnabled">
-                <div class="divider"></div>
-                <div class="toggle-row">
-                  <div>
-                    <div class="toggle-label">{{ t('settings.feature.userEditSync') }}</div>
-                    <div class="form-hint">{{ t('settings.feature.userEditSyncHint') }}</div>
-                  </div>
-                  <label class="toggle"><input type="checkbox" v-model="userEditSyncEnabled" /><span class="toggle-slider"></span></label>
-                </div>
-                <div class="divider"></div>
-                <div class="toggle-row">
-                  <div>
-                    <div class="toggle-label">{{ t('settings.feature.messageEditSyncWindow') }}</div>
-                    <div class="form-hint">{{ t('settings.feature.messageEditSyncWindowHint') }}</div>
-                  </div>
-                  <input v-model.number="form.MESSAGE_EDIT_SYNC_WINDOW_SECONDS" type="number" min="10" max="86400" style="width:110px" @change="clampEditSyncWindow" />
-                </div>
-              </template>
-              <div class="divider"></div>
-              <div class="toggle-row">
-                <div>
                   <div class="toggle-label">{{ t('settings.feature.zalgoFilter') }}</div>
                   <div class="form-hint">{{ t('settings.feature.zalgoFilterHint') }}</div>
                 </div>
@@ -601,8 +575,6 @@ const autoUnblock = boolProp('AUTO_UNBLOCK_ENABLED')
 const whitelistEnabled = boolProp('WHITELIST_ENABLED')
 const cmdFilter = boolProp('BOT_COMMAND_FILTER')
 const adminNotifyEnabled = boolProp('ADMIN_NOTIFY_ENABLED')
-const messageEditSyncEnabled = boolProp('MESSAGE_EDIT_SYNC_ENABLED')
-const userEditSyncEnabled = boolProp('USER_EDIT_SYNC_ENABLED')
 const zalgoFilterEnabled = boolProp('ZALGO_FILTER_ENABLED')
 const inlineKbDeleteEnabled = boolProp('INLINE_KB_MSG_DELETE_ENABLED')
 const welcomeEnabled = boolProp('WELCOME_ENABLED')
@@ -787,18 +759,10 @@ function clampLoginSessionTtl() {
   else form.value.LOGIN_SESSION_TTL = String(v)
 }
 
-function clampEditSyncWindow() {
-  const v = parseInt(form.value.MESSAGE_EDIT_SYNC_WINDOW_SECONDS, 10)
-  if (isNaN(v) || v < 10) form.value.MESSAGE_EDIT_SYNC_WINDOW_SECONDS = '10'
-  else if (v > 86400) form.value.MESSAGE_EDIT_SYNC_WINDOW_SECONDS = '86400'
-  else form.value.MESSAGE_EDIT_SYNC_WINDOW_SECONDS = String(v)
-}
-
 async function save() {
   clampTimeout()
   clampInlineKbDelete()
   clampLoginSessionTtl()
-  clampEditSyncWindow()
   saving.value = true
   saved.value = false
   saveErr.value = ''

@@ -71,17 +71,12 @@ function getInlineKbMsgDeleteSeconds(settings) {
   return parseBoundedInt(settings?.INLINE_KB_MSG_DELETE_SECONDS || settings?.USER_MSG_DELETE_SECONDS || '15', 15, 0, 25);
 }
 
-function getEditSyncWindowMs(settings) {
-  const seconds = parseBoundedInt(settings?.MESSAGE_EDIT_SYNC_WINDOW_SECONDS || '300', 300, 10, 86400);
-  return seconds * 1000;
-}
 const MESSAGE_REACTION_EMOJI = '✅';
 
 const ADMIN_NUMERIC_INPUT_FIELDS = {
   VERIFICATION_TIMEOUT: { min: 60, max: 900, unit: 's', labelKey: 'panel.timeout', defaultValue: 300 },
   MAX_VERIFICATION_ATTEMPTS: { min: 1, max: 10, unit: '', labelKey: 'panel.attempts', defaultValue: 3 },
   INLINE_KB_MSG_DELETE_SECONDS: { min: 0, max: 25, unit: 's', labelKey: 'panel.inlineKbDelete', defaultValue: 15 },
-  MESSAGE_EDIT_SYNC_WINDOW_SECONDS: { min: 10, max: 86400, unit: 's', labelKey: 'panel.messageEditSyncWindow', defaultValue: 300 },
 };
 
 function getAdminNumericFieldConfig(field) {
@@ -368,63 +363,6 @@ async function shouldProcessMessageOnce(kv, scope, chatId, msgId, ttlSeconds = 2
   return lock.value !== false;
 }
 
-function getAdminForwardMapKey(chatId, msgId) {
-  return `map:admin_forward:${chatId}:${msgId}`;
-}
-
-async function getAdminForwardMap(kv, chatId, msgId) {
-  if (!kv || !chatId || !msgId) return null;
-  const raw = await kv.get(getAdminForwardMapKey(chatId, msgId));
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
-}
-
-async function saveAdminForwardMap(kv, chatId, msgId, data) {
-  if (!kv || !chatId || !msgId || !data) return;
-  await kv.put(
-    getAdminForwardMapKey(chatId, msgId),
-    JSON.stringify(data),
-    { expirationTtl: 86400 },
-  );
-}
-
-async function deleteAdminForwardMap(kv, chatId, msgId) {
-  if (!kv || !chatId || !msgId) return;
-  await kv.delete(getAdminForwardMapKey(chatId, msgId)).catch(() => {});
-}
-
-function getUserForwardMapKey(chatId, msgId) {
-  return `map:user_forward:${chatId}:${msgId}`;
-}
-
-async function getUserForwardMap(kv, chatId, msgId) {
-  if (!kv || !chatId || !msgId) return null;
-  const raw = await kv.get(getUserForwardMapKey(chatId, msgId));
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
-}
-
-async function saveUserForwardMap(kv, chatId, msgId, data) {
-  if (!kv || !chatId || !msgId || !data) return;
-  await kv.put(
-    getUserForwardMapKey(chatId, msgId),
-    JSON.stringify(data),
-    { expirationTtl: 86400 },
-  );
-}
-
-async function deleteUserForwardMap(kv, chatId, msgId) {
-  if (!kv || !chatId || !msgId) return;
-  await kv.delete(getUserForwardMapKey(chatId, msgId)).catch(() => {});
-}
 
 async function withUserLock(kv, userLockId, fn, { ttlSeconds = 60, retries = 8, waitMs = 120 } = {}) {
   const lockKey = `lock:user:${userLockId}`;
@@ -585,15 +523,6 @@ function adminFeatureMenuKb(s, t) {
       { text: `📩 ${t('panel.adminNotify')}: ${s.ADMIN_NOTIFY_ENABLED === 'true' ? t('panel.on') : t('panel.off')}`, callback_data: 'adm:tn' },
     ],
     [
-      { text: `✏️ ${t('panel.messageEditSync')}: ${s.MESSAGE_EDIT_SYNC_ENABLED === 'true' ? t('panel.on') : t('panel.off')}`, callback_data: 'adm:tes' },
-      ...(s.MESSAGE_EDIT_SYNC_ENABLED === 'true'
-        ? [{ text: `🧵 ${t('panel.userEditSync')}: ${s.USER_EDIT_SYNC_ENABLED === 'true' ? t('panel.on') : t('panel.off')}`, callback_data: 'adm:tues' }]
-        : []),
-    ],
-    ...(s.MESSAGE_EDIT_SYNC_ENABLED === 'true'
-      ? [[{ text: `⏲ ${t('panel.messageEditSyncWindow')}: ${s.MESSAGE_EDIT_SYNC_WINDOW_SECONDS || '300'}s`, callback_data: 'adm:esw' }]]
-      : []),
-    [
       { text: `🧹 ${t('panel.inlineKbDelete')}: ${inlineKbDeleteSec}s`, callback_data: 'adm:ik' },
       { text: `🛡 ${t('panel.messageFilter')}: ${filterCount}`, callback_data: 'adm:mf' },
     ],
@@ -691,7 +620,6 @@ export async function processUpdate(update, env) {
     const tg  = new TG(settings.BOT_TOKEN);
     const ctx = { tg, db, kv: env.KV, settings, baseUrl: env.baseUrl || '', t, waitUntil: env.waitUntil };
     if (update.message)              await handleMsg(update.message, ctx);
-    else if (update.edited_message)  await handleEditedMsg(update.edited_message, ctx);
     else if (update.callback_query)  await handleCb(update.callback_query, ctx);
   } catch (e) { console.error('processUpdate:', e); }
 }
@@ -731,13 +659,6 @@ async function handleMsg(msg, { tg, db, kv, settings, baseUrl, t, waitUntil }) {
       console.error('admin topic forward failed:', forwardRes);
       return;
     }
-
-    await saveAdminForwardMap(kv, msg.chat.id, msg.message_id, {
-      userChatId: target.user_id,
-      userMsgId: forwardRes.result?.message_id,
-      threadId: msg.message_thread_id,
-      forwardedAt: Date.now(),
-    });
 
     await reactSentOk({ tg, chatId: msg.chat.id, msgId: msg.message_id });
 
@@ -969,13 +890,6 @@ async function handleMsg(msg, { tg, db, kv, settings, baseUrl, t, waitUntil }) {
   // Use copyMessage to forward ALL content types with full formatting preserved
   const res = await tg.copyMsg({ chatId: groupId, fromChatId: msg.chat.id, msgId: msg.message_id, threadId: tid });
   if (res.ok) {
-    await saveUserForwardMap(kv, msg.chat.id, msg.message_id, {
-      groupChatId: groupId,
-      groupMsgId: res.result?.message_id,
-      threadId: tid,
-      forwardedAt: Date.now(),
-    });
-
     const recordTask = db.addMsg({
       userId: user.id,
       direction: 'incoming',
@@ -995,13 +909,6 @@ async function handleMsg(msg, { tg, db, kv, settings, baseUrl, t, waitUntil }) {
     if (newTid) {
       const retry = await tg.copyMsg({ chatId: groupId, fromChatId: msg.chat.id, msgId: msg.message_id, threadId: newTid });
       if (retry.ok) {
-        await saveUserForwardMap(kv, msg.chat.id, msg.message_id, {
-          groupChatId: groupId,
-          groupMsgId: retry.result?.message_id,
-          threadId: newTid,
-          forwardedAt: Date.now(),
-        });
-
         const recordTask = db.addMsg({
           userId: user.id,
           direction: 'incoming',
@@ -1021,176 +928,6 @@ async function handleMsg(msg, { tg, db, kv, settings, baseUrl, t, waitUntil }) {
   }
 }
 
-async function syncEditedMappedMessage({
-  tg,
-  sourceMsg,
-  mappedChatId,
-  mappedMsgId,
-  mappedThreadId,
-  fallbackFromChatId,
-  fallbackMsgId,
-}) {
-  if (!mappedChatId || !mappedMsgId) return { ok: false, newMsgId: null };
-
-  // 1) 优先按“对应消息ID”直接编辑，保持目标消息ID不变
-  if (sourceMsg?.text !== undefined && sourceMsg?.text !== null) {
-    const edited = await tg.editText({
-      chatId: mappedChatId,
-      msgId: mappedMsgId,
-      text: sourceMsg.text,
-      parseMode: undefined,
-    }).catch(() => null);
-    if (edited?.ok) return { ok: true, newMsgId: mappedMsgId };
-  }
-
-  const hasCaptionField = Object.prototype.hasOwnProperty.call(sourceMsg || {}, 'caption');
-  if (hasCaptionField) {
-    const edited = await tg.editCaption({
-      chatId: mappedChatId,
-      msgId: mappedMsgId,
-      caption: sourceMsg.caption || '',
-      parseMode: undefined,
-    }).catch(() => null);
-    if (edited?.ok) return { ok: true, newMsgId: mappedMsgId };
-  }
-
-  // 2) 无法直接编辑时，降级为“删除旧消息 + 复制最新消息”
-  await tg.deleteMsg({ chatId: mappedChatId, msgId: mappedMsgId }).catch(() => {});
-  const resent = await tg.copyMsg({
-    chatId: mappedChatId,
-    fromChatId: fallbackFromChatId,
-    msgId: fallbackMsgId,
-    threadId: mappedThreadId,
-  }).catch(() => null);
-
-  if (!resent?.ok) return { ok: false, newMsgId: null };
-  return { ok: true, newMsgId: resent.result?.message_id || null };
-}
-
-async function handleEditedMsg(msg, { tg, db, kv, settings }) {
-  if (!msg) return;
-  const user = msg.from;
-  if (!user || user.is_bot) return;
-
-  const groupId = parseInt(settings.FORUM_GROUP_ID, 10);
-  const adminIds = parseAdminIds(settings.ADMIN_IDS);
-  const messageEditSyncEnabled = settings.MESSAGE_EDIT_SYNC_ENABLED !== 'false';
-  const userEditSyncEnabled = settings.USER_EDIT_SYNC_ENABLED !== 'false';
-  const editSyncWindowMs = getEditSyncWindowMs(settings);
-
-  // 管理员在群话题中的编辑：同步给用户并更新 WebUI 消息内容。
-  if (msg.chat.id === groupId && msg.is_topic_message && adminIds.includes(user.id)) {
-    if (!messageEditSyncEnabled) return;
-    const target = await db.getUserByThread(msg.message_thread_id);
-    if (!target) return;
-
-    const mapped = await getAdminForwardMap(kv, msg.chat.id, msg.message_id);
-    if (!mapped?.userChatId || !mapped?.userMsgId) return;
-    if (Date.now() - Number(mapped.forwardedAt || 0) > editSyncWindowMs) return;
-
-    const shouldSync = await shouldProcessMessageOnce(
-      kv,
-      'admin-topic-edit',
-      msg.chat.id,
-      `${msg.message_id}:${msg.edit_date || msg.date || 0}`,
-    );
-    if (!shouldSync) return;
-
-    if (msg.text?.startsWith('/')) {
-      await deleteAdminForwardMap(kv, msg.chat.id, msg.message_id);
-      return;
-    }
-
-    const blockedRule = findBlockedRuleForMessage(settings, msg);
-    if (blockedRule) {
-      await deleteAdminForwardMap(kv, msg.chat.id, msg.message_id);
-      await tg.sendMsg({
-        chatId: msg.chat.id,
-        threadId: msg.message_thread_id,
-        text: buildMessageBlockedText(blockedRule, createBotT(normalizeBotLocale(settings.BOT_LOCALE))),
-      }).catch(() => {});
-      return;
-    }
-
-    const synced = await syncEditedMappedMessage({
-      tg,
-      sourceMsg: msg,
-      mappedChatId: mapped.userChatId,
-      mappedMsgId: mapped.userMsgId,
-      fallbackFromChatId: msg.chat.id,
-      fallbackMsgId: msg.message_id,
-    });
-
-    if (!synced.ok) {
-      console.error('admin topic edited message sync failed:', { mapped, sourceMsgId: msg.message_id });
-      return;
-    }
-
-    await saveAdminForwardMap(kv, msg.chat.id, msg.message_id, {
-      ...mapped,
-      userChatId: mapped.userChatId,
-      userMsgId: synced.newMsgId || mapped.userMsgId,
-      threadId: msg.message_thread_id,
-      forwardedAt: Date.now(),
-    });
-
-    await db.updateMsgContentByTelegramMessageId({
-      userId: target.user_id,
-      direction: 'outgoing',
-      telegramMessageId: msg.message_id,
-      content: msg.text || msg.caption || createBotT(normalizeBotLocale(settings.BOT_LOCALE))('content.media'),
-      messageType: msgType(msg),
-    }).catch((e) => console.error('update edited admin msg failed:', e));
-
-    return;
-  }
-
-  // 用户私聊编辑：同步到对应话题并更新 WebUI 消息内容。
-  if (msg.chat.type !== 'private') return;
-  if (adminIds.includes(user.id)) return;
-  if (!messageEditSyncEnabled || !userEditSyncEnabled) return;
-
-  const mapped = await getUserForwardMap(kv, msg.chat.id, msg.message_id);
-  if (!mapped?.groupChatId || !mapped?.groupMsgId) return;
-  if (Date.now() - Number(mapped.forwardedAt || 0) > editSyncWindowMs) return;
-
-  const shouldSync = await shouldProcessMessageOnce(
-    kv,
-    'user-private-edit',
-    msg.chat.id,
-    `${msg.message_id}:${msg.edit_date || msg.date || 0}`,
-  );
-  if (!shouldSync) return;
-
-  const synced = await syncEditedMappedMessage({
-    tg,
-    sourceMsg: msg,
-    mappedChatId: mapped.groupChatId,
-    mappedMsgId: mapped.groupMsgId,
-    mappedThreadId: mapped.threadId,
-    fallbackFromChatId: msg.chat.id,
-    fallbackMsgId: msg.message_id,
-  });
-
-  if (!synced.ok) {
-    console.error('user private edited message sync to topic failed:', { mapped, sourceMsgId: msg.message_id });
-    return;
-  }
-
-  await saveUserForwardMap(kv, msg.chat.id, msg.message_id, {
-    ...mapped,
-    groupMsgId: synced.newMsgId || mapped.groupMsgId,
-    forwardedAt: Date.now(),
-  });
-
-  await db.updateMsgContentByTelegramMessageId({
-    userId: user.id,
-    direction: 'incoming',
-    telegramMessageId: msg.message_id,
-    content: msg.text || msg.caption || createBotT(normalizeBotLocale(settings.BOT_LOCALE))('content.media'),
-    messageType: msgType(msg),
-  }).catch((e) => console.error('update edited user msg failed:', e));
-}
 
 async function handleAdminPrivateMsg(msg, user, { tg, db, kv, settings, groupId, t, waitUntil }) {
   const protectedAdminIds = new Set(parseAdminIds(settings.ADMIN_IDS).map(Number));
@@ -1682,7 +1419,8 @@ async function handleVerifyAnswer(q, tg, db, kv, user, chatId, msgId, settings, 
         await db.setUserVerified(user.id, true);
         await db.delVerify(user.id);
         if (captchaId) await kv.delete(`captcha_render:${captchaId}`);
-        await tg.editText({ chatId, msgId, text: t('verify.success'), kb: [] }).catch(() => {});
+        await tg.deleteMsg({ chatId, msgId }).catch(() => {});
+        await tg.sendMsg({ chatId, text: t('verify.success') }).catch(() => {});
 
         const pr = await kv.get(`pending:${user.id}`);
         if (pr && groupId) {
@@ -1807,8 +1545,6 @@ async function handleAdmCb(q, action, { tg, db, kv, settings, chatId, msgId, adm
   if (action === 'tw') return toggle('WHITELIST_ENABLED', t('panel.whitelist'));
   if (action === 'tf') return toggle('BOT_COMMAND_FILTER', t('panel.cmdFilter'));
   if (action === 'tn') return toggle('ADMIN_NOTIFY_ENABLED', t('panel.adminNotify'));
-  if (action === 'tes') return toggle('MESSAGE_EDIT_SYNC_ENABLED', t('panel.messageEditSync'));
-  if (action === 'tues') return toggle('USER_EDIT_SYNC_ENABLED', t('panel.userEditSync'));
 
   if (action === 'ct') {
     const all = ['math', 'image_numeric', 'image_alphanumeric'];
@@ -1857,12 +1593,12 @@ async function handleAdmCb(q, action, { tg, db, kv, settings, chatId, msgId, adm
     return;
   }
 
-  if (action === 'to' || action === 'ma' || action === 'ik' || action === 'esw') {
+  if (action === 'to' || action === 'ma' || action === 'ik') {
     const field = action === 'to'
       ? 'VERIFICATION_TIMEOUT'
       : (action === 'ma'
         ? 'MAX_VERIFICATION_ATTEMPTS'
-        : (action === 'ik' ? 'INLINE_KB_MSG_DELETE_SECONDS' : 'MESSAGE_EDIT_SYNC_WINDOW_SECONDS'));
+        : 'INLINE_KB_MSG_DELETE_SECONDS');
     const cfg = getAdminNumericFieldConfig(field);
 
     if (!kv || !adminId || !cfg) {
