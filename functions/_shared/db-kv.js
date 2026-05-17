@@ -143,18 +143,21 @@ export class KVStore {
     return results
   }
   async getAllUsers(page = 1, pageSize = 20) {
-    const all = (await Promise.all((await kvListAll(this.kv, 'user:')).map(k => this.kv.get(k.name).then(d => d ? JSON.parse(d) : null)))).filter(Boolean)
+    const all = (await Promise.all((await kvListAll(this.kv, 'user:')).map(k => this.kv.get(k.name).then(d => d ? JSON.parse(d) : null))))
+      .filter(u => u && u.is_verified)
     all.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
     return { users: all.slice((page - 1) * pageSize, page * pageSize), total: all.length }
   }
   async getBlockedUsers(page = 1, pageSize = 10) {
-    const all = (await Promise.all((await kvListAll(this.kv, 'user:')).map(k => this.kv.get(k.name).then(d => d ? JSON.parse(d) : null)))).filter(u => u?.is_blocked)
+    const all = (await Promise.all((await kvListAll(this.kv, 'user:')).map(k => this.kv.get(k.name).then(d => d ? JSON.parse(d) : null))))
+      .filter(u => u?.is_blocked && u?.is_verified)
     all.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
     const start = (page - 1) * pageSize
     return { users: all.slice(start, start + pageSize), total: all.length }
   }
   async getNormalUsers(page = 1, pageSize = 20) {
-    const all = (await Promise.all((await kvListAll(this.kv, 'user:')).map(k => this.kv.get(k.name).then(d => d ? JSON.parse(d) : null)))).filter(u => u && !u.is_blocked)
+    const all = (await Promise.all((await kvListAll(this.kv, 'user:')).map(k => this.kv.get(k.name).then(d => d ? JSON.parse(d) : null))))
+      .filter(u => u && !u.is_blocked && u.is_verified)
     all.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
     const start = (page - 1) * pageSize
     return { users: all.slice(start, start + pageSize), total: all.length }
@@ -287,7 +290,26 @@ export class KVStore {
       if (u.thread_id) await this.kv.delete(`thread:${u.thread_id}`)
       u.thread_id = null
       await this.kv.put(`user:${userId}`, JSON.stringify(u))
+      this._cacheSet(`user:${userId}`, u)
     }
+  }
+
+  async deleteUser(userId) {
+    const uid = Number(userId)
+    if (!Number.isFinite(uid)) return false
+
+    const u = await this.getUser(uid)
+    if (!u) return false
+
+    await this.deleteUserMsgs(uid).catch(() => {})
+    await this.clearUserThread(uid).catch(() => {})
+    await this.removeFromWhitelist(uid).catch(() => {})
+
+    if (u.username) await this.kv.delete(`username:${String(u.username).toLowerCase()}`).catch(() => {})
+    await this.kv.delete(`user:${uid}`).catch(() => {})
+
+    this._cacheDelete(`user:${uid}`)
+    return true
   }
   async getAllRecentRaw() {
     return (await Promise.all((await kvListAll(this.kv, 'recent:')).map(k => this.kv.get(k.name).then(d => d ? JSON.parse(d) : null)))).filter(Boolean)

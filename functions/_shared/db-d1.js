@@ -105,24 +105,24 @@ export class D1Store {
   async getAllUsers(page = 1, pageSize = 20) {
     const offset = (page - 1) * pageSize
     const [users, countRow] = await Promise.all([
-      this.all('SELECT * FROM users ORDER BY created_at DESC LIMIT ? OFFSET ?', pageSize, offset),
-      this.first('SELECT COUNT(*) as cnt FROM users'),
+      this.all('SELECT * FROM users WHERE is_verified=1 ORDER BY created_at DESC LIMIT ? OFFSET ?', pageSize, offset),
+      this.first('SELECT COUNT(*) as cnt FROM users WHERE is_verified=1'),
     ])
     return { users, total: countRow?.cnt || 0 }
   }
   async getBlockedUsers(page = 1, pageSize = 10) {
     const offset = (page - 1) * pageSize
     const [users, countRow] = await Promise.all([
-      this.all('SELECT * FROM users WHERE is_blocked=1 ORDER BY created_at DESC LIMIT ? OFFSET ?', pageSize, offset),
-      this.first('SELECT COUNT(*) as cnt FROM users WHERE is_blocked=1'),
+      this.all('SELECT * FROM users WHERE is_blocked=1 AND is_verified=1 ORDER BY created_at DESC LIMIT ? OFFSET ?', pageSize, offset),
+      this.first('SELECT COUNT(*) as cnt FROM users WHERE is_blocked=1 AND is_verified=1'),
     ])
     return { users, total: countRow?.cnt || 0 }
   }
   async getNormalUsers(page = 1, pageSize = 20) {
     const offset = (page - 1) * pageSize
     const [users, countRow] = await Promise.all([
-      this.all('SELECT * FROM users WHERE is_blocked=0 ORDER BY created_at DESC LIMIT ? OFFSET ?', pageSize, offset),
-      this.first('SELECT COUNT(*) as cnt FROM users WHERE is_blocked=0'),
+      this.all('SELECT * FROM users WHERE is_blocked=0 AND is_verified=1 ORDER BY created_at DESC LIMIT ? OFFSET ?', pageSize, offset),
+      this.first('SELECT COUNT(*) as cnt FROM users WHERE is_blocked=0 AND is_verified=1'),
     ])
     return { users, total: countRow?.cnt || 0 }
   }
@@ -204,6 +204,23 @@ export class D1Store {
     const u = await this.getUser(userId)
     if (u?.thread_id) await this.exec('DELETE FROM thread_map WHERE thread_id=?', u.thread_id)
     await this.exec('UPDATE users SET thread_id=NULL WHERE user_id=?', userId)
+  }
+
+  async deleteUser(userId) {
+    const uid = Number(userId)
+    if (!Number.isFinite(uid)) return false
+
+    const u = await this.getUser(uid)
+    if (!u) return false
+
+    await this.exec('DELETE FROM messages WHERE user_id=?', uid)
+    await this.exec('DELETE FROM recent_convs WHERE user_id=?', uid)
+    await this.exec('DELETE FROM whitelist WHERE user_id=?', uid)
+    if (u.thread_id !== null && u.thread_id !== undefined) {
+      await this.exec('DELETE FROM thread_map WHERE thread_id=?', u.thread_id)
+    }
+    await this.exec('DELETE FROM users WHERE user_id=?', uid)
+    return true
   }
 
   // Verification (always in KV since it's ephemeral — D1Store delegates)

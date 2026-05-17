@@ -227,7 +227,7 @@ export async function onRequest({ request, env }) {
         'INLINE_KB_MSG_DELETE_ENABLED', 'INLINE_KB_MSG_DELETE_SECONDS',
         'CAPTCHA_TYPE', 'CAPTCHA_SITE_URL',
         'WELCOME_ENABLED', 'WELCOME_MESSAGE', 'BOT_COMMAND_FILTER', 'WHITELIST_ENABLED',
-        'ADMIN_NOTIFY_ENABLED', 'MESSAGE_EDIT_SYNC_ENABLED', 'USER_EDIT_SYNC_ENABLED',
+        'ADMIN_NOTIFY_ENABLED', 'MESSAGE_EDIT_SYNC_ENABLED', 'USER_EDIT_SYNC_ENABLED', 'MESSAGE_EDIT_SYNC_WINDOW_SECONDS',
         'LOGIN_SESSION_TTL',
         'BOT_LOCALE',
         'ZALGO_FILTER_ENABLED',
@@ -353,8 +353,15 @@ export async function onRequest({ request, env }) {
   if (path === '/settings/sql/export' && request.method === 'POST') {
     try {
       const active = await db.getActiveDb();
-      const sql = await exportBusinessDataSql(db, active);
-      const fileName = `${String(active || 'kv').toUpperCase()}.sql`;
+      const body = await request.json().catch(() => ({}));
+      const mode = String(body?.mode || 'base64').toLowerCase();
+      const password = String(body?.password || '');
+      if (!['plain', 'base64', 'aes'].includes(mode)) return err(t('common.missingParams'), 400);
+      if (mode === 'aes' && !password) return err(t('common.missingParams'), 400);
+
+      const sql = await exportBusinessDataSql(db, active, { mode, password });
+      const modeSuffix = mode === 'plain' ? 'PLAIN' : (mode === 'aes' ? 'AES' : 'BASE64');
+      const fileName = `${String(active || 'kv').toUpperCase()}_${modeSuffix}.sql`;
       return new Response(sql, {
         status: 200,
         headers: {
@@ -372,7 +379,7 @@ export async function onRequest({ request, env }) {
 
   if (path === '/settings/sql/import' && request.method === 'POST') {
     try {
-      const { sql } = await request.json();
+      const { sql, password } = await request.json();
       if (!sql || !String(sql).trim()) return err(t('common.missingParams'), 400);
 
       const active = await db.getActiveDb();
@@ -383,6 +390,7 @@ export async function onRequest({ request, env }) {
         target: active,
         kvStore: db._kv,
         d1Store: db._d1,
+        password: String(password || ''),
       });
 
       if (db._d1) {
@@ -474,6 +482,18 @@ export async function onRequest({ request, env }) {
         await db.unblockUser(uid);
       }
       return j({ ok: true });
+    } catch {
+      return err(t('users.operationFailed'), 500);
+    }
+  }
+
+  const delUserMatch = path.match(/^\/users\/(\d+)$/);
+  if (delUserMatch && request.method === 'DELETE') {
+    try {
+      const uid = parseInt(delUserMatch[1], 10);
+      const deleted = await db.deleteUser(uid);
+      if (!deleted) return err(t('users.notFound'), 404);
+      return j({ ok: true, reVerifyRequired: true });
     } catch {
       return err(t('users.operationFailed'), 500);
     }

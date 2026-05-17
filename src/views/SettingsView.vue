@@ -254,6 +254,14 @@
                   </div>
                   <label class="toggle"><input type="checkbox" v-model="userEditSyncEnabled" /><span class="toggle-slider"></span></label>
                 </div>
+                <div class="divider"></div>
+                <div class="toggle-row">
+                  <div>
+                    <div class="toggle-label">{{ t('settings.feature.messageEditSyncWindow') }}</div>
+                    <div class="form-hint">{{ t('settings.feature.messageEditSyncWindowHint') }}</div>
+                  </div>
+                  <input v-model.number="form.MESSAGE_EDIT_SYNC_WINDOW_SECONDS" type="number" min="10" max="86400" style="width:110px" @change="clampEditSyncWindow" />
+                </div>
               </template>
               <div class="divider"></div>
               <div class="toggle-row">
@@ -437,6 +445,18 @@
                     <div class="form-hint mt-1">{{ t('settings.storage.sqlHint') }}</div>
                   </div>
                   <div class="sql-tools-actions">
+                    <select v-model="sqlExportMode" class="toolbar-select">
+                      <option value="plain">Plain</option>
+                      <option value="base64">Base64</option>
+                      <option value="aes">AES-256-GCM</option>
+                    </select>
+                    <input
+                      v-if="sqlExportMode === 'aes'"
+                      v-model="sqlExportPassword"
+                      type="password"
+                      :placeholder="t('settings.storage.sqlAesPassword')"
+                      style="min-width:180px"
+                    />
                     <button class="btn-ghost btn-sm" :disabled="sqlBusy" @click="exportSql">
                       <span v-if="sqlExporting" class="spinner"></span>{{ sqlExporting ? '…' : t('settings.storage.sqlExport') }}
                     </button>
@@ -451,6 +471,13 @@
                       @change="handleSqlFileChange"
                     />
                   </div>
+                </div>
+                <div class="row-g" style="margin-top:8px">
+                  <input
+                    v-model="sqlImportPassword"
+                    type="password"
+                    :placeholder="t('settings.storage.sqlAesPasswordImport')"
+                  />
                 </div>
                 <div v-if="sqlFileName" class="form-hint mt-1 sql-file-name">
                   <code>{{ sqlFileName }}</code>
@@ -517,6 +544,9 @@ const dbInfo = ref({ active: 'kv', hasD1: false }), dbSwitching = ref(false), db
 const clearingData = ref(false)
 const sqlExporting = ref(false), sqlImporting = ref(false), sqlMsg = ref(''), sqlOk = ref(true), sqlFileName = ref('')
 const sqlFileInput = ref(null)
+const sqlExportMode = ref('base64')
+const sqlExportPassword = ref('')
+const sqlImportPassword = ref('')
 const messageFilterType = ref('text')
 const messageFilterValue = ref('')
 const messageFilterErr = ref('')
@@ -757,10 +787,18 @@ function clampLoginSessionTtl() {
   else form.value.LOGIN_SESSION_TTL = String(v)
 }
 
+function clampEditSyncWindow() {
+  const v = parseInt(form.value.MESSAGE_EDIT_SYNC_WINDOW_SECONDS, 10)
+  if (isNaN(v) || v < 10) form.value.MESSAGE_EDIT_SYNC_WINDOW_SECONDS = '10'
+  else if (v > 86400) form.value.MESSAGE_EDIT_SYNC_WINDOW_SECONDS = '86400'
+  else form.value.MESSAGE_EDIT_SYNC_WINDOW_SECONDS = String(v)
+}
+
 async function save() {
   clampTimeout()
   clampInlineKbDelete()
   clampLoginSessionTtl()
+  clampEditSyncWindow()
   saving.value = true
   saved.value = false
   saveErr.value = ''
@@ -895,10 +933,20 @@ async function exportSql() {
     if (token) headers.Authorization = `Bearer ${token}`
     if (locale) headers['X-Locale'] = locale
 
+    if (sqlExportMode.value === 'aes' && !sqlExportPassword.value) {
+      throw new Error(t('settings.storage.sqlAesPasswordRequired'))
+    }
+
+    headers['Content-Type'] = 'application/json'
+
     const response = await fetch('/api/settings/sql/export', {
       method: 'POST',
       headers,
       credentials: 'include',
+      body: JSON.stringify({
+        mode: sqlExportMode.value,
+        password: sqlExportMode.value === 'aes' ? sqlExportPassword.value : '',
+      }),
     })
 
     if (!response.ok) {
@@ -935,7 +983,7 @@ async function handleSqlFileChange(event) {
 
   try {
     const sql = await file.text()
-    await api.post('/api/settings/sql/import', { sql }, { timeout: 5 * 60 * 1000 })
+    await api.post('/api/settings/sql/import', { sql, password: sqlImportPassword.value || '' }, { timeout: 5 * 60 * 1000 })
     await load(true)
     sqlMsg.value = t('settings.storage.sqlImported', { name: file.name })
     sqlOk.value = true

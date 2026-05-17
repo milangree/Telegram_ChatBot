@@ -82,6 +82,7 @@ export class DB {
   async getAllRecentRaw() { return (await this._store()).getAllRecentRaw() }
   async deleteUserMsgs(uid) { return (await this._store()).deleteUserMsgs(uid) }
   async clearUserThread(uid) { return (await this._store()).clearUserThread(uid) }
+  async deleteUser(uid) { return (await this._store()).deleteUser(uid) }
   async getStats() { return (await this._store()).getStats() }
 
   async webUserCount() { return (await this._store()).webUserCount() }

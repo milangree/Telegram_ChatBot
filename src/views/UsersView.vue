@@ -116,6 +116,9 @@
                     <button class="btn-ghost btn-sm" @click.stop="toggleWhitelistOne(u)" :title="t('users.addWhitelist')">
                       <AppIcon name="whitelist" :size="14" />
                     </button>
+                    <button class="btn-danger btn-sm" @click.stop="deleteOne(u)" :title="t('users.delete')">
+                      <AppIcon name="close" :size="14" />
+                    </button>
                     <RouterLink :to="`/conversations?user=${u.user_id}`" class="btn-ghost btn-sm action-link action-link-icon" :title="t('users.messages')">
                       <AppIcon name="conversations" :size="14" />
                     </RouterLink>
@@ -199,6 +202,10 @@
           <button class="btn-ghost" @click="toggleWlDetail">
             <AppIcon name="whitelist" :size="14" />
             {{ detailIsWl ? t('users.removeWhitelist') : t('users.addWhitelist') }}
+          </button>
+          <button class="btn-danger" @click="deleteDetail">
+            <AppIcon name="close" :size="14" />
+            {{ t('users.delete') }}
           </button>
           <RouterLink :to="`/conversations?user=${detailUser.user_id}`" class="btn-ghost action-link" style="text-decoration:none" @click="detailUser = null">
             <AppIcon name="conversations" :size="14" />
@@ -407,6 +414,31 @@ async function toggleWlDetail() {
   } else {
     await api.post(`/api/whitelist/${detailUser.value.user_id}`, { reason: 'manual' })
     detailIsWl.value = true
+  }
+}
+
+async function deleteOne(u) {
+  if (!confirm(t('users.deleteConfirm', { id: u.user_id }))) return
+  try {
+    await api.delete(`/api/users/${u.user_id}`)
+    flash(t('users.flash.deleted'))
+    if (detailUser.value?.user_id === u.user_id) detailUser.value = null
+    await load()
+  } catch (e) {
+    flash(e.message, false)
+  }
+}
+
+async function deleteDetail() {
+  if (!detailUser.value) return
+  if (!confirm(t('users.deleteConfirm', { id: detailUser.value.user_id }))) return
+  try {
+    await api.delete(`/api/users/${detailUser.value.user_id}`)
+    flash(t('users.flash.deleted'))
+    detailUser.value = null
+    await load()
+  } catch (e) {
+    flash(e.message, false)
   }
 }
 

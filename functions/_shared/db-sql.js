@@ -1,3 +1,6 @@
+const TGCB_SQL_BASE64_PREFIX = '-- TGCB_SQL_BASE64 '
+const TGCB_SQL_AES_PREFIX = '-- TGCB_SQL_AES256GCM '
+
 const BUSINESS_TABLES = {
   settings: ['key', 'value'],
   users: ['user_id', 'username', 'first_name', 'last_name', 'language_code', 'thread_id', 'is_verified', 'is_blocked', 'is_permanent_block', 'block_reason', 'blocked_by', 'created_at'],
@@ -41,23 +44,113 @@ function buildDeleteStatements() {
   ]
 }
 
-export async function exportBusinessDataSql(store, activeDb = 'kv') {
-  const [settings, users, whitelist, messages, recentConvs] = await Promise.all([
-    store.getAllSettings(),
-    store.getAllUsersRaw(),
-    store.getWhitelistRaw(),
-    store.getAllMsgsRaw(),
-    store.getAllRecentRaw(),
-  ])
+function utf8ToBase64(str) {
+  const bytes = new TextEncoder().encode(String(str || ''))
+  let binary = ''
+  for (const b of bytes) binary += String.fromCharCode(b)
+  return btoa(binary)
+}
 
-  const records = {
-    settings: Object.entries(settings || {}).map(([key, value]) => normalizeRecord('settings', { key, value })),
-    users: (users || []).map((item) => normalizeRecord('users', item)),
-    whitelist: (whitelist || []).map((item) => normalizeRecord('whitelist', item)),
-    messages: (messages || []).map((item) => normalizeRecord('messages', item)),
-    recent_convs: (recentConvs || []).map((item) => normalizeRecord('recent_convs', item)),
+function base64ToUtf8(payload) {
+  const binary = atob(String(payload || ''))
+  const bytes = Uint8Array.from(binary, ch => ch.charCodeAt(0))
+  return new TextDecoder().decode(bytes)
+}
+
+function bytesToBase64(bytes) {
+  let binary = ''
+  for (const b of bytes) binary += String.fromCharCode(b)
+  return btoa(binary)
+}
+
+function base64ToBytes(base64) {
+  const binary = atob(String(base64 || ''))
+  const out = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i)
+  return out
+}
+
+async function deriveAesKey(password, salt) {
+  const baseKey = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(String(password || '')),
+    'PBKDF2',
+    false,
+    ['deriveKey'],
+  )
+
+  return crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt, iterations: 120000, hash: 'SHA-256' },
+    baseKey,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt'],
+  )
+}
+
+async function encryptSqlPayloadAes(rawSql, password) {
+  if (!password) throw new Error('AES password is required')
+
+  const salt = crypto.getRandomValues(new Uint8Array(16))
+  const iv = crypto.getRandomValues(new Uint8Array(12))
+  const key = await deriveAesKey(password, salt)
+  const data = new TextEncoder().encode(String(rawSql || ''))
+  const cipherBuffer = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, data)
+  const cipher = new Uint8Array(cipherBuffer)
+
+  const payload = {
+    v: 1,
+    alg: 'AES-256-GCM',
+    kdf: 'PBKDF2-SHA256',
+    iterations: 120000,
+    salt: bytesToBase64(salt),
+    iv: bytesToBase64(iv),
+    data: bytesToBase64(cipher),
   }
 
+  return `${TGCB_SQL_AES_PREFIX}${utf8ToBase64(JSON.stringify(payload))}\n`
+}
+
+async function decryptSqlPayloadAes(wrappedSql, password) {
+  if (!password) throw new Error('AES password is required for this SQL file')
+
+  const payloadB64 = String(wrappedSql || '').trim().slice(TGCB_SQL_AES_PREFIX.length).trim()
+  if (!payloadB64) throw new Error('Invalid AES SQL export payload')
+
+  let payload
+  try {
+    payload = JSON.parse(base64ToUtf8(payloadB64))
+  } catch {
+    throw new Error('Invalid AES SQL payload format')
+  }
+
+  const salt = base64ToBytes(payload?.salt || '')
+  const iv = base64ToBytes(payload?.iv || '')
+  const data = base64ToBytes(payload?.data || '')
+
+  const key = await deriveAesKey(password, salt)
+  try {
+    const plainBuffer = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data)
+    return new TextDecoder().decode(new Uint8Array(plainBuffer))
+  } catch {
+    throw new Error('Invalid AES password or corrupted SQL payload')
+  }
+}
+
+function decodeBase64WrappedSql(wrappedSql) {
+  const payload = String(wrappedSql || '').trim().slice(TGCB_SQL_BASE64_PREFIX.length).trim()
+  if (!payload) throw new Error('Invalid Base64 SQL export payload')
+  return base64ToUtf8(payload)
+}
+
+async function decodeSqlByMode(sqlText, password = '') {
+  const raw = String(sqlText || '').trim()
+  if (raw.startsWith(TGCB_SQL_AES_PREFIX)) return decryptSqlPayloadAes(raw, password)
+  if (raw.startsWith(TGCB_SQL_BASE64_PREFIX)) return decodeBase64WrappedSql(raw)
+  return String(sqlText || '')
+}
+
+function buildPlainSqlFromRecords(records, activeDb) {
   const lines = [
     '-- Telegram_ChatBot Business Data SQL Export',
     `-- Source Storage: ${activeDb}`,
@@ -78,7 +171,35 @@ export async function exportBusinessDataSql(store, activeDb = 'kv') {
   return lines.join('\n')
 }
 
-export function parseBusinessSql(sqlText) {
+export async function exportBusinessDataSql(store, activeDb = 'kv', options = {}) {
+  const mode = String(options?.mode || 'base64').toLowerCase()
+  const password = String(options?.password || '')
+
+  const [settings, users, whitelist, messages, recentConvs] = await Promise.all([
+    store.getAllSettings(),
+    store.getAllUsersRaw(),
+    store.getWhitelistRaw(),
+    store.getAllMsgsRaw(),
+    store.getAllRecentRaw(),
+  ])
+
+  const records = {
+    settings: Object.entries(settings || {}).map(([key, value]) => normalizeRecord('settings', { key, value })),
+    users: (users || []).map((item) => normalizeRecord('users', item)),
+    whitelist: (whitelist || []).map((item) => normalizeRecord('whitelist', item)),
+    messages: (messages || []).map((item) => normalizeRecord('messages', item)),
+    recent_convs: (recentConvs || []).map((item) => normalizeRecord('recent_convs', item)),
+  }
+
+  const plainSql = buildPlainSqlFromRecords(records, activeDb)
+
+  if (mode === 'plain') return `${plainSql}\n`
+  if (mode === 'aes') return encryptSqlPayloadAes(plainSql, password)
+  return `${TGCB_SQL_BASE64_PREFIX}${utf8ToBase64(plainSql)}\n`
+}
+
+export async function parseBusinessSql(sqlText, options = {}) {
+  const decodedSql = await decodeSqlByMode(sqlText, String(options?.password || ''))
   const records = {
     settings: [],
     users: [],
@@ -87,7 +208,7 @@ export function parseBusinessSql(sqlText) {
     recent_convs: [],
   }
 
-  for (const line of String(sqlText || '').split(/\r?\n/)) {
+  for (const line of String(decodedSql || '').split(/\r?\n/)) {
     const match = line.match(/^-- TGCB_RECORD ([a-z_]+) (.+)$/)
     if (!match) continue
 
@@ -197,8 +318,8 @@ async function restoreToD1(d1Store, records) {
   }
 }
 
-export async function importBusinessDataSql({ sqlText, target, kvStore, d1Store }) {
-  const records = parseBusinessSql(sqlText)
+export async function importBusinessDataSql({ sqlText, target, kvStore, d1Store, password = '' }) {
+  const records = await parseBusinessSql(sqlText, { password })
   const hasAnyRecord = Object.values(records).some((items) => items.length > 0)
 
   if (!hasAnyRecord) {

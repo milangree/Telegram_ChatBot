@@ -71,13 +71,17 @@ function getInlineKbMsgDeleteSeconds(settings) {
   return parseBoundedInt(settings?.INLINE_KB_MSG_DELETE_SECONDS || settings?.USER_MSG_DELETE_SECONDS || '15', 15, 0, 25);
 }
 
-const ADMIN_EDIT_SYNC_WINDOW_MS = 30 * 1000;
+function getEditSyncWindowMs(settings) {
+  const seconds = parseBoundedInt(settings?.MESSAGE_EDIT_SYNC_WINDOW_SECONDS || '300', 300, 10, 86400);
+  return seconds * 1000;
+}
 const MESSAGE_REACTION_EMOJI = '✅';
 
 const ADMIN_NUMERIC_INPUT_FIELDS = {
   VERIFICATION_TIMEOUT: { min: 60, max: 900, unit: 's', labelKey: 'panel.timeout', defaultValue: 300 },
   MAX_VERIFICATION_ATTEMPTS: { min: 1, max: 10, unit: '', labelKey: 'panel.attempts', defaultValue: 3 },
   INLINE_KB_MSG_DELETE_SECONDS: { min: 0, max: 25, unit: 's', labelKey: 'panel.inlineKbDelete', defaultValue: 15 },
+  MESSAGE_EDIT_SYNC_WINDOW_SECONDS: { min: 10, max: 86400, unit: 's', labelKey: 'panel.messageEditSyncWindow', defaultValue: 300 },
 };
 
 function getAdminNumericFieldConfig(field) {
@@ -586,6 +590,9 @@ function adminFeatureMenuKb(s, t) {
         ? [{ text: `🧵 ${t('panel.userEditSync')}: ${s.USER_EDIT_SYNC_ENABLED === 'true' ? t('panel.on') : t('panel.off')}`, callback_data: 'adm:tues' }]
         : []),
     ],
+    ...(s.MESSAGE_EDIT_SYNC_ENABLED === 'true'
+      ? [[{ text: `⏲ ${t('panel.messageEditSyncWindow')}: ${s.MESSAGE_EDIT_SYNC_WINDOW_SECONDS || '300'}s`, callback_data: 'adm:esw' }]]
+      : []),
     [
       { text: `🧹 ${t('panel.inlineKbDelete')}: ${inlineKbDeleteSec}s`, callback_data: 'adm:ik' },
       { text: `🛡 ${t('panel.messageFilter')}: ${filterCount}`, callback_data: 'adm:mf' },
@@ -1023,6 +1030,7 @@ async function handleEditedMsg(msg, { tg, db, kv, settings }) {
   const adminIds = parseAdminIds(settings.ADMIN_IDS);
   const messageEditSyncEnabled = settings.MESSAGE_EDIT_SYNC_ENABLED !== 'false';
   const userEditSyncEnabled = settings.USER_EDIT_SYNC_ENABLED !== 'false';
+  const editSyncWindowMs = getEditSyncWindowMs(settings);
 
   // 管理员在群话题中的编辑：同步给用户并更新 WebUI 消息内容。
   if (msg.chat.id === groupId && msg.is_topic_message && adminIds.includes(user.id)) {
@@ -1032,7 +1040,7 @@ async function handleEditedMsg(msg, { tg, db, kv, settings }) {
 
     const mapped = await getAdminForwardMap(kv, msg.chat.id, msg.message_id);
     if (!mapped?.userChatId || !mapped?.userMsgId) return;
-    if (Date.now() - Number(mapped.forwardedAt || 0) > ADMIN_EDIT_SYNC_WINDOW_MS) return;
+    if (Date.now() - Number(mapped.forwardedAt || 0) > editSyncWindowMs) return;
 
     const shouldSync = await shouldProcessMessageOnce(
       kv,
@@ -1097,7 +1105,7 @@ async function handleEditedMsg(msg, { tg, db, kv, settings }) {
 
   const mapped = await getUserForwardMap(kv, msg.chat.id, msg.message_id);
   if (!mapped?.groupChatId || !mapped?.groupMsgId) return;
-  if (Date.now() - Number(mapped.forwardedAt || 0) > ADMIN_EDIT_SYNC_WINDOW_MS) return;
+  if (Date.now() - Number(mapped.forwardedAt || 0) > editSyncWindowMs) return;
 
   const shouldSync = await shouldProcessMessageOnce(
     kv,
@@ -1801,10 +1809,12 @@ async function handleAdmCb(q, action, { tg, db, kv, settings, chatId, msgId, adm
     return;
   }
 
-  if (action === 'to' || action === 'ma' || action === 'ik') {
+  if (action === 'to' || action === 'ma' || action === 'ik' || action === 'esw') {
     const field = action === 'to'
       ? 'VERIFICATION_TIMEOUT'
-      : (action === 'ma' ? 'MAX_VERIFICATION_ATTEMPTS' : 'INLINE_KB_MSG_DELETE_SECONDS');
+      : (action === 'ma'
+        ? 'MAX_VERIFICATION_ATTEMPTS'
+        : (action === 'ik' ? 'INLINE_KB_MSG_DELETE_SECONDS' : 'MESSAGE_EDIT_SYNC_WINDOW_SECONDS'));
     const cfg = getAdminNumericFieldConfig(field);
 
     if (!kv || !adminId || !cfg) {
