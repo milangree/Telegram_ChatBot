@@ -51,6 +51,15 @@ export class TG {
     });
   }
 
+  setMessageReaction({ chatId, msgId, emoji = '✅', isBig = false }) {
+    return this.call('setMessageReaction', {
+      chat_id: chatId,
+      message_id: msgId,
+      reaction: [{ type: 'emoji', emoji }],
+      is_big: isBig,
+    });
+  }
+
   deleteMsg({ chatId, msgId }) {
     return this.call('deleteMessage', {
       chat_id: chatId,
