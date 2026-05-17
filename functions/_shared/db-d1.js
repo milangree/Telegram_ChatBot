@@ -153,6 +153,35 @@ export class D1Store {
     await this.exec('INSERT INTO messages(id,user_id,direction,content,message_type,telegram_message_id,created_at) VALUES(?,?,?,?,?,?,?)', id, userId, direction, fullContent, messageType, telegramMessageId || null, ts)
     await this.exec('INSERT OR REPLACE INTO recent_convs(user_id,last_message,last_direction,last_at) VALUES(?,?,?,?)', userId, compact, direction, ts)
   }
+  async updateMsgContentByTelegramMessageId({ userId, direction, telegramMessageId, content, messageType = 'text' }) {
+    if (!userId || !direction || telegramMessageId == null) return false
+
+    const fullContent = typeof content === 'string' ? content : (content == null ? '' : String(content))
+    await this.exec(
+      'UPDATE messages SET content=?, message_type=? WHERE user_id=? AND direction=? AND telegram_message_id=?',
+      fullContent,
+      messageType,
+      userId,
+      direction,
+      telegramMessageId,
+    )
+
+    const latest = await this.first(
+      'SELECT direction, content, created_at FROM messages WHERE user_id=? ORDER BY created_at DESC LIMIT 1',
+      userId,
+    )
+    if (latest) {
+      await this.exec(
+        'INSERT OR REPLACE INTO recent_convs(user_id,last_message,last_direction,last_at) VALUES(?,?,?,?)',
+        userId,
+        compactMessageContent(latest.content),
+        latest.direction,
+        latest.created_at,
+      )
+    }
+
+    return true
+  }
   async getMsgs(userId, limit = 50, offset = 0) {
     return this.all('SELECT * FROM messages WHERE user_id=? ORDER BY created_at ASC LIMIT ? OFFSET ?', userId, limit, offset)
   }

@@ -240,6 +240,24 @@
               <div class="divider"></div>
               <div class="toggle-row">
                 <div>
+                  <div class="toggle-label">{{ t('settings.feature.messageEditSync') }}</div>
+                  <div class="form-hint">{{ t('settings.feature.messageEditSyncHint') }}</div>
+                </div>
+                <label class="toggle"><input type="checkbox" v-model="messageEditSyncEnabled" /><span class="toggle-slider"></span></label>
+              </div>
+              <template v-if="messageEditSyncEnabled">
+                <div class="divider"></div>
+                <div class="toggle-row">
+                  <div>
+                    <div class="toggle-label">{{ t('settings.feature.userEditSync') }}</div>
+                    <div class="form-hint">{{ t('settings.feature.userEditSyncHint') }}</div>
+                  </div>
+                  <label class="toggle"><input type="checkbox" v-model="userEditSyncEnabled" /><span class="toggle-slider"></span></label>
+                </div>
+              </template>
+              <div class="divider"></div>
+              <div class="toggle-row">
+                <div>
                   <div class="toggle-label">{{ t('settings.feature.zalgoFilter') }}</div>
                   <div class="form-hint">{{ t('settings.feature.zalgoFilterHint') }}</div>
                 </div>
@@ -553,6 +571,8 @@ const autoUnblock = boolProp('AUTO_UNBLOCK_ENABLED')
 const whitelistEnabled = boolProp('WHITELIST_ENABLED')
 const cmdFilter = boolProp('BOT_COMMAND_FILTER')
 const adminNotifyEnabled = boolProp('ADMIN_NOTIFY_ENABLED')
+const messageEditSyncEnabled = boolProp('MESSAGE_EDIT_SYNC_ENABLED')
+const userEditSyncEnabled = boolProp('USER_EDIT_SYNC_ENABLED')
 const zalgoFilterEnabled = boolProp('ZALGO_FILTER_ENABLED')
 const inlineKbDeleteEnabled = boolProp('INLINE_KB_MSG_DELETE_ENABLED')
 const welcomeEnabled = boolProp('WELCOME_ENABLED')

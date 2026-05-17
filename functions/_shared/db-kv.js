@@ -207,6 +207,48 @@ export class KVStore {
     await this.kv.put(`msg:${userId}:${id}`, JSON.stringify(msg))
     await this.kv.put(`recent:${userId}`, JSON.stringify({ user_id: userId, last_message: compact, last_direction: direction, last_at: msg.created_at }))
   }
+  async updateMsgContentByTelegramMessageId({ userId, direction, telegramMessageId, content, messageType = 'text' }) {
+    if (!userId || !direction || telegramMessageId == null) return false
+
+    const keys = await kvListAll(this.kv, `msg:${userId}:`)
+    const targetTelegramMessageId = String(telegramMessageId)
+    const fullContent = typeof content === 'string' ? content : (content == null ? '' : String(content))
+    let updated = false
+
+    for (const key of keys) {
+      const raw = await this.kv.get(key.name)
+      if (!raw) continue
+      const msg = JSON.parse(raw)
+      if (String(msg?.direction || '') !== String(direction)) continue
+      if (String(msg?.telegram_message_id ?? '') !== targetTelegramMessageId) continue
+
+      msg.content = fullContent
+      msg.message_type = messageType
+      await this.kv.put(key.name, JSON.stringify(msg))
+      updated = true
+    }
+
+    const msgs = (await Promise.all(
+      (await kvListAll(this.kv, `msg:${userId}:`)).map((k) =>
+        this.kv.get(k.name).then((d) => (d ? JSON.parse(d) : null)),
+      ),
+    )).filter(Boolean)
+    msgs.sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+    const latest = msgs[msgs.length - 1]
+    if (latest) {
+      await this.kv.put(
+        `recent:${userId}`,
+        JSON.stringify({
+          user_id: userId,
+          last_message: compactMessageContent(latest.content),
+          last_direction: latest.direction,
+          last_at: latest.created_at,
+        }),
+      )
+    }
+
+    return updated
+  }
   async getMsgs(userId, limit = 50, offset = 0) {
     const msgs = (await Promise.all((await kvListAll(this.kv, `msg:${userId}:`)).map(k => this.kv.get(k.name).then(d => d ? JSON.parse(d) : null)))).filter(Boolean)
     msgs.sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
