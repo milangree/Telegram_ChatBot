@@ -549,6 +549,7 @@ const messages = {
   "api.settings.testFailed": "测试失败",
   "api.settings.invalidTarget": "无效目标",
   "api.settings.d1NotBound": "D1 未绑定",
+  "api.settings.hyperdriveNotBound": "Hyperdrive 未绑定",
   "api.settings.switchFailed": "切换失败: {error}",
   "api.settings.clearDataFailed": "清空数据库失败: {error}",
   "api.settings.sqlExportFailed": "导出 SQL 失败: {error}",

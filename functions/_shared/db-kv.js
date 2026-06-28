@@ -9,24 +9,47 @@ function compactMessageContent(content) {
   return raw.slice(0, MAX_STORED_MESSAGE_LENGTH - 1) + '…'
 }
 
-export async function kvListAll(kv, prefix) {
-  const keys = []
-  let cursor
-  do {
-    const opts = { prefix }
-    if (cursor) opts.cursor = cursor
-    const res = await kv.list(opts)
-    keys.push(...res.keys)
-    cursor = res.list_complete ? undefined : res.cursor
-  } while (cursor)
-  return keys
+// ── In-memory list cache for kvListAll results ───────────────────────────────
+const _listCache = new Map()
+const LIST_CACHE_TTL = 3000 // 3s TTL for list results
+
+function _getCachedList(prefix) {
+  const hit = _listCache.get(prefix)
+  if (!hit) return null
+  if (hit.expiresAt <= Date.now()) { _listCache.delete(prefix); return null }
+  return hit.keys
 }
+
+function _setCachedList(prefix, keys) {
+  _listCache.set(prefix, { keys, expiresAt: Date.now() + LIST_CACHE_TTL })
+  // Cap size to avoid memory leak
+  if (_listCache.size > 200) {
+    const oldest = _listCache.entries().next().value
+    if (oldest) _listCache.delete(oldest[0])
+  }
+}
+
+function _clearListCache(prefix) {
+  if (prefix) _listCache.delete(prefix)
+  else _listCache.clear()
+}
+
+function _invalidateListsContaining(prefix) {
+  for (const [key] of _listCache) {
+    if (key.startsWith(prefix)) _listCache.delete(key)
+  }
+}
+
+export async function kvListAll(kv, prefix) {
 
 export class KVStore {
   constructor(kv) {
     this.kv = kv
     this.cache = new Map()
-    this.defaultCacheTtlMs = 15000
+    this.defaultCacheTtlMs = 30000         // 30s default (was 15s)
+    this.settingsCacheTtlMs = 60000        // 60s for settings (rarely change)
+    this.settingsCacheKey = '_all_settings'
+    this.negativeCacheTtlMs = 5000         // 5s negative cache for null values
   }
 
   _cacheGet(key) {
@@ -40,12 +63,36 @@ export class KVStore {
   }
 
   _cacheSet(key, value, ttlMs = this.defaultCacheTtlMs) {
+    // Cap cached object size to prevent memory bloat
+    if (value !== null && typeof value === 'object') {
+      try {
+        const size = JSON.stringify(value).length
+        if (size > 100 * 1024) return value // don't cache objects >100KB
+      } catch {}
+    }
     this.cache.set(key, { value, expiresAt: Date.now() + ttlMs })
+    // GC stale entries once cache grows large
+    if (this.cache.size > 5000) this._gc()
     return value
   }
 
   _cacheDelete(key) {
     this.cache.delete(key)
+  }
+
+  /** Evict ~25% of stale entries when cache is oversized */
+  _gc() {
+    const threshold = Date.now()
+    let deleted = 0
+    for (const [k, v] of this.cache) {
+      if (v.expiresAt <= threshold) { this.cache.delete(k); deleted++ }
+      if (deleted > this.cache.size * 0.25) break
+    }
+  }
+
+  /** Invalidate cached getAllSettings() result */
+  _invalidateSettingsCache() {
+    this._cacheDelete(this.settingsCacheKey)
   }
 
   // Settings
@@ -54,21 +101,30 @@ export class KVStore {
     const cached = this._cacheGet(ck)
     if (cached !== undefined) return cached
     const v = await this.kv.get(ck)
-    this._cacheSet(ck, v)
+    // Negative cache for null/empty
+    if (v === null || v === undefined || v === '') {
+      this._cacheSet(ck, null, this.negativeCacheTtlMs)
+      return null
+    }
+    this._cacheSet(ck, v, this.settingsCacheTtlMs)
     return v
   }
   async setSetting(key, value) {
     const ck = `setting:${key}`
     const sv = String(value)
     await this.kv.put(ck, sv)
-    this._cacheSet(ck, sv)
+    this._cacheSet(ck, sv, this.settingsCacheTtlMs)
+    this._invalidateSettingsCache()
   }
   async getAllSettings() {
+    const cached = this._cacheGet(this.settingsCacheKey)
+    if (cached !== undefined) return { ...cached } // return a shallow copy
     const s = { ...DEFAULT_SETTINGS }
     await Promise.all(Object.keys(s).map(async k => {
       const v = await this.getSetting(k)
       if (v !== null) s[k] = v
     }))
+    this._cacheSet(this.settingsCacheKey, { ...s }, this.settingsCacheTtlMs)
     return s
   }
 
@@ -88,11 +144,13 @@ export class KVStore {
     await this.kv.put(`user:${u.user_id}`, JSON.stringify(rec))
     this._cacheSet(`user:${u.user_id}`, rec)
     if (u.username) await this.kv.put(`username:${u.username.toLowerCase()}`, String(u.user_id))
+    _invalidateListsContaining('user:')
   }
   async setUserThread(userId, threadId) {
     const u = await this.getUser(userId)
     if (u) { u.thread_id = threadId; await this.kv.put(`user:${userId}`, JSON.stringify(u)) }
     await this.kv.put(`thread:${threadId}`, String(userId))
+    _invalidateListsContaining('user:')
   }
   async getUserByThread(threadId) {
     const uid = await this.kv.get(`thread:${threadId}`)
@@ -101,6 +159,7 @@ export class KVStore {
   async setUserVerified(userId, v) {
     const u = await this.getUser(userId)
     if (u) { u.is_verified = v ? 1 : 0; await this.kv.put(`user:${userId}`, JSON.stringify(u)) }
+    _invalidateListsContaining('user:')
   }
   async blockUser(userId, reason, blockedBy, permanent) {
     const u = await this.getUser(userId)
@@ -111,6 +170,7 @@ export class KVStore {
     }
     // Ban should take priority over whitelist to avoid conflicting state.
     await this.removeFromWhitelist(userId).catch(() => {})
+    _invalidateListsContaining('user:')
   }
   async unblockUser(userId) {
     const u = await this.getUser(userId)
@@ -119,6 +179,7 @@ export class KVStore {
       await this.kv.put(`user:${userId}`, JSON.stringify(u))
       this._cacheSet(`user:${userId}`, u)
     }
+    _invalidateListsContaining('user:')
   }
   async updateUsername(userId, newUsername) {
     const u = await this.getUser(userId)
@@ -128,6 +189,7 @@ export class KVStore {
       await this.kv.put(`user:${userId}`, JSON.stringify(u))
       if (newUsername) await this.kv.put(`username:${newUsername.toLowerCase()}`, String(userId))
     }
+    _invalidateListsContaining('user:')
   }
   async searchUsers(query, limit = 10) {
     const results = []
@@ -180,11 +242,13 @@ export class KVStore {
     const val = JSON.stringify({ user_id: userId, reason, added_by: addedBy, created_at: new Date().toISOString() })
     await this.kv.put(key, val)
     this._cacheSet(key, val)
+    _invalidateListsContaining('whitelist:')
   }
   async removeFromWhitelist(userId) {
     const key = `whitelist:${userId}`
     await this.kv.delete(key)
     this._cacheDelete(key)
+    _invalidateListsContaining('whitelist:')
   }
   async getWhitelist(page = 1, pageSize = 20) {
     const entries = (await Promise.all((await kvListAll(this.kv, 'whitelist:')).map(async k => {
@@ -204,11 +268,14 @@ export class KVStore {
   // Messages
   async addMsg({ userId, direction, content, messageType = 'text', telegramMessageId }) {
     const id = `${Date.now()}_${Math.random().toString(36).substr(2, 6)}`
+    const ts = new Date().toISOString()
     const fullContent = typeof content === 'string' ? content : (content == null ? '' : String(content))
     const compact = compactMessageContent(fullContent)
-    const msg = { id, user_id: userId, direction, content: fullContent, message_type: messageType, telegram_message_id: telegramMessageId, created_at: new Date().toISOString() }
+    const msg = { id, user_id: userId, direction, content: fullContent, message_type: messageType, telegram_message_id: telegramMessageId, created_at: ts }
     await this.kv.put(`msg:${userId}:${id}`, JSON.stringify(msg))
-    await this.kv.put(`recent:${userId}`, JSON.stringify({ user_id: userId, last_message: compact, last_direction: direction, last_at: msg.created_at }))
+    await this.kv.put(`recent:${userId}`, JSON.stringify({ user_id: userId, last_message: compact, last_direction: direction, last_at: ts }))
+    _invalidateListsContaining('msg:')
+    _invalidateListsContaining('recent:')
   }
   async updateMsgContentByTelegramMessageId({ userId, direction, telegramMessageId, content, messageType = 'text' }) {
     if (!userId || !direction || telegramMessageId == null) return false
@@ -283,6 +350,8 @@ export class KVStore {
     const keys = await kvListAll(this.kv, `msg:${userId}:`)
     await Promise.all(keys.map(k => this.kv.delete(k.name)))
     await this.kv.delete(`recent:${userId}`)
+    _invalidateListsContaining('msg:')
+    _invalidateListsContaining('recent:')
   }
   async clearUserThread(userId) {
     const u = await this.getUser(userId)
@@ -292,6 +361,7 @@ export class KVStore {
       await this.kv.put(`user:${userId}`, JSON.stringify(u))
       this._cacheSet(`user:${userId}`, u)
     }
+    _invalidateListsContaining('user:')
   }
 
   async deleteUser(userId) {
@@ -309,6 +379,8 @@ export class KVStore {
     await this.kv.delete(`user:${uid}`).catch(() => {})
 
     this._cacheDelete(`user:${uid}`)
+    _invalidateListsContaining('user:')
+    _invalidateListsContaining('username:')
     return true
   }
   async getAllRecentRaw() {
@@ -353,6 +425,8 @@ export class KVStore {
     const user = { id, username, password_hash: passwordHash, totp_secret: null, totp_enabled: 0, is_admin: 1, created_at: new Date().toISOString() }
     await this.kv.put(`webuser:${username.toLowerCase()}`, JSON.stringify(user))
     await this.kv.put(`webuser_id:${id}`, JSON.stringify(user))
+    _invalidateListsContaining('webuser:')
+    _invalidateListsContaining('webuser_id:')
     return user
   }
   async getWebUser(username) { const d = await this.kv.get(`webuser:${username.toLowerCase()}`); return d ? JSON.parse(d) : null }
@@ -375,6 +449,8 @@ export class KVStore {
   async _saveWebUser(u) {
     await this.kv.put(`webuser:${u.username.toLowerCase()}`, JSON.stringify(u))
     await this.kv.put(`webuser_id:${u.id}`, JSON.stringify(u))
+    _invalidateListsContaining('webuser:')
+    _invalidateListsContaining('webuser_id:')
   }
   async getAllWebUsersRaw() {
     return (await Promise.all((await kvListAll(this.kv, 'webuser_id:')).map(k => this.kv.get(k.name).then(d => d ? JSON.parse(d) : null)))).filter(Boolean)
@@ -406,5 +482,6 @@ export class KVStore {
 
     await this.setSetting('ACTIVE_DB', activeDb)
     this.cache.clear()
+    _listCache.clear()
   }
 }

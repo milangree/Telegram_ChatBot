@@ -318,12 +318,82 @@ async function restoreToD1(d1Store, records) {
   }
 }
 
-export async function importBusinessDataSql({ sqlText, target, kvStore, d1Store, password = '' }) {
+async function restoreToPostgres(hyperdriveStore, records) {
+  await hyperdriveStore.initSchema()
+
+  for (const item of records.settings) {
+    await hyperdriveStore.exec(
+      'INSERT INTO settings(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value',
+      item.key, item.value ?? '',
+    )
+  }
+
+  for (const item of records.users) {
+    await hyperdriveStore.exec(
+      `INSERT INTO users(user_id,username,first_name,last_name,language_code,thread_id,is_verified,is_blocked,is_permanent_block,block_reason,blocked_by,created_at)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+       ON CONFLICT(user_id) DO UPDATE SET
+         username=EXCLUDED.username,
+         first_name=EXCLUDED.first_name,
+         last_name=EXCLUDED.last_name,
+         language_code=EXCLUDED.language_code,
+         thread_id=EXCLUDED.thread_id,
+         is_verified=EXCLUDED.is_verified,
+         is_blocked=EXCLUDED.is_blocked,
+         is_permanent_block=EXCLUDED.is_permanent_block,
+         block_reason=EXCLUDED.block_reason,
+         blocked_by=EXCLUDED.blocked_by,
+         created_at=EXCLUDED.created_at`,
+      item.user_id, item.username, item.first_name, item.last_name,
+      item.language_code, item.thread_id, item.is_verified ?? 0,
+      item.is_blocked ?? 0, item.is_permanent_block ?? 0,
+      item.block_reason, item.blocked_by, item.created_at,
+    )
+
+    if (item.thread_id !== null && item.thread_id !== undefined && item.thread_id !== '') {
+      await hyperdriveStore.exec(
+        'INSERT INTO thread_map(thread_id,user_id) VALUES($1,$2) ON CONFLICT(thread_id) DO UPDATE SET user_id=EXCLUDED.user_id',
+        item.thread_id, item.user_id,
+      )
+    }
+  }
+
+  for (const item of records.whitelist) {
+    await hyperdriveStore.exec(
+      'INSERT INTO whitelist(user_id,reason,added_by,created_at) VALUES($1,$2,$3,$4) ON CONFLICT(user_id) DO UPDATE SET reason=EXCLUDED.reason,added_by=EXCLUDED.added_by,created_at=EXCLUDED.created_at',
+      item.user_id, item.reason, item.added_by, item.created_at,
+    )
+  }
+
+  for (const item of records.messages) {
+    await hyperdriveStore.exec(
+      `INSERT INTO messages(id,user_id,direction,content,message_type,telegram_message_id,created_at)
+       VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(id) DO NOTHING`,
+      item.id, item.user_id, item.direction, item.content,
+      item.message_type, item.telegram_message_id, item.created_at,
+    )
+  }
+
+  for (const item of records.recent_convs) {
+    await hyperdriveStore.exec(
+      'INSERT INTO recent_convs(user_id,last_message,last_direction,last_at) VALUES($1,$2,$3,$4) ON CONFLICT(user_id) DO UPDATE SET last_message=EXCLUDED.last_message,last_direction=EXCLUDED.last_direction,last_at=EXCLUDED.last_at',
+      item.user_id, item.last_message, item.last_direction, item.last_at,
+    )
+  }
+}
+
+export async function importBusinessDataSql({ sqlText, target, kvStore, d1Store, hyperdriveStore, password = '' }) {
   const records = await parseBusinessSql(sqlText, { password })
   const hasAnyRecord = Object.values(records).some((items) => items.length > 0)
 
   if (!hasAnyRecord) {
     throw new Error('SQL file does not contain any importable TGCB business records')
+  }
+
+  if (target === 'hyperdrive') {
+    if (!hyperdriveStore) throw new Error('Hyperdrive store is not available')
+    await restoreToPostgres(hyperdriveStore, records)
+    return
   }
 
   if (target === 'd1') {

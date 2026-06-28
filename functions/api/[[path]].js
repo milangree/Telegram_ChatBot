@@ -16,7 +16,7 @@ export async function onRequest({ request, env }) {
     return err(t('kvNotBound'), 500);
   }
 
-  const db = new DB(env.KV, env.D1 || null);
+  const db = new DB(env.KV, env.D1 || null, env.HYPERDRIVE || null);
   await db.autoRepair();
   await db.ensureDefaultAdmin();
   const kv = env.KV;
@@ -313,14 +313,16 @@ export async function onRequest({ request, env }) {
   if (path === '/settings/db' && request.method === 'GET') {
     const active = await db.getActiveDb();
     const hasD1 = !!env.D1;
-    return j({ active, hasD1 });
+    const hasHyperdrive = !!env.HYPERDRIVE;
+    return j({ active, hasD1, hasHyperdrive });
   }
 
   if (path === '/settings/db/switch' && request.method === 'POST') {
     try {
       const { target, sync } = await request.json();
-      if (!['kv', 'd1'].includes(target)) return err(t('settings.invalidTarget'), 400);
+      if (!['kv', 'd1', 'hyperdrive'].includes(target)) return err(t('settings.invalidTarget'), 400);
       if (target === 'd1' && !env.D1) return err(t('settings.d1NotBound'), 400);
+      if (target === 'hyperdrive' && !env.HYPERDRIVE) return err(t('settings.hyperdriveNotBound'), 400);
 
       const current = await db.getActiveDb();
       if (sync && current !== target) await db.syncData(current, target);
@@ -390,12 +392,16 @@ export async function onRequest({ request, env }) {
         target: active,
         kvStore: db._kv,
         d1Store: db._d1,
+        hyperdriveStore: db._hyperdrive,
         password: String(password || ''),
       });
 
-      if (db._d1) {
+      if (db._d1 && active !== 'd1') {
         const other = active === 'kv' ? 'd1' : 'kv';
         await db.syncData(active, other);
+      }
+      if (db._hyperdrive && active !== 'hyperdrive') {
+        await db.syncData(active, 'hyperdrive');
       }
 
       return j({ ok: true, active });

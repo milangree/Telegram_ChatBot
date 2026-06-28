@@ -376,6 +376,7 @@ const messages = {
   "api.settings.testFailed": "Test failed",
   "api.settings.invalidTarget": "Invalid target",
   "api.settings.d1NotBound": "D1 is not bound",
+  "api.settings.hyperdriveNotBound": "Hyperdrive is not bound",
   "api.settings.switchFailed": "Switch failed: {error}",
   "api.settings.clearDataFailed": "Clear database failed: {error}",
   "api.tg.botTokenNotConfigured": "Bot Token is not configured",

@@ -3,21 +3,24 @@ import { hashPw } from './auth.js'
 import { DEFAULT_SETTINGS } from './db-settings.js'
 import { KVStore } from './db-kv.js'
 import { D1Store } from './db-d1.js'
+import { HyperdriveStore } from './db-hyperdrive.js'
 import { resolveActiveDb, autoRepairDb, switchDbStore, syncDbData } from './db-routing.js'
 
 export { DEFAULT_SETTINGS }
 
 export class DB {
-  constructor(kv, d1 = null) {
+  constructor(kv, d1 = null, hyperdrive = null) {
     this.kv = kv
     this.d1 = d1
+    this.hyperdrive = hyperdrive
     this._kv = new KVStore(kv)
     this._d1 = d1 ? new D1Store(d1) : null
+    this._hyperdrive = hyperdrive ? new HyperdriveStore(hyperdrive) : null
     this._activeStore = null
   }
 
   async _resolveActiveDb() {
-    return resolveActiveDb({ kv: this.kv, d1Store: this._d1 })
+    return resolveActiveDb({ kv: this.kv, d1Store: this._d1, hyperdriveStore: this._hyperdrive })
   }
 
   async getActiveDb() {
@@ -27,18 +30,24 @@ export class DB {
   async _store() {
     if (this._activeStore) return this._activeStore
     const active = await this._resolveActiveDb()
-    this._activeStore = (active === 'd1' && this._d1) ? this._d1 : this._kv
+    if (active === 'hyperdrive' && this._hyperdrive) {
+      this._activeStore = this._hyperdrive
+    } else if (active === 'd1' && this._d1) {
+      this._activeStore = this._d1
+    } else {
+      this._activeStore = this._kv
+    }
     return this._activeStore
   }
 
   /**
    * 自动修复（节流）：
-   * - 确保 D1 schema 完整
+   * - 确保 D1 / Hyperdrive schema 完整
    * - 补齐缺失默认设置
    * - 修复部分数据一致性（thread_map / users 字段）
    */
   async autoRepair(force = false) {
-    await autoRepairDb({ kv: this.kv, kvStore: this._kv, d1Store: this._d1 }, force)
+    await autoRepairDb({ kv: this.kv, kvStore: this._kv, d1Store: this._d1, hyperdriveStore: this._hyperdrive }, force)
   }
 
   // Verification always uses KV (ephemeral data, TTL support)
@@ -98,19 +107,20 @@ export class DB {
 
     await this._kv.clearAppDataPreserveWebUsers(active)
     if (this._d1) await this._d1.clearAppDataPreserveWebUsers(active)
+    if (this._hyperdrive) await this._hyperdrive.clearAppDataPreserveWebUsers(active)
 
     this._activeStore = null
   }
 
   /** Switch active DB and optionally sync data. */
   async switchDb(target) {
-    await switchDbStore({ kv: this.kv, kvStore: this._kv, d1Store: this._d1 }, target)
+    await switchDbStore({ kv: this.kv, kvStore: this._kv, d1Store: this._d1, hyperdriveStore: this._hyperdrive }, target)
     this._activeStore = null // reset cache
   }
 
-  /** Full sync from KV → D1 or D1 → KV. Idempotent — safe to call multiple times. */
+  /** Full sync from one store to another. Idempotent — safe to call multiple times. */
   async syncData(from, to) {
-    await syncDbData({ kvStore: this._kv, d1Store: this._d1 }, from, to)
+    await syncDbData({ kvStore: this._kv, d1Store: this._d1, hyperdriveStore: this._hyperdrive }, from, to)
   }
 
   /**
@@ -120,8 +130,9 @@ export class DB {
    */
   async ensureDefaultAdmin() {
     try {
-      // Always init D1 schema so tables exist before any query
+      // Always init schema so tables exist before any query
       if (this._d1) await this._d1.initSchema().catch(e => console.error('D1 initSchema:', e))
+      if (this._hyperdrive) await this._hyperdrive.initSchema().catch(e => console.error('Hyperdrive initSchema:', e))
 
       // Only create default if no real admin exists yet
       const count = await this.webUserCount()

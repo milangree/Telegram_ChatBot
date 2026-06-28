@@ -9,7 +9,7 @@ export async function onRequestPost(context) {
     const earlyT = createT('zh-hans');
     if (!env.KV) return new Response(earlyT('webhook.kvNotBound'), { status: 500 });
 
-    const db = new DB(env.KV, env.D1 || null);
+    const db = new DB(env.KV, env.D1 || null, env.HYPERDRIVE || null);
     await db.autoRepair();
     await db.ensureDefaultAdmin();
 
