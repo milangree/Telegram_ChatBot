@@ -398,13 +398,15 @@
                 <div>
                   <div class="toggle-label">
                     {{ t('settings.storage.current') }}
-                    <span :class="dbInfo.active === 'd1' ? 'text-success' : 'text-warn'">{{ dbInfo.active === 'd1' ? t('settings.storage.currentD1') : t('settings.storage.currentKv') }}</span>
+                    <span :class="dbInfo.active === 'hyperdrive' ? 'text-accent' : (dbInfo.active === 'd1' ? 'text-success' : 'text-warn')">{{ currentDbLabel }}</span>
                   </div>
-                  <div class="form-hint" v-if="!dbInfo.hasD1">{{ t('settings.storage.noD1') }}</div>
+                  <div class="form-hint" v-if="!dbInfo.hasD1 && !dbInfo.hasHyperdrive">{{ t('settings.storage.noD1') }}</div>
+                  <div class="form-hint" v-if="dbInfo.hasHyperdrive && dbInfo.active !== 'hyperdrive'">{{ t('settings.storage.hyperdriveHint') }}</div>
                 </div>
-                <div class="flex gap-2" v-if="dbInfo.hasD1">
+                <div class="flex gap-2 flex-wrap" v-if="dbInfo.hasD1 || dbInfo.hasHyperdrive">
                   <button class="btn-ghost btn-sm" :class="{ 'btn-primary': dbInfo.active === 'kv' }" :disabled="dbSwitching || dbInfo.active === 'kv'" @click="switchDb('kv', true)">{{ t('settings.storage.kvShort') }}</button>
-                  <button class="btn-ghost btn-sm" :class="{ 'btn-primary': dbInfo.active === 'd1' }" :disabled="dbSwitching || dbInfo.active === 'd1'" @click="switchDb('d1', true)">{{ t('settings.storage.d1Short') }}</button>
+                  <button class="btn-ghost btn-sm" :class="{ 'btn-primary': dbInfo.active === 'd1' }" :disabled="dbSwitching || dbInfo.active === 'd1'" @click="switchDb('d1', true)" v-if="dbInfo.hasD1">{{ t('settings.storage.d1Short') }}</button>
+                  <button class="btn-ghost btn-sm" :class="{ 'btn-primary': dbInfo.active === 'hyperdrive' }" :disabled="dbSwitching || dbInfo.active === 'hyperdrive'" @click="switchDb('hyperdrive', true)" v-if="dbInfo.hasHyperdrive">{{ t('settings.storage.hyperdriveShort') }}</button>
                 </div>
               </div>
               <div v-if="dbSwitching" class="flex gap-2 mt-1"><div class="spinner"></div><span class="text-muted text-sm">{{ t('settings.storage.syncing') }}</span></div>
@@ -514,7 +516,7 @@ const resolvingGroup = ref(false), groupInfo = ref(null), groupErr = ref('')
 const newAdminId = ref('')
 const adminProfiles = ref({})
 const adminAvatarErrors = ref({})
-const dbInfo = ref({ active: 'kv', hasD1: false }), dbSwitching = ref(false), dbMsg = ref(''), dbOk = ref(true)
+const dbInfo = ref({ active: 'kv', hasD1: false, hasHyperdrive: false }), dbSwitching = ref(false), dbMsg = ref(''), dbOk = ref(true)
 const clearingData = ref(false)
 const sqlExporting = ref(false), sqlImporting = ref(false), sqlMsg = ref(''), sqlOk = ref(true), sqlFileName = ref('')
 const sqlFileInput = ref(null)
@@ -568,6 +570,13 @@ const settingsNavItems = computed(() => [
 ])
 
 const sqlBusy = computed(() => sqlExporting.value || sqlImporting.value)
+
+const currentDbLabel = computed(() => {
+  const a = dbInfo.value.active
+  if (a === 'hyperdrive') return t('settings.storage.currentHyperdrive')
+  if (a === 'd1') return t('settings.storage.currentD1')
+  return t('settings.storage.currentKv')
+})
 
 const boolProp = key => computed({ get: () => form.value[key] === 'true', set: v => { form.value[key] = v ? 'true' : 'false' } })
 const verifyEnabled = boolProp('VERIFICATION_ENABLED')
@@ -831,11 +840,13 @@ async function setWebhook() {
 async function switchDb(target, sync = true) {
   dbSwitching.value = true
   dbMsg.value = ''
+  const targetLabel = target === 'hyperdrive' ? t('settings.storage.hyperdriveShort')
+    : target === 'd1' ? t('settings.storage.d1Short') : t('settings.storage.kvShort')
   try {
     await api.post('/api/settings/db/switch', { target, sync })
     dbInfo.value.active = target
     writeLocalCache(SETTINGS_DB_CACHE_KEY, dbInfo.value)
-    dbMsg.value = t('settings.storage.switched', { target: target === 'd1' ? t('settings.storage.d1Short') : t('settings.storage.kvShort') })
+    dbMsg.value = t('settings.storage.switched', { target: targetLabel })
     dbOk.value = true
   } catch (e) {
     dbMsg.value = e.message
