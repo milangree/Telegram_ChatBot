@@ -41,6 +41,20 @@ function _invalidateListsContaining(prefix) {
 }
 
 export async function kvListAll(kv, prefix) {
+  const cached = _getCachedList(prefix)
+  if (cached) return cached
+  const keys = []
+  let cursor
+  do {
+    const opts = { prefix, limit: 1000 }
+    if (cursor) opts.cursor = cursor
+    const res = await kv.list(opts)
+    keys.push(...res.keys)
+    cursor = res.list_complete ? undefined : res.cursor
+  } while (cursor)
+  _setCachedList(prefix, keys)
+  return keys
+}
 
 export class KVStore {
   constructor(kv) {
