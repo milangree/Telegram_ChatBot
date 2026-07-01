@@ -5,6 +5,8 @@ dist/
 .env.local
 *.log
 .DS_Store
+.git/
+.github/
 
 # IDE / 本地调试配置
 .vscode/

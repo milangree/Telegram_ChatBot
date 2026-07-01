@@ -8,6 +8,7 @@
   <img src="https://img.shields.io/badge/Vue-3-42b883?style=flat&logo=vue.js&logoColor=white" alt="Vue 3">
   <img src="https://img.shields.io/badge/Vite-Build-646cff?style=flat&logo=vite&logoColor=white" alt="Vite">
   <img src="https://img.shields.io/badge/Cloudflare-Pages-f38020?style=flat&logo=cloudflare&logoColor=white" alt="Cloudflare Pages">
+  <img src="https://img.shields.io/badge/Docker-Ready-2496ED?style=flat&logo=docker&logoColor=white" alt="Docker">
   <img src="https://img.shields.io/badge/Storage-KV%20%2F%20D1%20%2F%20Hyperdrive-2f6feb?style=flat" alt="KV / D1 / Hyperdrive">
   <img src="https://img.shields.io/badge/Auth-2FA%20%2F%20Session-8a63d2?style=flat" alt="2FA / Session">
   <img src="https://img.shields.io/badge/DB-PostgreSQL%20%2F%20MySQL-4169e1?style=flat&logo=postgresql&logoColor=white" alt="PostgreSQL / MySQL">
@@ -32,6 +33,7 @@
 - [WebUI 页面说明](#webui-页面说明)
 - [国际化说明](#国际化说明)
 - [本地开发与预览](#本地开发与预览)
+- [Docker 部署](#docker-部署)
 - [故障排除](#故障排除)
 - [安全说明](#安全说明)
 - [更新项目](#更新项目)
@@ -529,6 +531,108 @@ npx vite
 ### Cloudflare 兼容性说明
 
 使用 Hyperdrive 时需要在 Cloudflare Pages 项目设置中启用 `nodejs_compat` 兼容性标志，否则 `pg` / `mysql2` 模块无法正常运行。
+
+---
+
+## 🐳 Docker 部署
+
+> 本项目同时支持 **Cloudflare Pages** 和 **Docker** 两种部署方式。Docker 部署使用与 Cloudflare Pages 完全相同的业务代码，存储层通过本地 SQLite 实现 KV 和 D1 绑定，同时保留 Hyperdrive（PostgreSQL / MySQL）支持。
+
+### Docker Hub 镜像
+
+```bash
+# 直接拉取预构建镜像
+docker pull kakuwari/tg-chatbot:latest
+```
+
+### 快速启动（docker compose）
+
+```bash
+# 克隆仓库
+git clone https://github.com/milangree/Telegram_ChatBot.git
+cd Telegram_ChatBot
+
+# 启动服务（默认使用 KV 存储）
+docker compose up -d
+
+# 查看日志
+docker compose logs -f
+```
+
+启动后访问 `http://localhost:3000` 即可进入 WebUI。
+
+### 环境变量
+
+| 变量 | 默认值 | 说明 |
+| :--- | :--- | :--- |
+| `PORT` | `3000` | 服务监听端口 |
+| `KV_FILE` | `./data/kv-store.db` | KV 存储 SQLite 文件路径 |
+| `D1_FILE` | `./data/d1-store.db` | D1 存储 SQLite 文件路径 |
+| `DATABASE_URL` | — | PostgreSQL / MySQL 连接字符串（启用 Hyperdrive） |
+| `ACTIVE_DB` | `kv` | 默认存储后端：`kv` / `d1` / `hyperdrive` |
+
+### 使用 PostgreSQL 后端
+
+编辑 `docker-compose.yml`，取消 PostgreSQL 服务的注释：
+
+```yaml
+services:
+  telegram-chatbot:
+    environment:
+      - DATABASE_URL=postgresql://telegram:telegram_password@postgres:5432/telegram_bot
+      - ACTIVE_DB=hyperdrive
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: telegram-chatbot-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: telegram_bot
+      POSTGRES_USER: telegram
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-telegram_password}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+```
+
+然后在 WebUI 设置页中切换存储后端为 Hyperdrive。
+
+### 本地构建镜像
+
+```bash
+# 构建镜像
+docker build -t telegram-chatbot .
+
+# 运行
+docker run -d \
+  --name telegram-chatbot \
+  -p 3000:3000 \
+  -v telegram-chatbot-data:/app/data \
+  telegram-chatbot
+```
+
+### Webhook 配置
+
+Docker 部署时，需要将 Webhook URL 设置为你的公网地址：
+
+```
+https://你的域名/webhook
+```
+
+如果你的服务器没有 HTTPS，可以使用 Cloudflare Tunnel 或 Nginx 反向代理。
+
+### GitHub Actions 自动发布
+
+项目配置了自动发布工作流，推送 tag 时自动构建并推送到 Docker Hub：
+
+```bash
+# 打 tag 触发自动构建
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+需要在 GitHub 仓库设置中配置以下 Secrets：
+- `DOCKERHUB_USERNAME` — Docker Hub 用户名
+- `DOCKERHUB_TOKEN` — Docker Hub Access Token
 
 ---
 

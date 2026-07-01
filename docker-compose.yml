@@ -1,0 +1,53 @@
+# Telegram ChatBot — Docker Compose 配置
+# 用法: docker compose up -d
+#
+# 环境变量说明:
+#   PORT              - 服务端口（默认 3000）
+#   KV_FILE           - KV 存储 SQLite 文件路径
+#   D1_FILE           - D1 存储 SQLite 文件路径
+#   DATABASE_URL      - PostgreSQL/MySQL 连接字符串（启用 Hyperdrive）
+#   ACTIVE_DB         - 默认存储后端：kv / d1 / hyperdrive
+
+services:
+  telegram-chatbot:
+    image: kakuwari/tg-chatbot:latest
+    container_name: telegram-chatbot
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      - PORT=3000
+      - NODE_ENV=production
+      # 存储配置 — 默认使用 KV（SQLite 文件）
+      - KV_FILE=/app/data/kv-store.db
+      - D1_FILE=/app/data/d1-store.db
+      - ACTIVE_DB=${ACTIVE_DB:-kv}
+      # 如需使用 PostgreSQL，取消注释以下行：
+      # - DATABASE_URL=postgresql://user:password@postgres:5432/telegram_bot
+      # - ACTIVE_DB=hyperdrive
+    volumes:
+      - telegram-chatbot-data:/app/data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/auth/status"]
+      interval: 30s
+      timeout: 3s
+      start_period: 10s
+      retries: 3
+
+  # ── 可选：PostgreSQL 后端（如需使用 Hyperdrive）────────────────────
+  # postgres:
+  #   image: postgres:16-alpine
+  #   container_name: telegram-chatbot-db
+  #   restart: unless-stopped
+  #   environment:
+  #     POSTGRES_DB: telegram_bot
+  #     POSTGRES_USER: telegram
+  #     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-telegram_password}
+  #   volumes:
+  #     - postgres-data:/var/lib/postgresql/data
+  #   ports:
+  #     - "5432:5432"
+
+volumes:
+  telegram-chatbot-data:
+  # postgres-data:
