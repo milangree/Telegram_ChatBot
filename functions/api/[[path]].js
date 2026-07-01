@@ -4,12 +4,12 @@ import { TG } from '../_shared/tg.js';
 import { CORS, j, err, hashPw, verifyPw, createSession, getSession, delSession, extractToken, genToken } from '../_shared/auth.js';
 import { verifyTOTP, generateTOTPSecret } from '../_shared/totp.js';
 import { renderCaptchaPNG } from '../_shared/captcha.js';
-import { setupCommands } from '../_shared/bot.js';
-import { normalizeBotLocale } from '../_shared/bot-i18n.js';
+import { setupCommands, getOrCreateThread } from '../_shared/bot.js';
+import { normalizeBotLocale, createBotT } from '../_shared/bot-i18n.js';
 import { exportBusinessDataSql, importBusinessDataSql } from '../_shared/db-sql.js';
 import { createT, normalizeLocale } from '../../shared/i18n.js';
 
-export async function onRequest({ request, env }) {
+export async function onRequest({ request, env, waitUntil }) {
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
   if (!env.KV) {
     const t = getApiTranslator(request);
@@ -201,8 +201,64 @@ export async function onRequest({ request, env }) {
 
       if (!verifyResult) return j({ ok: false, error: 'captcha_failed' }, 400);
 
-      // Mark user as verified — bot handles UI cleanup and pending message forwarding via web_app_data
+      // ── Mark verified and do all post-verification work in background ────
       await db.setUserVerified(userId, true);
+
+      // Fire-and-forget: all Telegram API calls run in background
+      const bgTask = (async () => {
+        try {
+          const botToken = await db.getSetting('BOT_TOKEN').catch(() => '');
+          if (!botToken) return;
+          const tg = new TG(botToken);
+          const wvData = JSON.parse(webVerifyRaw);
+          const verifyMsgId = wvData.verifyMsgId || verifyRecord?.verify_msg_id;
+
+          // Clean up verify records
+          await db.delVerify(userId).catch(() => {});
+          await kv.delete(`webverify:${webVerifyId}`).catch(() => {});
+
+          // Delete verification message
+          if (verifyMsgId) {
+            const del = await tg.deleteMsg({ chatId: userId, msgId: verifyMsgId }).catch(() => null);
+            if (!del?.ok) {
+              const ed = await tg.editText({ chatId: userId, msgId: verifyMsgId, text: '✅ 验证已完成', kb: [] }).catch(() => null);
+              if (!ed?.ok) await tg.editCaption({ chatId: userId, msgId: verifyMsgId, caption: '✅ 验证已完成', kb: [] }).catch(() => {});
+            }
+          }
+
+          // Send success notification
+          const locale = normalizeBotLocale(await db.getSetting('BOT_LOCALE').catch(() => 'zh-hans'));
+          const botT = createBotT(locale);
+          await tg.sendMsg({ chatId: userId, text: botT('verify.success') }).catch(() => {});
+
+          // Forward pending message
+          const pendingRaw = await kv.get(`pending:${userId}`).catch(() => null);
+          if (pendingRaw) {
+            await kv.delete(`pending:${userId}`).catch(() => {});
+            try {
+              const p = JSON.parse(pendingRaw);
+              const groupId = parseInt(await db.getSetting('FORUM_GROUP_ID').catch(() => '0'), 10);
+              if (groupId && p.msgId) {
+                const fakeUser = { id: userId, first_name: '' };
+                const tid = await getOrCreateThread(tg, db, fakeUser, groupId, kv, botT);
+                if (tid) {
+                  await tg.copyMsg({ chatId: groupId, fromChatId: userId, msgId: p.msgId, threadId: tid });
+                  await db.addMsg({ userId, direction: 'incoming', content: 'verified-forwarded' });
+                  await tg.sendMsg({ chatId: userId, text: botT('sentAfterVerify') }).catch(() => {});
+                }
+              }
+            } catch (e) {
+              console.error('[api/verify] forward pending failed:', e);
+            }
+          }
+        } catch (e) {
+          console.error('[api/verify] background task failed:', e);
+        }
+      })();
+
+      if (waitUntil) waitUntil(bgTask);
+      else bgTask.catch(() => {});
+
       return j({ ok: true });
     }
 
