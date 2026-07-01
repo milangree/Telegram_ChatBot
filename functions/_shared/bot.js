@@ -892,7 +892,7 @@ async function handleMsg(msg, { tg, db, kv, settings, baseUrl, t, waitUntil }) {
             const webVerifyId = randId();
             await kv.put(`webverify:${webVerifyId}`, JSON.stringify({ userId: user.id, captchaType }), { expirationTtl: timeout + 60 });
             await db.setVerify(user.id, { captcha_type: captchaType, web_verify_id: webVerifyId }, timeout);
-            const verifyUrl = `${siteUrl}/verify/${webVerifyId}`;
+            const verifyUrl = `${siteUrl}/api/verify/${webVerifyId}`;
             const kb = [[{ text: t('verify.webBtn'), web_app: { url: verifyUrl } }]];
             const r = await tg.sendMsg({ chatId: user.id, text: t('verify.webTitle'), kb });
             const verifyMsgId = r?.result?.message_id;
