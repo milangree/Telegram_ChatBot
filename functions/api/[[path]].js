@@ -4,8 +4,8 @@ import { TG } from '../_shared/tg.js';
 import { CORS, j, err, hashPw, verifyPw, createSession, getSession, delSession, extractToken, genToken } from '../_shared/auth.js';
 import { verifyTOTP, generateTOTPSecret } from '../_shared/totp.js';
 import { renderCaptchaPNG } from '../_shared/captcha.js';
-import { setupCommands, getOrCreateThread } from '../_shared/bot.js';
-import { normalizeBotLocale, createBotT } from '../_shared/bot-i18n.js';
+import { setupCommands } from '../_shared/bot.js';
+import { normalizeBotLocale } from '../_shared/bot-i18n.js';
 import { exportBusinessDataSql, importBusinessDataSql } from '../_shared/db-sql.js';
 import { createT, normalizeLocale } from '../../shared/i18n.js';
 
@@ -192,31 +192,7 @@ export async function onRequest({ request, env }) {
       await db.delVerify(userId);
       await kv.delete(`webverify:${webVerifyId}`).catch(() => {});
 
-      // Forward pending message
-      const pr = await kv.get(`pending:${userId}`);
-      if (pr) {
-        await kv.delete(`pending:${userId}`);
-        try {
-          const p = JSON.parse(pr);
-          const groupId = parseInt(await db.getSetting('FORUM_GROUP_ID'), 10);
-          const botToken = await db.getSetting('BOT_TOKEN');
-          if (groupId && p.msgId && botToken) {
-            const tg = new TG(botToken);
-            const locale = normalizeBotLocale(await db.getSetting('BOT_LOCALE'));
-            const botT = createBotT(locale);
-            const fakeUser = { id: userId };
-            const tid = await getOrCreateThread(tg, db, fakeUser, groupId, kv, botT);
-            if (tid) {
-              await tg.copyMsg({ chatId: groupId, fromChatId: userId, msgId: p.msgId, threadId: tid });
-              await db.addMsg({ userId, direction: 'incoming', content: 'verified-forwarded' });
-              await tg.sendMsg({ chatId: userId, text: botT('sentAfterVerify') }).catch(() => {});
-            }
-          }
-        } catch (e) {
-          console.error('[verify] forward pending failed:', e);
-        }
-      }
-
+      // Bot handles UI notifications and pending message forwarding via web_app_data callback
       return j({ ok: true });
     }
 
@@ -736,7 +712,6 @@ function cookie(token, maxAge = 86400) {
 function buildVerifyPage(captchaType, siteKey, error, origin) {
   const isTurnstile = captchaType === 'turnstile';
   const isRecaptcha = captchaType === 'recaptcha';
-  const verifyToken = (typeof location !== 'undefined' ? '' : ''); // placeholder — token comes from URL path
 
   const scriptSrc = isTurnstile
     ? 'https://challenges.cloudflare.com/turnstile/v0/api.js'
@@ -762,15 +737,18 @@ function buildVerifyPage(captchaType, siteKey, error, origin) {
 <title>人机验证</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;overflow:hidden}
 body{min-height:100vh;display:flex;align-items:center;justify-content:center;
-  background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);
   font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
   padding:20px}
-.card{background:#fff;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.2);
+body.tg-bg{background:var(--tg-theme-bg-color,#f0f2f5)}
+body.tg-fg{color:var(--tg-theme-text-color,#1a1a2e)}
+.card{background:var(--tg-theme-bg-color,#fff);border-radius:16px;
+  box-shadow:0 8px 32px rgba(0,0,0,.1);
   padding:40px 32px;max-width:420px;width:100%;text-align:center}
 .icon{font-size:48px;margin-bottom:16px}
-h1{font-size:20px;color:#1a1a2e;margin-bottom:8px;font-weight:600}
-.desc{font-size:14px;color:#666;margin-bottom:24px;line-height:1.5}
+h1{font-size:20px;color:var(--tg-theme-text-color,#1a1a2e);margin-bottom:8px;font-weight:600}
+.desc{font-size:14px;color:var(--tg-theme-hint-color,#666);margin-bottom:24px;line-height:1.5}
 .widget{display:flex;justify-content:center;margin-bottom:20px;min-height:65px}
 .status{padding:12px 16px;border-radius:8px;font-size:14px;margin-top:16px;display:none}
 .status.success{display:block;background:#d4edda;color:#155724;border:1px solid #c3e6cb}
@@ -781,10 +759,11 @@ h1{font-size:20px;color:#1a1a2e;margin-bottom:8px;font-weight:600}
 @keyframes spin{to{transform:rotate(360deg)}}
 .btn{display:inline-block;padding:12px 32px;border:none;border-radius:8px;font-size:15px;font-weight:500;
   cursor:pointer;transition:all .2s}
-.btn-primary{background:linear-gradient(135deg,#667eea,#764ba2);color:#fff}
+.btn-primary{background:var(--tg-theme-button-color,linear-gradient(135deg,#667eea,#764ba2));color:var(--tg-theme-button-text-color,#fff)}
 .btn-primary:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(102,126,234,.4)}
 .btn-primary:disabled{opacity:.6;cursor:not-allowed;transform:none;box-shadow:none}
 </style>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
 ${scriptSrc ? `<script src="${scriptSrc}" async defer></script>` : ''}
 </head>
 <body>
@@ -799,56 +778,68 @@ ${scriptSrc ? `<script src="${scriptSrc}" async defer></script>` : ''}
   `}
 </div>
 <script>
+(function() {
+  var tg = window.Telegram && window.Telegram.WebApp;
+  if (tg) {
+    tg.ready();
+    tg.expand();
+    document.body.classList.add('tg-bg', 'tg-fg');
+  }
+
+  var path = window.location.pathname;
+  var webVerifyId = path.split('/').pop();
+
 ${error === 'expired' ? '' : `
-var _token = '';
-function onVerify(response) {
-  _token = response;
-  var btn = document.getElementById('submitBtn');
-  btn.disabled = false;
-  btn.textContent = '提交验证';
-  btn.onclick = submitVerify;
-}
-function submitVerify() {
-  var btn = document.getElementById('submitBtn');
-  var status = document.getElementById('status');
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span>验证中...';
-  var payload = ${isTurnstile ? '{"cf-turnstile-response": _token}' : '{"g-recaptcha-response": _token}'};
-  fetch(window.location.href, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  }).then(function(r) { return r.json(); }).then(function(data) {
-    if (data.ok) {
-      status.className = 'status success';
-      status.textContent = '✅ 验证成功！你可以关闭此页面返回 Telegram。';
-      btn.style.display = 'none';
-      // Try to close Telegram Web App
-      if (window.Telegram && window.Telegram.WebApp) {
-        window.Telegram.WebApp.close();
+  var _token = '';
+  window.onVerify = function(response) {
+    _token = response;
+    var btn = document.getElementById('submitBtn');
+    btn.disabled = false;
+    btn.textContent = '提交验证';
+    btn.onclick = submitVerify;
+  };
+
+  function submitVerify() {
+    var btn = document.getElementById('submitBtn');
+    var status = document.getElementById('status');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span>验证中...';
+    var payload = ${isTurnstile ? '{"cf-turnstile-response": _token}' : '{"g-recaptcha-response": _token}'};
+    fetch(window.location.href, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }).then(function(r) { return r.json(); }).then(function(data) {
+      if (data.ok) {
+        status.className = 'status success';
+        status.textContent = '✅ 验证成功！正在返回…';
+        btn.style.display = 'none';
+        if (tg) {
+          tg.sendData(JSON.stringify({ type: 'web_verify_ok', webVerifyId: webVerifyId }));
+          setTimeout(function() { tg.close(); }, 300);
+        }
+      } else {
+        status.className = 'status error';
+        status.textContent = '❌ 验证失败，请重试。';
+        btn.disabled = false;
+        btn.textContent = '重新验证';
+        if (window.turnstile) turnstile.reset();
+        if (window.grecaptcha) grecaptcha.reset();
       }
-    } else {
+    }).catch(function() {
       status.className = 'status error';
-      status.textContent = '❌ 验证失败，请重试。';
+      status.textContent = '❌ 网络错误，请重试。';
       btn.disabled = false;
       btn.textContent = '重新验证';
-      // Reset widget
-      if (window.turnstile) turnstile.reset();
-      if (window.grecaptcha) grecaptcha.reset();
-    }
-  }).catch(function() {
-    status.className = 'status error';
-    status.textContent = '❌ 网络错误，请重试。';
-    btn.disabled = false;
-    btn.textContent = '重新验证';
-  });
-}
-// Auto-start hint after widget loads
-setTimeout(function() {
-  var btn = document.getElementById('submitBtn');
-  if (btn && !_token) btn.textContent = '请完成上方验证';
-}, 2000);
+    });
+  }
+
+  setTimeout(function() {
+    var btn = document.getElementById('submitBtn');
+    if (btn && !_token) btn.textContent = '请完成上方验证';
+  }, 2000);
 `}
+})();
 </script>
 </body>
 </html>`;

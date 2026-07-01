@@ -39,6 +39,25 @@ export class LocalKV {
       this._mem.set(row.key, { value: row.value, exp: row.exp || null })
     }
     console.log(`[KV] 已加载 ${this._mem.size} 个键值对`)
+
+    // 定期清理过期键（每 5 分钟）
+    this._cleanupInterval = setInterval(() => this._cleanupExpired(), 5 * 60 * 1000)
+    if (this._cleanupInterval.unref) this._cleanupInterval.unref() // 不阻止进程退出
+  }
+
+  _cleanupExpired() {
+    const now = Date.now()
+    let cleaned = 0
+    for (const [key, entry] of this._mem) {
+      if (entry.exp && entry.exp <= now) {
+        this._mem.delete(key)
+        cleaned++
+      }
+    }
+    if (cleaned > 0 && this._persist && this._db) {
+      this._db.prepare('DELETE FROM kv_store WHERE exp IS NOT NULL AND exp <= ?').run(now)
+    }
+    if (cleaned > 0) console.log(`[KV] 清理了 ${cleaned} 个过期键`)
   }
 
   async get(key, options = {}) {
@@ -114,6 +133,7 @@ export class LocalKV {
   }
 
   close() {
+    if (this._cleanupInterval) clearInterval(this._cleanupInterval)
     if (this._db) this._db.close()
     this._mem.clear()
   }

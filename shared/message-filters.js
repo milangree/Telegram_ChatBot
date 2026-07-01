@@ -1,4 +1,4 @@
-export const MESSAGE_FILTER_RULE_TYPES = ['text', 'regex', 'json']
+export const MESSAGE_FILTER_RULE_TYPES = ['text', 'regex']
 
 function createRuleId() {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -40,14 +40,6 @@ function buildPlainSearchTarget(message) {
   return values.join('\n').toLowerCase()
 }
 
-function buildJsonSearchTarget(message) {
-  try {
-    return JSON.stringify(message)
-  } catch {
-    return ''
-  }
-}
-
 function parseRegexSource(raw) {
   const input = String(raw || '').trim()
   if (!input) return { source: '', flags: '' }
@@ -59,26 +51,6 @@ function parseRegexSource(raw) {
     source: match[1],
     flags: match[2] || '',
   }
-}
-
-function deepPartialMatch(actual, expected) {
-  if (expected === null || expected === undefined) return actual === expected
-
-  if (Array.isArray(expected)) {
-    if (!Array.isArray(actual)) return false
-    if (expected.length === 0) return true
-    return expected.every((expectedItem) => actual.some((actualItem) => deepPartialMatch(actualItem, expectedItem)))
-  }
-
-  if (typeof expected === 'object') {
-    if (!actual || typeof actual !== 'object' || Array.isArray(actual)) return false
-    return Object.entries(expected).every(([key, value]) => {
-      if (!(key in actual)) return false
-      return deepPartialMatch(actual[key], value)
-    })
-  }
-
-  return actual === expected
 }
 
 export function normalizeMessageFilterRule(input) {
@@ -96,16 +68,6 @@ export function normalizeMessageFilterRule(input) {
       id: String(input?.id || createRuleId()),
       type,
       value: `/${source}/${flags}`,
-    }
-  }
-
-  if (type === 'json') {
-    const parsed = typeof input?.value === 'string' ? safeJsonParse(value) : input.value
-    if (!parsed || typeof parsed !== 'object') throw new Error('JSON rule must be a valid object or array')
-    return {
-      id: String(input?.id || createRuleId()),
-      type,
-      value: JSON.stringify(parsed),
     }
   }
 
@@ -153,12 +115,11 @@ export function matchMessageFilterRule(rule, message) {
   if (normalized.type === 'regex') {
     const { source, flags } = parseRegexSource(normalized.value)
     const regex = new RegExp(source, flags)
-    return regex.test(buildJsonSearchTarget(message))
+    const target = buildPlainSearchTarget(message)
+    return regex.test(target)
   }
 
-  const expected = safeJsonParse(normalized.value, null)
-  if (!expected) return false
-  return deepPartialMatch(message, expected)
+  return false
 }
 
 export function findMatchedMessageFilterRule(rules, message) {

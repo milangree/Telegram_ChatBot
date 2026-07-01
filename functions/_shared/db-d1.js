@@ -229,7 +229,7 @@ export class D1Store {
   // Stats
   async getStats() {
     const [totalRow, blockedRow, msgRow, todayRow] = await Promise.all([
-      this.first('SELECT COUNT(*) as cnt FROM users'),
+      this.first('SELECT COUNT(*) as cnt FROM users WHERE is_verified=1'),
       this.first('SELECT COUNT(*) as cnt FROM users WHERE is_blocked=1'),
       this.first('SELECT COUNT(*) as cnt FROM messages'),
       this.first(`SELECT COUNT(*) as cnt FROM messages WHERE created_at LIKE ?`, `${new Date().toISOString().slice(0, 10)}%`),

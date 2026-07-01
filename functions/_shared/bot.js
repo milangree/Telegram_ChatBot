@@ -46,6 +46,23 @@ function randId() {
   return [...crypto.getRandomValues(new Uint8Array(12))].map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
+// ── Verification timeout notification ────────────────────────────────────────
+function scheduleVerifyTimeout({ waitUntil, tg, db, kv, userId, timeout, verifyMsgId }) {
+  if (!waitUntil) return;
+  const task = (async () => {
+    await new Promise(r => setTimeout(r, timeout * 1000 + 2000));
+    const v = await db.getVerify(userId).catch(() => null);
+    if (!v) return; // already verified or expired & cleaned up
+    if (v.expires_at > Date.now()) return; // not yet expired
+    await db.delVerify(userId).catch(() => {});
+    await kv.delete(`pending:${userId}`).catch(() => {});
+    if (verifyMsgId) {
+      await tg.editText({ chatId: userId, msgId: verifyMsgId, text: '⏳ 验证已超时，请重新发送消息以发起新的验证。', kb: [] }).catch(() => {});
+    }
+  })();
+  waitUntil(task);
+}
+
 // ── 频率限制 ─────────────────────────────────────────────────────────────────
 const rateMap = new Map();
 function rateCheck(uid, max) {
@@ -162,7 +179,7 @@ function getMessageFilterTypeLabel(type, t) {
   return {
     text: t('filter.type.text'),
     regex: t('filter.type.regex'),
-    json: t('filter.type.json'),
+    json: 'JSON',
   }[type] || type;
 }
 
@@ -191,7 +208,6 @@ function buildMessageFilterManageKb(t) {
   return [
     [{ text: `📝 ${t('filter.type.text')}`, callback_data: 'adm:mf:add:text' }],
     [{ text: `🔣 ${t('filter.type.regex')}`, callback_data: 'adm:mf:add:regex' }],
-    [{ text: `🧩 ${t('filter.type.json')}`, callback_data: 'adm:mf:add:json' }],
     [{ text: `➖ ${t('filter.removeAction')}`, callback_data: 'adm:mf:remove' }],
     [{ text: t('kb.refresh'), callback_data: 'adm:mf' }],
     [{ text: t('cb.back'), callback_data: 'adm:bk' }],
@@ -204,9 +220,7 @@ function buildMessageFilterManageText(settings, t) {
 
 function buildMessageFilterInputPrompt(action, type, t) {
   if (action === 'remove') return t('filter.promptRemove');
-
   if (type === 'regex') return t('filter.promptRegex');
-  if (type === 'json') return t('filter.promptJson');
   return t('filter.promptText');
 }
 
@@ -221,7 +235,7 @@ function parseMessageFilterInput(raw) {
   const value = input.slice(firstSpace + 1).trim();
   if (!value) return null;
 
-  if (type === 'text' || type === 'regex' || type === 'json') {
+  if (type === 'text' || type === 'regex') {
     return { type, value };
   }
 
@@ -691,6 +705,12 @@ async function handleMsg(msg, { tg, db, kv, settings, baseUrl, t, waitUntil }) {
     first_name: user.first_name, last_name: user.last_name, language_code: user.language_code,
   });
 
+  // ── Web App data (Turnstile / reCAPTCHA verification callback) ─────────────
+  if (msg.web_app_data) {
+    await handleWebAppVerify(msg, user, { tg, db, kv, settings, groupId, t, waitUntil });
+    return;
+  }
+
   // ── Admin private chat: control panel or command processing ───────────────
   if (adminIds.includes(user.id)) {
     await handleAdminPrivateMsg(msg, user, { tg, db, kv, settings, groupId, t, waitUntil });
@@ -844,41 +864,49 @@ async function handleMsg(msg, { tg, db, kv, settings, baseUrl, t, waitUntil }) {
           if (captchaType === 'math') {
             const { question, answer, kb } = mkMathVerify();
             await db.setVerify(user.id, { answer, captcha_type: 'math' }, timeout);
-            await sendUserMsg({ tg, settings, waitUntil, chatId: user.id, text: t('verify.title', { question }), kb });
+            const r = await tg.sendMsg({ chatId: user.id, text: t('verify.title', { question }), kb });
+            const verifyMsgId = r?.result?.message_id;
+            scheduleVerifyTimeout({ waitUntil, tg, db, kv, userId: user.id, timeout, verifyMsgId });
             return { done: true };
           }
 
           if (captchaType === 'turnstile' || captchaType === 'recaptcha') {
             const secretKey = captchaType === 'turnstile' ? settings.TURNSTILE_SECRET_KEY : settings.RECAPTCHA_SECRET_KEY;
             if (!secretKey) {
-              // Fallback to math if secret key not configured
               const { question, answer, kb } = mkMathVerify();
               await db.setVerify(user.id, { answer, captcha_type: 'math' }, timeout);
-              await sendUserMsg({ tg, settings, waitUntil, chatId: user.id, text: t('verify.title', { question }), kb });
+              const r = await tg.sendMsg({ chatId: user.id, text: t('verify.title', { question }), kb });
+              const verifyMsgId = r?.result?.message_id;
+              scheduleVerifyTimeout({ waitUntil, tg, db, kv, userId: user.id, timeout, verifyMsgId });
               return { done: true };
             }
             const siteUrl = settings.CAPTCHA_SITE_URL || baseUrl;
             if (!siteUrl) {
               const { question, answer, kb } = mkMathVerify();
               await db.setVerify(user.id, { answer, captcha_type: 'math' }, timeout);
-              await sendUserMsg({ tg, settings, waitUntil, chatId: user.id, text: t('verify.title', { question }), kb });
+              const r = await tg.sendMsg({ chatId: user.id, text: t('verify.title', { question }), kb });
+              const verifyMsgId = r?.result?.message_id;
+              scheduleVerifyTimeout({ waitUntil, tg, db, kv, userId: user.id, timeout, verifyMsgId });
               return { done: true };
             }
             const webVerifyId = randId();
             await kv.put(`webverify:${webVerifyId}`, JSON.stringify({ userId: user.id, captchaType }), { expirationTtl: timeout + 60 });
             await db.setVerify(user.id, { captcha_type: captchaType, web_verify_id: webVerifyId }, timeout);
             const verifyUrl = `${siteUrl}/verify/${webVerifyId}`;
-            const kb = [[{ text: t('verify.webBtn'), url: verifyUrl }]];
-            await sendUserMsg({ tg, settings, waitUntil, chatId: user.id, text: t('verify.webTitle'), kb });
+            const kb = [[{ text: t('verify.webBtn'), web_app: { url: verifyUrl } }]];
+            const r = await tg.sendMsg({ chatId: user.id, text: t('verify.webTitle'), kb });
+            const verifyMsgId = r?.result?.message_id;
+            scheduleVerifyTimeout({ waitUntil, tg, db, kv, userId: user.id, timeout, verifyMsgId });
             return { done: true };
           }
 
           const siteUrl = settings.CAPTCHA_SITE_URL || baseUrl;
           if (!siteUrl) {
-            // Fallback to math
             const { question, answer, kb } = mkMathVerify();
             await db.setVerify(user.id, { answer, captcha_type: 'math' }, timeout);
-            await sendUserMsg({ tg, settings, waitUntil, chatId: user.id, text: t('verify.title', { question }), kb });
+            const r = await tg.sendMsg({ chatId: user.id, text: t('verify.title', { question }), kb });
+            const verifyMsgId = r?.result?.message_id;
+            scheduleVerifyTimeout({ waitUntil, tg, db, kv, userId: user.id, timeout, verifyMsgId });
             return { done: true };
           }
 
@@ -892,11 +920,15 @@ async function handleMsg(msg, { tg, db, kv, settings, baseUrl, t, waitUntil }) {
           const typeLabel  = captchaType === 'image_alphanumeric' ? t('verify.imgAlpha') : t('verify.imgNum');
           const caption    = t('verify.image', { typeLabel });
           const imgUrl     = `${siteUrl}/api/captcha/${captchaId}`;
-          const r          = await sendUserPhoto({ tg, settings, waitUntil, chatId: user.id, url: imgUrl, caption, kb });
+          const r          = await tg.sendPhoto({ chatId: user.id, url: imgUrl, caption, kb });
+          const verifyMsgId = r?.result?.message_id;
+          scheduleVerifyTimeout({ waitUntil, tg, db, kv, userId: user.id, timeout, verifyMsgId });
           if (!r.ok) {
             const { question, answer, kb: mathKb } = mkMathVerify();
             await db.setVerify(user.id, { answer, captcha_type: 'math' }, timeout);
-            await sendUserMsg({ tg, settings, waitUntil, chatId: user.id, text: t('verify.title', { question }), kb: mathKb });
+            const r2 = await tg.sendMsg({ chatId: user.id, text: t('verify.title', { question }), kb: mathKb });
+            const fallbackMsgId = r2?.result?.message_id;
+            scheduleVerifyTimeout({ waitUntil, tg, db, kv, userId: user.id, timeout, verifyMsgId: fallbackMsgId });
           }
           return { done: true };
         },
@@ -1285,16 +1317,8 @@ async function handleCb(q, { tg, db, kv, settings, t, waitUntil }) {
       return;
     }
     if (data === 'user:close') {
-      await editUserText({
-        tg,
-        settings,
-        waitUntil,
-        chatId,
-        msgId,
-        text: t('user.closed'),
-        kb: [],
-      });
-      await tg.answerCb({ id: q.id });
+      await tg.deleteMsg({ chatId, msgId }).catch(() => {});
+      await tg.answerCb({ id: q.id }).catch(() => {});
       return;
     }
 
@@ -1505,6 +1529,47 @@ async function handleVerifyAnswer(q, tg, db, kv, user, chatId, msgId, settings, 
   }
 }
 
+// ── Web App verification callback (Turnstile / reCAPTCHA) ──────────────────
+async function handleWebAppVerify(msg, user, { tg, db, kv, settings, groupId, t, waitUntil }) {
+  const data = msg.web_app_data?.data;
+  if (!data) return;
+
+  let payload;
+  try { payload = JSON.parse(data); } catch { return; }
+  if (payload.type !== 'web_verify_ok') return;
+
+  // Server-side verification already completed in POST /api/verify/{token}.
+  // This handler only sends UI feedback and attempts pending message forwarding.
+  const dbUser = await db.getUser(user.id);
+  if (!dbUser?.is_verified) {
+    // Edge case: POST handler may not have finished yet — mark verified as fallback
+    await db.setUserVerified(user.id, true);
+  }
+
+  await tg.deleteMsg({ chatId: user.id, msgId: msg.message_id }).catch(() => {});
+  await tg.sendMsg({ chatId: user.id, text: t('verify.success') }).catch(() => {});
+
+  // Forward pending message (POST handler may have already done this — dedup by pending key)
+  const pr = await kv.get(`pending:${user.id}`);
+  if (pr && groupId) {
+    await kv.delete(`pending:${user.id}`);
+    try {
+      const p = JSON.parse(pr);
+      const tid = await getOrCreateThread(tg, db, user, groupId, kv, t);
+      if (tid && p.msgId) {
+        const shouldForward = await shouldProcessMessageOnce(kv, 'verified-user-forward', user.id, p.msgId);
+        if (shouldForward) {
+          await tg.copyMsg({ chatId: groupId, fromChatId: user.id, msgId: p.msgId, threadId: tid });
+          await db.addMsg({ userId: user.id, direction: 'incoming', content: t('content.verifiedForwarded') });
+          await tg.sendMsg({ chatId: user.id, text: t('sentAfterVerify') });
+        }
+      }
+    } catch (e) {
+      console.error('[web_app_verify] forward pending failed:', e);
+    }
+  }
+}
+
 async function handleAdmCb(q, action, { tg, db, kv, settings, chatId, msgId, adminId, t, waitUntil }) {
   const openAdminHome = async () => {
     const latest = await db.getAllSettings();
@@ -1562,15 +1627,7 @@ async function handleAdmCb(q, action, { tg, db, kv, settings, chatId, msgId, adm
   }
 
   if (action === 'close') {
-    await editUserText({
-      tg,
-      settings,
-      waitUntil,
-      chatId,
-      msgId,
-      text: t('admin.closed'),
-      kb: [],
-    });
+    await tg.deleteMsg({ chatId, msgId }).catch(() => {});
     await tg.answerCb({ id: q.id }).catch(() => {});
     return;
   }

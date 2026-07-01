@@ -545,7 +545,7 @@ export class HyperdriveStore {
 
   async getStats() {
     const [totalRow, blockedRow, msgRow, todayRow] = await Promise.all([
-      this._first('SELECT COUNT(*) as cnt FROM users'),
+      this._first('SELECT COUNT(*) as cnt FROM users WHERE is_verified=1'),
       this._first('SELECT COUNT(*) as cnt FROM users WHERE is_blocked=1'),
       this._first('SELECT COUNT(*) as cnt FROM messages'),
       this._first('SELECT COUNT(*) as cnt FROM messages WHERE created_at LIKE $1', [`${new Date().toISOString().slice(0, 10)}%`]),

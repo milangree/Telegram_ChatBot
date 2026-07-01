@@ -327,13 +327,6 @@
                     <code>{{ t('settings.feature.messageFilterRegexExample') }}</code>
                   </div>
                 </div>
-                <div class="message-filter-guide-item">
-                  <div class="message-filter-guide-type"><code>json</code></div>
-                  <div class="message-filter-guide-content">
-                    <div>{{ t('settings.feature.messageFilterJsonHelp') }}</div>
-                    <code>{{ t('settings.feature.messageFilterJsonExample') }}</code>
-                  </div>
-                </div>
               </div>
 
               <div class="divider"></div>
@@ -627,7 +620,6 @@ function formatRuleType(type) {
   return {
     text: t('bot.filter.type.text'),
     regex: t('bot.filter.type.regex'),
-    json: t('bot.filter.type.json'),
   }[type] || type
 }
 

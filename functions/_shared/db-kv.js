@@ -423,13 +423,14 @@ export class KVStore {
     const [userKeys, msgKeys] = await Promise.all([kvListAll(this.kv, 'user:'), kvListAll(this.kv, 'msg:')])
     const userData = await Promise.all(userKeys.map(k => this.kv.get(k.name)))
     const blockedCount = userData.reduce((n, d) => n + (d && JSON.parse(d).is_blocked ? 1 : 0), 0)
+    const verifiedCount = userData.reduce((n, d) => n + (d && JSON.parse(d).is_verified ? 1 : 0), 0)
     const today = new Date().toISOString().slice(0, 10)
     let todayMsgs = 0
     for (const k of msgKeys) {
       const ts = parseInt(k.name.split(':')[2]?.split('_')[0], 10)
       if (!isNaN(ts) && new Date(ts).toISOString().slice(0, 10) === today) todayMsgs++
     }
-    return { totalUsers: userKeys.length, blockedUsers: blockedCount, totalMessages: msgKeys.length, todayMessages: todayMsgs }
+    return { totalUsers: verifiedCount, blockedUsers: blockedCount, totalMessages: msgKeys.length, todayMessages: todayMsgs }
   }
 
   // Web users
