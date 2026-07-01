@@ -1,28 +1,33 @@
 <template>
-  <v-container fluid class="d-flex align-center justify-center" style="min-height:100vh">
-    <v-card width="400" class="pa-5" rounded="xl">
-      <div class="text-center mb-4">
-        <v-icon :icon="mdiLock" size="48" color="primary" class="mb-2" />
-        <h1 class="text-h5 font-weight-bold">{{ t('auth.recover.title') }}</h1>
-      </div>
+  <div style="width:100%;max-width:420px;padding:16px">
+    <v-card elevation="8" rounded="xl" class="overflow-hidden">
+      <div style="height:4px;background:linear-gradient(90deg, rgb(var(--v-theme-primary)), rgb(var(--v-theme-secondary)))" />
+      <div class="pa-7 pb-6">
+        <div class="text-center mb-5">
+          <v-avatar size="64" color="primary" rounded="xl" class="mb-3">
+            <v-icon :icon="mdiLock" size="36" />
+          </v-avatar>
+          <h1 class="text-h5 font-weight-bold">{{ t('auth.recover.title') }}</h1>
+        </div>
 
-      <v-alert type="info" variant="tonal" class="mb-4">{{ t('auth.recover.tip') }}</v-alert>
-      <v-alert v-if="error" type="error" variant="tonal" class="mb-4" closable @click:close="error = ''">{{ error }}</v-alert>
-      <v-alert v-if="success" type="success" variant="tonal" class="mb-4">{{ t('auth.recover.success') }}</v-alert>
+        <v-alert type="info" variant="tonal" density="compact" class="mb-4">{{ t('auth.recover.tip') }}</v-alert>
+        <v-alert v-if="error" type="error" variant="tonal" density="compact" class="mb-4" closable @click:close="error = ''">{{ error }}</v-alert>
+        <v-alert v-if="success" type="success" variant="tonal" density="compact" class="mb-4">{{ t('auth.recover.success') }}</v-alert>
 
-      <v-text-field v-model="username" :label="t('auth.recover.username')" :prepend-inner-icon="mdiAccount" />
-      <v-text-field v-model="totp" :label="t('auth.recover.totp')" :placeholder="t('auth.recover.totpPh')" maxlength="6" inputmode="numeric" :prepend-inner-icon="mdiKeyVariant" />
-      <v-text-field v-model="newPassword" :label="t('auth.recover.newPassword')" :placeholder="t('auth.recover.newPasswordPh')" type="password" prepend-inner-:icon="mdiLock" @keydown.enter="doRecover" />
+        <v-text-field v-model="username" :label="t('auth.recover.username')" :prepend-inner-icon="mdiAccount" density="comfortable" />
+        <v-text-field v-model="totp" :label="t('auth.recover.totp')" :placeholder="t('auth.recover.totpPh')" maxlength="6" inputmode="numeric" :prepend-inner-icon="mdiKeyVariant" density="comfortable" />
+        <v-text-field v-model="newPassword" :label="t('auth.recover.newPassword')" :placeholder="t('auth.recover.newPasswordPh')" type="password" :prepend-inner-icon="mdiLock" density="comfortable" @keydown.enter="doRecover" />
 
-      <v-btn block color="primary" size="large" :loading="loading" :disabled="success" @click="doRecover">
-        {{ t('auth.recover.submit') }}
-      </v-btn>
+        <v-btn block color="primary" size="large" rounded="lg" :loading="loading" :disabled="success" class="mt-2" @click="doRecover">
+          {{ t('auth.recover.submit') }}
+        </v-btn>
 
-      <div class="text-center mt-4">
-        <RouterLink to="/login" class="text-primary text-caption">← {{ t('auth.recover.backLogin') }}</RouterLink>
+        <div class="text-center mt-5">
+          <RouterLink to="/login" class="text-body-2 text-primary text-decoration-none">← {{ t('auth.recover.backLogin') }}</RouterLink>
+        </div>
       </div>
     </v-card>
-  </v-container>
+  </div>
 </template>
 
 <script setup>

@@ -1,26 +1,31 @@
 <template>
-  <v-container fluid class="d-flex align-center justify-center" style="min-height:100vh">
-    <v-card width="400" class="pa-5" rounded="xl">
-      <div class="text-center mb-4">
-        <v-icon :icon="mdiRobotOutline" size="48" color="primary" class="mb-2" />
-        <h1 class="text-h5 font-weight-bold">{{ t('auth.register.title') }}</h1>
-      </div>
+  <div style="width:100%;max-width:420px;padding:16px">
+    <v-card elevation="8" rounded="xl" class="overflow-hidden">
+      <div style="height:4px;background:linear-gradient(90deg, rgb(var(--v-theme-primary)), rgb(var(--v-theme-secondary)))" />
+      <div class="pa-7 pb-6">
+        <div class="text-center mb-5">
+          <v-avatar size="64" color="primary" rounded="xl" class="mb-3">
+            <v-icon :icon="mdiRobotOutline" size="36" />
+          </v-avatar>
+          <h1 class="text-h5 font-weight-bold">{{ t('auth.register.title') }}</h1>
+        </div>
 
-      <v-alert type="info" variant="tonal" class="mb-4">{{ t('auth.register.tip') }}</v-alert>
-      <v-alert v-if="error" type="error" variant="tonal" class="mb-4" closable @click:close="error = ''">{{ error }}</v-alert>
+        <v-alert type="info" variant="tonal" density="compact" class="mb-4">{{ t('auth.register.tip') }}</v-alert>
+        <v-alert v-if="error" type="error" variant="tonal" density="compact" class="mb-4" closable @click:close="error = ''">{{ error }}</v-alert>
 
-      <v-text-field v-model="username" :label="t('auth.register.username')" :placeholder="t('auth.register.usernamePh')" :prepend-inner-icon="mdiAccount" />
-      <v-text-field v-model="password" :label="t('auth.register.password')" :placeholder="t('auth.register.passwordPh')" type="password" prepend-inner-:icon="mdiLock" @keydown.enter="doRegister" />
+        <v-text-field v-model="username" :label="t('auth.register.username')" :placeholder="t('auth.register.usernamePh')" :prepend-inner-icon="mdiAccount" density="comfortable" />
+        <v-text-field v-model="password" :label="t('auth.register.password')" :placeholder="t('auth.register.passwordPh')" type="password" :prepend-inner-icon="mdiLock" density="comfortable" @keydown.enter="doRegister" />
 
-      <v-btn block color="primary" size="large" :loading="loading" @click="doRegister">
-        {{ t('auth.register.submit') }}
-      </v-btn>
+        <v-btn block color="primary" size="large" rounded="lg" :loading="loading" class="mt-2" @click="doRegister">
+          {{ t('auth.register.submit') }}
+        </v-btn>
 
-      <div class="text-center mt-4">
-        <RouterLink to="/login" class="text-primary text-caption">← {{ t('auth.register.toLogin') }}</RouterLink>
+        <div class="text-center mt-5">
+          <RouterLink to="/login" class="text-body-2 text-primary text-decoration-none">← {{ t('auth.register.toLogin') }}</RouterLink>
+        </div>
       </div>
     </v-card>
-  </v-container>
+  </div>
 </template>
 
 <script setup>
