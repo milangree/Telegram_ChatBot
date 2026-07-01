@@ -25,7 +25,7 @@ export async function onRequest({ request, env, waitUntil }) {
   const path = url.pathname.replace(/^\/api/, '');
 
   // ═══════════════════════════════════════════════
-  // PUBLIC ROUTES
+  // 公开路由（无需认证）
   // ═══════════════════════════════════════════════
 
   if (path === '/auth/status' && request.method === 'GET') {
@@ -43,7 +43,7 @@ export async function onRequest({ request, env, waitUntil }) {
       if (password.length < 6) return err(t('auth.passwordMin'));
       if (await db.getWebUser(username)) return err(t('auth.usernameExists'), 400);
       const user = await db.createWebUser(username, await hashPw(password));
-      // Disable the fallback admin/admins account so it can no longer log in
+      // 注册后禁用默认 admin/admins 账户
       await db.disableDefaultAdmin();
       const sessionTtl = await getLoginSessionTtl(db);
       const token = await createSession(kv, user.id, sessionTtl);
@@ -64,7 +64,7 @@ export async function onRequest({ request, env, waitUntil }) {
       const user = await db.getWebUser(username);
       if (!user) return err(t('auth.invalidCredentials'), 401);
 
-      // If default admin fallback has been disabled, block admin/admins forever.
+      // 若默认管理员已被禁用，永久阻止 admin/admins 登录
       if (String(user.username).toLowerCase() === 'admin') {
         const hasDefaultAdmin = (await kv.get('auth:has_default_admin')) === '1';
         if (!hasDefaultAdmin) return err(t('auth.invalidCredentials'), 401);
@@ -76,7 +76,7 @@ export async function onRequest({ request, env, waitUntil }) {
         if (!totp) return err(t('auth.missingTotp'), 401);
         if (!await verifyTOTP(totp, user.totp_secret)) return err(t('auth.invalidTotp'), 401);
       } else {
-        // Normal: username + password only
+        // 普通模式：用户名 + 密码
         if (!password) return err(t('auth.missingPassword'));
         if (!await verifyPw(password, user.password_hash)) return err(t('auth.invalidCredentials'), 401);
       }
@@ -111,7 +111,7 @@ export async function onRequest({ request, env, waitUntil }) {
     return j({ username: user.username, isAdmin: Boolean(user.is_admin), totpEnabled: Boolean(user.totp_enabled) });
   }
 
-  // Check whether a username has 2FA (public, for login page to decide which mode to show)
+  // 检查用户名是否启用了 2FA（公开接口，供登录页判断登录模式）
   if (path === '/auth/totp-status' && request.method === 'POST') {
     try {
       const { username } = await request.json();
@@ -137,7 +137,7 @@ export async function onRequest({ request, env, waitUntil }) {
     }
   }
 
-  // Captcha image (public)
+  // 验证码图片（公开）
   const capMatch = path.match(/^\/captcha\/([a-f0-9]+)$/);
   if (capMatch && request.method === 'GET') {
     const text = await kv.get(`captcha_render:${capMatch[1]}`);
@@ -146,18 +146,18 @@ export async function onRequest({ request, env, waitUntil }) {
     return new Response(png, { headers: { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=300', ...CORS } });
   }
 
-  // Web verification page (public) — Turnstile / reCAPTCHA
+  // Web 验证页面（公开）— Turnstile / reCAPTCHA
   const webVerifyMatch = path.match(/^\/verify\/([a-f0-9]+)$/);
   if (webVerifyMatch) {
     const webVerifyId = webVerifyMatch[1];
     const webVerifyRaw = await kv.get(`webverify:${webVerifyId}`);
 
-    // POST /api/verify/{token} — submit CAPTCHA response
+    // POST /api/verify/{token} — 提交 CAPTCHA 响应
     if (request.method === 'POST') {
       if (!webVerifyRaw) return j({ ok: false, error: 'expired' }, 404);
       const { userId, captchaType } = JSON.parse(webVerifyRaw);
 
-      // Check if verification has expired
+      // 检查验证是否已过期
       const verifyRecord = await db.getVerify(userId).catch(() => null);
       if (!verifyRecord || verifyRecord.expires_at < Date.now()) {
         return j({ ok: false, error: 'expired' }, 410);
@@ -201,10 +201,10 @@ export async function onRequest({ request, env, waitUntil }) {
 
       if (!verifyResult) return j({ ok: false, error: 'captcha_failed' }, 400);
 
-      // ── Mark verified and do all post-verification work in background ────
+      // ── 标记已验证，后台立即执行所有 Telegram 操作 ────────────────────
       await db.setUserVerified(userId, true);
 
-      // Fire-and-forget: all Telegram API calls run in background
+      // 后台异步执行：删除消息、发送通知、转发消息，不阻塞响应
       const bgTask = (async () => {
         try {
           const botToken = await db.getSetting('BOT_TOKEN').catch(() => '');
@@ -213,11 +213,11 @@ export async function onRequest({ request, env, waitUntil }) {
           const wvData = JSON.parse(webVerifyRaw);
           const verifyMsgId = wvData.verifyMsgId || verifyRecord?.verify_msg_id;
 
-          // Clean up verify records
+          // 清理验证记录
           await db.delVerify(userId).catch(() => {});
           await kv.delete(`webverify:${webVerifyId}`).catch(() => {});
 
-          // Delete verification message
+          // 删除验证消息
           if (verifyMsgId) {
             const del = await tg.deleteMsg({ chatId: userId, msgId: verifyMsgId }).catch(() => null);
             if (!del?.ok) {
@@ -226,12 +226,12 @@ export async function onRequest({ request, env, waitUntil }) {
             }
           }
 
-          // Send success notification
+          // 发送成功通知
           const locale = normalizeBotLocale(await db.getSetting('BOT_LOCALE').catch(() => 'zh-hans'));
           const botT = createBotT(locale);
           await tg.sendMsg({ chatId: userId, text: botT('verify.success') }).catch(() => {});
 
-          // Forward pending message
+          // 转发待处理消息
           const pendingRaw = await kv.get(`pending:${userId}`).catch(() => null);
           if (pendingRaw) {
             await kv.delete(`pending:${userId}`).catch(() => {});
@@ -262,7 +262,7 @@ export async function onRequest({ request, env, waitUntil }) {
       return j({ ok: true });
     }
 
-    // GET /api/verify/{token} — serve verification HTML page
+    // GET /api/verify/{token} — 返回验证页面
     if (request.method === 'GET') {
       if (!webVerifyRaw) {
         return new Response(buildVerifyPage(null, null, 'expired', url.origin), {
@@ -270,7 +270,7 @@ export async function onRequest({ request, env, waitUntil }) {
         });
       }
       const { userId: wvUserId, captchaType } = JSON.parse(webVerifyRaw);
-      // Check if verification has expired
+      // 检查验证是否已过期
       const verifyRecord = await db.getVerify(wvUserId).catch(() => null);
       if (!verifyRecord || verifyRecord.expires_at < Date.now()) {
         return new Response(buildVerifyPage(null, null, 'expired', url.origin), {
@@ -288,7 +288,7 @@ export async function onRequest({ request, env, waitUntil }) {
   }
 
   // ═══════════════════════════════════════════════
-  // AUTHENTICATED ROUTES
+  // 认证路由（需要登录）
   // ═══════════════════════════════════════════════
 
   const token = extractToken(request);
@@ -298,7 +298,7 @@ export async function onRequest({ request, env, waitUntil }) {
   const webUser = await db.getWebUserById(sess.userId);
   if (!webUser) return err(t('auth.userNotFound'), 401);
 
-  // Profile
+  // 个人资料
   if (path === '/profile/username' && request.method === 'PUT') {
     try {
       const { newUsername } = await request.json();
@@ -353,7 +353,7 @@ export async function onRequest({ request, env, waitUntil }) {
     }
   }
 
-  // Settings
+  // 设置
   if (path === '/settings' && request.method === 'GET') return j(await db.getAllSettings());
 
   if (path === '/settings' && request.method === 'PUT') {
@@ -427,13 +427,13 @@ export async function onRequest({ request, env, waitUntil }) {
         secret = genToken(32);
         await db.setSetting('WEBHOOK_SECRET', secret);
       }
-      // Auto-set captcha site URL
+      // 自动设置验证码站点 URL
       if (!settings.CAPTCHA_SITE_URL) await db.setSetting('CAPTCHA_SITE_URL', new URL(webhookUrl).origin);
       const res = await tg.setWebhook({ url: webhookUrl, secret });
       if (!res.ok) return err(t('settings.setupFailed', { error: res.description }));
-      // Persist webhook URL so the UI can display it
+      // 持久化 Webhook URL 供前端展示
       await db.setSetting('WEBHOOK_URL', webhookUrl);
-      // Setup bot commands
+      // 注册 Bot 命令列表
       await setupCommands(tg, settings.BOT_LOCALE).catch(console.error);
       return j({ ok: true, message: t('settings.webhookSetupSuccess') });
     } catch (e) {
@@ -453,7 +453,7 @@ export async function onRequest({ request, env, waitUntil }) {
     }
   }
 
-  // Database switch + sync
+  // 数据库切换 + 同步
   if (path === '/settings/db' && request.method === 'GET') {
     const active = await db.getActiveDb();
     const hasD1 = !!env.D1;
@@ -554,7 +554,7 @@ export async function onRequest({ request, env, waitUntil }) {
     }
   }
 
-  // TG
+  // Telegram API
   if (path === '/tg/resolve-chat' && request.method === 'POST') {
     try {
       const botToken = await db.getSetting('BOT_TOKEN');
@@ -582,7 +582,7 @@ export async function onRequest({ request, env, waitUntil }) {
     }
   }
 
-  // Avatar proxy
+  // 头像代理
   const avaMatch = path.match(/^\/users\/(\d+)\/avatar$/);
   if (avaMatch && request.method === 'GET') {
     try {
@@ -600,7 +600,7 @@ export async function onRequest({ request, env, waitUntil }) {
     }
   }
 
-  // Users
+  // 用户管理
   if (path === '/users/search' && request.method === 'GET') {
     const q = url.searchParams.get('q') || '';
     if (q.length < 1) return j([]);
@@ -652,12 +652,12 @@ export async function onRequest({ request, env, waitUntil }) {
   const unameMatch = path.match(/^\/users\/(\d+)\/username$/);
   if (unameMatch && request.method === 'PUT') return err(t('users.usernameFeatureRemoved'), 410);
 
-  // Whitelist
+  // 白名单
   if (path === '/whitelist' && request.method === 'GET') {
     return j(await db.getWhitelist(parseInt(url.searchParams.get('page') || '1', 10), 20));
   }
 
-  // Check whitelist status for a single user
+  // 检查单个用户的白名单状态
   const wlCheckMatch = path.match(/^\/whitelist\/check\/(\d+)$/);
   if (wlCheckMatch && request.method === 'GET') {
     try {
@@ -688,7 +688,7 @@ export async function onRequest({ request, env, waitUntil }) {
     }
   }
 
-  // Conversations
+  // 对话记录
   if (path === '/conversations' && request.method === 'GET') {
     const since = String(url.searchParams.get('since') || '').trim();
     const items = since ? await db.getRecentConvsSince(since, 50) : await db.getRecentConvs(50);
@@ -716,7 +716,7 @@ export async function onRequest({ request, env, waitUntil }) {
     });
   }
 
-  // Delete a conversation: wipe messages, recent entry, reset verification, optionally close TG topic
+  // 删除对话：清除消息、最近记录、重置验证，可选关闭 TG 话题
   if (convMatch && request.method === 'DELETE') {
     try {
       const uid = parseInt(convMatch[1], 10);
@@ -737,10 +737,10 @@ export async function onRequest({ request, env, waitUntil }) {
         const user = await db.getUser(uid);
         if (botToken && groupId && user?.thread_id) {
           const tg = new TG(botToken);
-          // Delete topic — this removes all messages inside it
+          // 删除话题 — 会移除话题内所有消息
           await tg.deleteForumTopic({ chatId: groupId, threadId: user.thread_id })
             .catch(() => tg.closeForumTopic({ chatId: groupId, threadId: user.thread_id }));
-          // Clear stored thread_id so a new topic is created next message
+          // 清除存储的 thread_id，下次发消息时自动创建新话题
           await db.clearUserThread(uid);
         }
       }

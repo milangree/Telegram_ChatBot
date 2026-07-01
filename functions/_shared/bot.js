@@ -10,12 +10,6 @@ import {
 } from '../../shared/message-filters.js';
 
 // ── 验证辅助方法 ─────────────────────────────────────────────────────────────
-const MATH_QS = [
-  {q:'1 + 1',a:'2'},{q:'3 × 3',a:'9'},{q:'10 - 4',a:'6'},{q:'2 + 5',a:'7'},
-  {q:'4 × 2',a:'8'},{q:'15 ÷ 3',a:'5'},{q:'6 + 7',a:'13'},{q:'9 - 3',a:'6'},
-  {q:'8 + 4',a:'12'},{q:'7 × 2',a:'14'},{q:'18 ÷ 2',a:'9'},{q:'11 - 5',a:'6'},
-];
-
 const VERIFY_OPTION_COUNT = 6;
 const VERIFY_OPTION_COLUMNS = 3;
 
@@ -26,13 +20,45 @@ function rowsN(items, cols, mk) {
   return rows;
 }
 
+/** 随机生成一道整数四则运算题（保证结果为正整数、除法整除） */
+function generateMathQuestion() {
+  const ops = ['+', '-', '×', '÷'];
+  const op = ops[Math.floor(Math.random() * ops.length)];
+  let a, b, answer;
+
+  switch (op) {
+    case '+':
+      a = Math.floor(Math.random() * 20) + 1;   // 1-20
+      b = Math.floor(Math.random() * 20) + 1;
+      answer = a + b;
+      break;
+    case '-':
+      answer = Math.floor(Math.random() * 20) + 1; // 保证结果为正
+      b = Math.floor(Math.random() * 20) + 1;
+      a = answer + b;
+      break;
+    case '×':
+      a = Math.floor(Math.random() * 9) + 2;    // 2-10
+      b = Math.floor(Math.random() * 9) + 2;
+      answer = a * b;
+      break;
+    case '÷':
+      b = Math.floor(Math.random() * 9) + 2;    // 2-10，除数不为 0
+      answer = Math.floor(Math.random() * 9) + 2; // 2-10
+      a = b * answer;                              // 保证整除
+      break;
+  }
+
+  return { q: `${a} ${op} ${b}`, a: String(answer), answerNum: answer };
+}
+
 function mkMathVerify() {
-  const {q, a} = MATH_QS[Math.floor(Math.random() * MATH_QS.length)];
-  const cor = parseInt(a, 10);
-  const opts = new Set([cor]);
+  const { q, a, answerNum } = generateMathQuestion();
+  const opts = new Set([answerNum]);
   while (opts.size < VERIFY_OPTION_COUNT) {
-    const c = cor + Math.floor(Math.random() * 15) - 7;
-    if (c > 0 && c !== cor) opts.add(c);
+    // 生成相近的干扰选项
+    const c = answerNum + Math.floor(Math.random() * 15) - 7;
+    if (c > 0 && c !== answerNum) opts.add(c);
   }
   const arr = [...opts].sort(() => Math.random() - 0.5).map(String);
   return {
@@ -46,34 +72,33 @@ function randId() {
   return [...crypto.getRandomValues(new Uint8Array(12))].map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-// ── Verification timeout notification ────────────────────────────────────────
+// ── 验证超时通知 ────────────────────────────────────────────────────────────
 function scheduleVerifyTimeout({ waitUntil, tg, db, kv, userId, timeout, verifyMsgId }) {
   let fired = false;
   const cleanup = async () => {
-    if (fired) return; // dedup guard for setTimeout + waitUntil
+    if (fired) return; // setTimeout 和 waitUntil 去重
     fired = true;
     console.log('[verify_timeout] cleanup for user', userId, 'verifyMsgId:', verifyMsgId);
     const v = await db.getVerify(userId).catch(() => null);
-    // If record exists and not yet expired (with 5s tolerance), skip
+    // 记录仍存在且未过期（含 5 秒容差），跳过
     if (v && v.expires_at > Date.now() + 5000) return;
-    // If user is already verified, skip
+    // 用户已验证，跳过
     const user = await db.getUser(userId).catch(() => null);
     if (user?.is_verified) return;
-    // Clean up webverify KV if record had it
+    // 清理 webverify KV
     if (v?.web_verify_id) await kv.delete(`webverify:${v.web_verify_id}`).catch(() => {});
     await db.delVerify(userId).catch(() => {});
-    // Only delete pending if it still references the original message
+    // 仅当 pending 仍指向原始消息时才删除，避免丢失用户后续消息
     const pendingRaw = await kv.get(`pending:${userId}`).catch(() => null);
     if (pendingRaw) {
       try {
         const p = JSON.parse(pendingRaw);
-        // Only delete if pending matches the message that triggered this verification
         if (!p.msgId || p.msgId === verifyMsgId) {
           await kv.delete(`pending:${userId}`).catch(() => {});
         }
       } catch { await kv.delete(`pending:${userId}`).catch(() => {}); }
     }
-    // Edit verification message — use captured param, fallback to record field
+    // 编辑验证消息，优先用捕获的参数，回退用记录字段
     const msgId = verifyMsgId || v?.verify_msg_id;
     if (msgId) {
       console.log('[verify_timeout] editing message', msgId, 'for user', userId);
@@ -84,9 +109,9 @@ function scheduleVerifyTimeout({ waitUntil, tg, db, kv, userId, timeout, verifyM
       console.warn('[verify_timeout] no verifyMsgId for user', userId);
     }
   };
-  // Primary: setTimeout (works in both Docker and CF Workers)
+  // 主要方式：setTimeout（Docker 和 CF Workers 均可用）
   setTimeout(cleanup, timeout * 1000 + 2000);
-  // Backup: waitUntil (CF Workers keeps context alive)
+  // 备份方式：waitUntil（CF Workers 可保持执行上下文存活）
   if (waitUntil) {
     const task = (async () => {
       await new Promise(r => setTimeout(r, timeout * 1000 + 2000));
@@ -655,7 +680,7 @@ function userMainMenuKb(t) {
   ];
 }
 
-// ── Commands setup ────────────────────────────────────────────────────────────
+// ── 命令注册 ──────────────────────────────────────────────────────────────────
 export async function setupCommands(tg, locale = 'zh-hans') {
   const normalized = normalizeBotLocale(locale)
   const { userCmds, adminCmds } = getBotCommands(normalized)
@@ -664,7 +689,7 @@ export async function setupCommands(tg, locale = 'zh-hans') {
   await tg.setChatMenuButton({ menuButton: { type: 'commands' } })
 }
 
-// ── Entry point ───────────────────────────────────────────────────────────────
+// ── 入口函数 ──────────────────────────────────────────────────────────────────
 export async function processUpdate(update, env) {
   if (!env?.KV) { console.error('KV not bound'); return; }
   const db  = env._db;
@@ -681,13 +706,13 @@ export async function processUpdate(update, env) {
   } catch (e) { console.error('processUpdate:', e); }
 }
 
-// ── Message handler ───────────────────────────────────────────────────────────
+// ── 消息处理器 ────────────────────────────────────────────────────────────────
 async function handleMsg(msg, { tg, db, kv, settings, baseUrl, t, waitUntil }) {
   if (!msg) return;
   const user = msg.from;
   if (!user || user.is_bot) return;
 
-  // ── Web App data — MUST be handled before anything else ───────────────────
+  // ── Web App 数据 — 必须在所有其他处理之前 ────────────────────────────────
   if (msg.web_app_data) {
     await handleWebAppVerify(msg, user, { tg, db, kv, settings, t, waitUntil });
     return;
@@ -696,7 +721,7 @@ async function handleMsg(msg, { tg, db, kv, settings, baseUrl, t, waitUntil }) {
   const groupId  = parseInt(settings.FORUM_GROUP_ID, 10);
   const adminIds = parseAdminIds(settings.ADMIN_IDS);
 
-  // ── Group topic: admin → user forwarding ──────────────────────────────────
+  // ── 群组话题：管理员 → 用户消息转发 ─────────────────────────────────────
   if (msg.chat.id === groupId && msg.is_topic_message) {
     if (!adminIds.includes(user.id)) return; // only admins' replies get forwarded
     if (msg.text?.startsWith('/')) return;   // avoid accidental command forwarding
@@ -716,7 +741,7 @@ async function handleMsg(msg, { tg, db, kv, settings, baseUrl, t, waitUntil }) {
     const shouldForward = await shouldProcessMessageOnce(kv, 'admin-topic-forward', msg.chat.id, msg.message_id);
     if (!shouldForward) return;
 
-    // Use copyMessage to preserve ALL formatting (code, monospace, quotes, media)
+    // 使用 copyMessage 转发所有内容类型，保留完整格式
     const forwardRes = await tg.copyMsg({ chatId: target.user_id, fromChatId: msg.chat.id, msgId: msg.message_id });
     if (!forwardRes?.ok) {
       console.error('admin topic forward failed:', forwardRes);
@@ -739,19 +764,19 @@ async function handleMsg(msg, { tg, db, kv, settings, baseUrl, t, waitUntil }) {
 
   if (msg.chat.type !== 'private') return;
 
-  // Upsert user info
+  // 更新用户信息
   await db.upsertUser({
     user_id: user.id, username: user.username,
     first_name: user.first_name, last_name: user.last_name, language_code: user.language_code,
   });
 
-  // ── Admin private chat: control panel or command processing ───────────────
+  // ── 管理员私聊：控制面板或命令处理 ──────────────────────────────────────
   if (adminIds.includes(user.id)) {
     await handleAdminPrivateMsg(msg, user, { tg, db, kv, settings, groupId, t, waitUntil });
     return;
   }
 
-  // ── Command filter ────────────────────────────────────────────────────────
+  // ── 指令过滤 ─────────────────────────────────────────────────────────────
   if (msg.text?.startsWith('/')) {
     const [cmdFull] = msg.text.split(' ');
     const cmd = cmdFull.split('@')[0].slice(1).toLowerCase();
@@ -793,7 +818,7 @@ async function handleMsg(msg, { tg, db, kv, settings, baseUrl, t, waitUntil }) {
     if (settings.BOT_COMMAND_FILTER === 'true') return; // swallow unknown commands
   }
 
-  // ── Block check ───────────────────────────────────────────────────────────
+  // ── 封禁检查 ─────────────────────────────────────────────────────────────
   const dbUser = await db.getUser(user.id);
   if (dbUser?.is_blocked) {
     const isPermanentBlock = Boolean(dbUser.is_permanent_block);
@@ -865,7 +890,7 @@ async function handleMsg(msg, { tg, db, kv, settings, baseUrl, t, waitUntil }) {
     return;
   }
 
-  // ── Whitelist bypass ──────────────────────────────────────────────────────
+  // ── 白名单跳过 ───────────────────────────────────────────────────────────
   const whitelisted = settings.WHITELIST_ENABLED === 'true' && await db.isWhitelisted(user.id);
 
   if (!whitelisted) {
@@ -955,7 +980,7 @@ async function handleMsg(msg, { tg, db, kv, settings, baseUrl, t, waitUntil }) {
           const imgUrl     = `${siteUrl}/api/captcha/${captchaId}`;
           const r          = await tg.sendPhoto({ chatId: user.id, url: imgUrl, caption, kb });
           if (!r.ok) {
-            // Fallback to math captcha if sendPhoto fails
+            // sendPhoto 失败时回退到数学题验证码
             const { question, answer, kb: mathKb } = mkMathVerify();
             const r2 = await tg.sendMsg({ chatId: user.id, text: t('verify.title', { question }), kb: mathKb });
             const fallbackMsgId = r2?.result?.message_id;
@@ -989,7 +1014,7 @@ async function handleMsg(msg, { tg, db, kv, settings, baseUrl, t, waitUntil }) {
   const shouldForward = await shouldProcessMessageOnce(kv, 'user-to-admin-thread', msg.chat.id, msg.message_id);
   if (!shouldForward) return;
 
-  // Use copyMessage to forward ALL content types with full formatting preserved
+  // 使用 copyMessage 转发所有内容类型，保留完整格式
   const res = await tg.copyMsg({ chatId: groupId, fromChatId: msg.chat.id, msgId: msg.message_id, threadId: tid });
   if (res.ok) {
     const recordTask = db.addMsg({
@@ -1004,7 +1029,7 @@ async function handleMsg(msg, { tg, db, kv, settings, baseUrl, t, waitUntil }) {
     await reactSentOk({ tg, chatId: msg.chat.id, msgId: msg.message_id });
     await tg.sendMsg({ chatId: user.id, text: t('sentToAdmin') });
   } else {
-    // Topic may have been deleted — clear stale thread, recreate, and retry once
+    // 话题可能已被删除 — 清除过期 thread_id，重建话题后重试一次
     console.warn('copyMsg failed (thread may be deleted), retrying with new thread:', res);
     await db.clearUserThread(user.id);
     const newTid = await getOrCreateThread(tg, db, user, groupId, kv, t);
@@ -1258,7 +1283,7 @@ async function handleAdminPrivateMsg(msg, user, { tg, db, kv, settings, groupId,
       return;
     }
 
-    // Unknown slash commands should not be forwarded to group/topic.
+    // 未知的斜杠指令不应转发到群组/话题。
     await tg.sendMsg({ chatId: user.id, text: t('admin.unknownCmd') });
     return;
   }
@@ -1272,7 +1297,7 @@ async function handleAdminPrivateMsg(msg, user, { tg, db, kv, settings, groupId,
     return;
   }
 
-  // Always forward admin private messages to the admin's dedicated topic.
+  // 始终将管理员私聊消息转发到管理员专属话题。
   const fwdRes = await tg.copyMsg({
     chatId: groupId,
     fromChatId: msg.chat.id,
@@ -1282,12 +1307,12 @@ async function handleAdminPrivateMsg(msg, user, { tg, db, kv, settings, groupId,
   if (fwdRes.ok) {
     await tg.sendMsg({ chatId: user.id, text: t('admin.forwarded') });
   } else if (settings.ADMIN_NOTIFY_ENABLED === 'true') {
-    // When enabled, fallback to control panel if forwarding fails.
+    // 开启后若转发失败，回退到控制面板。
     await sendPanel();
   }
 }
 
-// ── Callback handler ──────────────────────────────────────────────────────────
+// ── 回调处理器 ────────────────────────────────────────────────────────────────
 async function handleCb(q, { tg, db, kv, settings, t, waitUntil }) {
   const { data, from: user, message } = q;
   const chatId  = message.chat.id;
@@ -1524,25 +1549,25 @@ async function handleVerifyAnswer(q, tg, db, kv, user, chatId, msgId, settings, 
         return;
       }
 
-      // #4: Reload groupId from settings in case the caller passed NaN
+      // 从 settings 重新读取 groupId，防止调用方传入 NaN
       const effectiveGroupId = groupId || parseInt(settings.FORUM_GROUP_ID, 10) || 0;
       const maxAtt = parseInt(settings.MAX_VERIFICATION_ATTEMPTS || '3', 10);
       if (sel === v.answer) {
         await db.setUserVerified(user.id, true);
         await db.delVerify(user.id);
         if (captchaId) await kv.delete(`captcha_render:${captchaId}`);
-        // #6: Try deleteMsg, fallback to editText, then editCaption for photo messages
+        // deleteMsg → editText → editCaption 三级回退
         const delResult = await tg.deleteMsg({ chatId, msgId }).catch(() => null);
         if (!delResult?.ok) {
           const editResult = await tg.editText({ chatId, msgId, text: '✅ 验证已完成', kb: [] }).catch(() => null);
           if (!editResult?.ok) {
-            // Photo messages can't be edited with editText — try editCaption
+            // 图片消息无法用 editText 编辑 — 尝试 editCaption
             await tg.editCaption({ chatId, msgId, caption: '✅ 验证已完成', kb: [] }).catch(() => {});
           }
         }
         await tg.sendMsg({ chatId, text: t('verify.success') }).catch(() => {});
 
-        // #8: Use user.id consistently
+        // 使用 user.id 保持 dedup key 一致性
         const pr = await kv.get(`pending:${user.id}`);
         if (pr && effectiveGroupId) {
           await kv.delete(`pending:${user.id}`);
@@ -1563,7 +1588,7 @@ async function handleVerifyAnswer(q, tg, db, kv, user, chatId, msgId, settings, 
         const att = v.attempts + 1;
         if (att >= maxAtt) {
           await db.delVerify(user.id);
-          await kv.delete(`pending:${user.id}`).catch(() => {}); // #13
+          await kv.delete(`pending:${user.id}`).catch(() => {}); // 尝试次数用尽，清理待处理记录
           if (captchaId) await kv.delete(`captcha_render:${captchaId}`);
           await tg.editText({ chatId, msgId, text: t('verify.tooMany'), kb: [] }).catch(() => {});
           await tg.answerCb({ id: q.id }).catch(() => {});
@@ -1580,7 +1605,7 @@ async function handleVerifyAnswer(q, tg, db, kv, user, chatId, msgId, settings, 
   }
 }
 
-// ── Web App verification callback (Turnstile / reCAPTCHA) ──────────────────
+// ── Web App 验证回调（Turnstile / reCAPTCHA）───────────────────────────────
 async function handleWebAppVerify(msg, user, { tg, db, kv, settings, t, waitUntil }) {
   const data = msg.web_app_data?.data;
   if (!data) { console.error('[web_app_verify] no data'); return; }
@@ -1591,7 +1616,7 @@ async function handleWebAppVerify(msg, user, { tg, db, kv, settings, t, waitUnti
 
   console.log('[web_app_verify] processing user', user.id);
 
-  // #7: Idempotency guard — skip if already verified and no pending verify record
+  // 幂等守卫 — 已验证且无待处理记录则跳过
   const dbUser = await db.getUser(user.id).catch(() => null);
   const v = await db.getVerify(user.id).catch(() => null);
   if (!v && dbUser?.is_verified) {
@@ -1599,7 +1624,7 @@ async function handleWebAppVerify(msg, user, { tg, db, kv, settings, t, waitUnti
     return;
   }
 
-  // #14: Expiry check
+  // 过期检查
   if (!v || v.expires_at < Date.now()) {
     console.warn('[web_app_verify] verification expired for user', user.id);
     await db.delVerify(user.id).catch(() => {});
@@ -1609,7 +1634,7 @@ async function handleWebAppVerify(msg, user, { tg, db, kv, settings, t, waitUnti
 
   let verifyMsgId = v.verify_msg_id;
 
-  // Also check webverify KV for verifyMsgId
+  // 从 webverify KV 读取 verifyMsgId
   const webVerifyId = v?.web_verify_id;
   if (webVerifyId) {
     const wvRaw = await kv.get(`webverify:${webVerifyId}`).catch(() => null);
@@ -1624,17 +1649,17 @@ async function handleWebAppVerify(msg, user, { tg, db, kv, settings, t, waitUnti
 
   console.log('[web_app_verify] verifyMsgId:', verifyMsgId);
 
-  // Mark verified
+  // 标记已验证
   if (!dbUser?.is_verified) {
     await db.setUserVerified(user.id, true);
   }
 
-  // Clean up verify and pending records
+  // 清理验证和待处理记录
   await db.delVerify(user.id).catch(() => {});
   const pendingRaw = await kv.get(`pending:${user.id}`).catch(() => null);
   await kv.delete(`pending:${user.id}`).catch(() => {});
 
-  // Delete verification message
+  // 删除验证消息
   if (verifyMsgId) {
     const delResult = await tg.deleteMsg({ chatId: user.id, msgId: verifyMsgId }).catch(() => null);
     if (!delResult?.ok) {
@@ -1645,13 +1670,13 @@ async function handleWebAppVerify(msg, user, { tg, db, kv, settings, t, waitUnti
     }
   }
 
-  // Delete the web_app_data system message
+  // 删除 web_app_data 系统消息
   await tg.deleteMsg({ chatId: user.id, msgId: msg.message_id }).catch(() => {});
 
-  // Send success notification
+  // 发送成功通知
   await tg.sendMsg({ chatId: user.id, text: t('verify.success') }).catch(() => {});
 
-  // Forward pending message
+  // 转发待处理消息
   const groupId = parseInt(settings.FORUM_GROUP_ID, 10);
   if (pendingRaw && groupId) {
     try {
@@ -1735,7 +1760,7 @@ async function handleAdmCb(q, action, { tg, db, kv, settings, chatId, msgId, adm
     return;
   }
 
-  // Page indicator button — no-op
+  // 页码指示按钮 — 无操作
   if (action === 'none') {
     await tg.answerCb({ id: q.id }).catch(() => {});
     return;
@@ -1895,7 +1920,7 @@ async function handleAdmCb(q, action, { tg, db, kv, settings, chatId, msgId, adm
   await tg.answerCb({ id: q.id }).catch(() => {});
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── 辅助函数 ──────────────────────────────────────────────────────────────────
 function parseAdminIds(str) {
   return (str || '').split(',').map(s => parseInt(s.trim(), 10)).filter(Boolean);
 }
