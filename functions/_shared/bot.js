@@ -49,24 +49,31 @@ function randId() {
 // ── Verification timeout notification ────────────────────────────────────────
 function scheduleVerifyTimeout({ waitUntil, tg, db, kv, userId, timeout, verifyMsgId }) {
   const cleanup = async () => {
+    console.log('[verify_timeout] cleanup for user', userId, 'verifyMsgId:', verifyMsgId);
     const v = await db.getVerify(userId).catch(() => null);
-    // If record still exists and not yet expired, skip (shouldn't happen after timeout+2s)
+    // If record exists and not yet expired, skip (shouldn't happen)
     if (v && v.expires_at > Date.now()) return;
-    // Clean up webverify KV if present
-    const wvId = v?.web_verify_id;
-    if (wvId) await kv.delete(`webverify:${wvId}`).catch(() => {});
-    // Clean up pending and verify records
+    // If user is already verified, skip
+    const user = await db.getUser(userId).catch(() => null);
+    if (user?.is_verified) return;
+    // Clean up webverify KV if record had it
+    if (v?.web_verify_id) await kv.delete(`webverify:${v.web_verify_id}`).catch(() => {});
     await kv.delete(`pending:${userId}`).catch(() => {});
     await db.delVerify(userId).catch(() => {});
     // Edit verification message — use captured param, fallback to record field
     const msgId = verifyMsgId || v?.verify_msg_id;
     if (msgId) {
-      await tg.editText({ chatId: userId, msgId, text: '⏳ 验证已超时，请重新发送消息以发起新的验证。', kb: [] }).catch(() => {});
+      console.log('[verify_timeout] editing message', msgId, 'for user', userId);
+      await tg.editText({ chatId: userId, msgId, text: '⏳ 验证已超时，请重新发送消息以发起新的验证。', kb: [] }).catch(e => {
+        console.error('[verify_timeout] editText failed:', e?.description || e);
+      });
+    } else {
+      console.warn('[verify_timeout] no verifyMsgId for user', userId);
     }
   };
   // Primary: setTimeout (works in both Docker and CF Workers)
   setTimeout(cleanup, timeout * 1000 + 2000);
-  // Backup: waitUntil (CF Workers keeps context alive for this)
+  // Backup: waitUntil (CF Workers keeps context alive)
   if (waitUntil) {
     const task = (async () => {
       await new Promise(r => setTimeout(r, timeout * 1000 + 2000));
@@ -667,6 +674,12 @@ async function handleMsg(msg, { tg, db, kv, settings, baseUrl, t, waitUntil }) {
   const user = msg.from;
   if (!user || user.is_bot) return;
 
+  // ── Web App data — MUST be handled before anything else ───────────────────
+  if (msg.web_app_data) {
+    await handleWebAppVerify(msg, user, { tg, db, kv, settings, t, waitUntil });
+    return;
+  }
+
   const groupId  = parseInt(settings.FORUM_GROUP_ID, 10);
   const adminIds = parseAdminIds(settings.ADMIN_IDS);
 
@@ -718,12 +731,6 @@ async function handleMsg(msg, { tg, db, kv, settings, baseUrl, t, waitUntil }) {
     user_id: user.id, username: user.username,
     first_name: user.first_name, last_name: user.last_name, language_code: user.language_code,
   });
-
-  // ── Web App data (Turnstile / reCAPTCHA verification callback) ─────────────
-  if (msg.web_app_data) {
-    await handleWebAppVerify(msg, user, { tg, db, kv, settings, groupId, t, waitUntil });
-    return;
-  }
 
   // ── Admin private chat: control panel or command processing ───────────────
   if (adminIds.includes(user.id)) {
@@ -1504,7 +1511,11 @@ async function handleVerifyAnswer(q, tg, db, kv, user, chatId, msgId, settings, 
         await db.setUserVerified(user.id, true);
         await db.delVerify(user.id);
         if (captchaId) await kv.delete(`captcha_render:${captchaId}`);
-        await tg.deleteMsg({ chatId, msgId }).catch(() => {});
+        const delResult = await tg.deleteMsg({ chatId, msgId }).catch(() => null);
+        if (!delResult?.ok) {
+          console.warn('[verify] deleteMsg failed, trying editText');
+          await tg.editText({ chatId, msgId, text: '✅ 验证已完成', kb: [] }).catch(() => {});
+        }
         await tg.sendMsg({ chatId, text: t('verify.success') }).catch(() => {});
 
         const pr = await kv.get(`pending:${user.id}`);
@@ -1544,19 +1555,21 @@ async function handleVerifyAnswer(q, tg, db, kv, user, chatId, msgId, settings, 
 }
 
 // ── Web App verification callback (Turnstile / reCAPTCHA) ──────────────────
-async function handleWebAppVerify(msg, user, { tg, db, kv, settings, groupId, t, waitUntil }) {
+async function handleWebAppVerify(msg, user, { tg, db, kv, settings, t, waitUntil }) {
   const data = msg.web_app_data?.data;
-  if (!data) return;
+  if (!data) { console.error('[web_app_verify] no data'); return; }
 
   let payload;
-  try { payload = JSON.parse(data); } catch { return; }
-  if (payload.type !== 'web_verify_ok') return;
+  try { payload = JSON.parse(data); } catch { console.error('[web_app_verify] invalid JSON'); return; }
+  if (payload.type !== 'web_verify_ok') { console.error('[web_app_verify] unknown type:', payload.type); return; }
 
-  // Read webverify entry to get verifyMsgId for message cleanup
-  const v = await db.getVerify(user.id);
+  console.log('[web_app_verify] processing user', user.id);
+
+  // Read verify record for verifyMsgId
+  const v = await db.getVerify(user.id).catch(() => null);
   let verifyMsgId = v?.verify_msg_id;
 
-  // Also check webverify KV for verifyMsgId (more reliable for web captcha types)
+  // Also check webverify KV for verifyMsgId
   const webVerifyId = v?.web_verify_id;
   if (webVerifyId) {
     const wvRaw = await kv.get(`webverify:${webVerifyId}`).catch(() => null);
@@ -1569,18 +1582,26 @@ async function handleWebAppVerify(msg, user, { tg, db, kv, settings, groupId, t,
     await kv.delete(`webverify:${webVerifyId}`).catch(() => {});
   }
 
-  // Mark verified (POST handler already did this, but ensure it)
-  const dbUser = await db.getUser(user.id);
+  console.log('[web_app_verify] verifyMsgId:', verifyMsgId);
+
+  // Mark verified
+  const dbUser = await db.getUser(user.id).catch(() => null);
   if (!dbUser?.is_verified) {
     await db.setUserVerified(user.id, true);
   }
 
-  // Clean up verify record
-  await db.delVerify(user.id);
+  // Clean up verify and pending records
+  await db.delVerify(user.id).catch(() => {});
+  const pendingRaw = await kv.get(`pending:${user.id}`).catch(() => null);
+  await kv.delete(`pending:${user.id}`).catch(() => {});
 
   // Delete verification message
   if (verifyMsgId) {
-    await tg.deleteMsg({ chatId: user.id, msgId: verifyMsgId }).catch(() => {});
+    const delResult = await tg.deleteMsg({ chatId: user.id, msgId: verifyMsgId }).catch(() => null);
+    if (!delResult?.ok) {
+      console.warn('[web_app_verify] deleteMsg failed, trying editText');
+      await tg.editText({ chatId: user.id, msgId: verifyMsgId, text: '✅ 验证已完成', kb: [] }).catch(() => {});
+    }
   }
 
   // Delete the web_app_data system message
@@ -1590,11 +1611,10 @@ async function handleWebAppVerify(msg, user, { tg, db, kv, settings, groupId, t,
   await tg.sendMsg({ chatId: user.id, text: t('verify.success') }).catch(() => {});
 
   // Forward pending message
-  const pr = await kv.get(`pending:${user.id}`);
-  if (pr && groupId) {
-    await kv.delete(`pending:${user.id}`);
+  const groupId = parseInt(settings.FORUM_GROUP_ID, 10);
+  if (pendingRaw && groupId) {
     try {
-      const p = JSON.parse(pr);
+      const p = JSON.parse(pendingRaw);
       const tid = await getOrCreateThread(tg, db, user, groupId, kv, t);
       if (tid && p.msgId) {
         const shouldForward = await shouldProcessMessageOnce(kv, 'verified-user-forward', user.id, p.msgId);
@@ -1607,10 +1627,9 @@ async function handleWebAppVerify(msg, user, { tg, db, kv, settings, groupId, t,
     } catch (e) {
       console.error('[web_app_verify] forward pending failed:', e);
     }
-  } else {
-    // No pending message — just clean up the key if it exists
-    await kv.delete(`pending:${user.id}`).catch(() => {});
   }
+
+  console.log('[web_app_verify] done for user', user.id);
 }
 
 async function handleAdmCb(q, action, { tg, db, kv, settings, chatId, msgId, adminId, t, waitUntil }) {
