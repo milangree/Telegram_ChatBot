@@ -523,6 +523,7 @@ function adminFeatureMenuKb(s, t) {
     image_alphanumeric: t('panel.cap.imageAlnum'),
     turnstile: t('panel.cap.turnstile'),
     recaptcha: t('panel.cap.recaptcha'),
+    recaptcha_v3: t('panel.cap.recaptchaV3'),
   };
   const capLabel = capLabelMap[s.CAPTCHA_TYPE] || t('panel.cap.math');
   const inlineKbDeleteSec = getInlineKbMsgDeleteSeconds(s);
@@ -874,8 +875,10 @@ async function handleMsg(msg, { tg, db, kv, settings, baseUrl, t, waitUntil }) {
             return { done: true };
           }
 
-          if (captchaType === 'turnstile' || captchaType === 'recaptcha') {
-            const secretKey = captchaType === 'turnstile' ? settings.TURNSTILE_SECRET_KEY : settings.RECAPTCHA_SECRET_KEY;
+          if (captchaType === 'turnstile' || captchaType === 'recaptcha' || captchaType === 'recaptcha_v3') {
+            const secretKey = captchaType === 'turnstile' ? settings.TURNSTILE_SECRET_KEY
+              : captchaType === 'recaptcha_v3' ? settings.RECAPTCHA_V3_SECRET_KEY
+              : settings.RECAPTCHA_SECRET_KEY;
             if (!secretKey) {
               const { question, answer, kb } = mkMathVerify();
               const r = await tg.sendMsg({ chatId: user.id, text: t('verify.title', { question }), kb });
@@ -1688,7 +1691,7 @@ async function handleAdmCb(q, action, { tg, db, kv, settings, chatId, msgId, adm
   if (action === 'tn') return toggle('ADMIN_NOTIFY_ENABLED', t('panel.adminNotify'));
 
   if (action === 'ct') {
-    const all = ['math', 'image_numeric', 'image_alphanumeric', 'turnstile', 'recaptcha'];
+    const all = ['math', 'image_numeric', 'image_alphanumeric', 'turnstile', 'recaptcha', 'recaptcha_v3'];
     const cur = all.indexOf(settings.CAPTCHA_TYPE || 'math');
     const next = all[(cur + 1) % all.length];
     await db.setSetting('CAPTCHA_TYPE', next);
