@@ -3,7 +3,7 @@ import { DB } from '../_shared/db.js';
 import { TG } from '../_shared/tg.js';
 import { CORS, j, err, hashPw, verifyPw, createSession, getSession, delSession, extractToken, genToken } from '../_shared/auth.js';
 import { verifyTOTP, generateTOTPSecret } from '../_shared/totp.js';
-import { renderCaptchaPNG } from '../_shared/captcha.js';
+import { renderCaptchaPNG, renderSliderPuzzle } from '../_shared/captcha.js';
 import { setupCommands, getOrCreateThread } from '../_shared/bot.js';
 import { normalizeBotLocale, createBotT } from '../_shared/bot-i18n.js';
 import { exportBusinessDataSql, importBusinessDataSql } from '../_shared/db-sql.js';
@@ -146,6 +146,24 @@ export async function onRequest({ request, env, waitUntil }) {
     return new Response(png, { headers: { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=300', ...CORS } });
   }
 
+  // 拼图验证码图片（公开）
+  const sliderBgMatch = path.match(/^\/slider-bg\/([a-f0-9]+)$/);
+  if (sliderBgMatch && request.method === 'GET') {
+    const data = await kv.get(`slider_img:${sliderBgMatch[1]}`);
+    if (!data) return new Response('expired', { status: 404 });
+    const { bg } = JSON.parse(data);
+    const buf = Uint8Array.from(atob(bg), c => c.charCodeAt(0)).buffer;
+    return new Response(buf, { headers: { 'Content-Type': 'image/png', 'Cache-Control': 'no-store', ...CORS } });
+  }
+  const sliderPieceMatch = path.match(/^\/slider-piece\/([a-f0-9]+)$/);
+  if (sliderPieceMatch && request.method === 'GET') {
+    const data = await kv.get(`slider_img:${sliderPieceMatch[1]}`);
+    if (!data) return new Response('expired', { status: 404 });
+    const { piece } = JSON.parse(data);
+    const buf = Uint8Array.from(atob(piece), c => c.charCodeAt(0)).buffer;
+    return new Response(buf, { headers: { 'Content-Type': 'image/png', 'Cache-Control': 'no-store', ...CORS } });
+  }
+
   // Web 验证页面（公开）— Turnstile / reCAPTCHA
   const webVerifyMatch = path.match(/^\/verify\/([a-f0-9]+)$/);
   if (webVerifyMatch) {
@@ -286,7 +304,7 @@ export async function onRequest({ request, env, waitUntil }) {
     // GET /api/verify/{token} — 返回验证页面
     if (request.method === 'GET') {
       if (!webVerifyRaw) {
-        return new Response(buildVerifyPage(null, null, 'expired', url.origin), {
+        return new Response(buildVerifyPage(null, null, 'expired', url.origin, null), {
           headers: { 'Content-Type': 'text/html; charset=utf-8' },
         });
       }
@@ -294,7 +312,7 @@ export async function onRequest({ request, env, waitUntil }) {
       // 检查验证是否已过期
       const verifyRecord = await db.getVerify(wvUserId).catch(() => null);
       if (!verifyRecord || verifyRecord.expires_at < Date.now()) {
-        return new Response(buildVerifyPage(null, null, 'expired', url.origin), {
+        return new Response(buildVerifyPage(null, null, 'expired', url.origin, null), {
           headers: { 'Content-Type': 'text/html; charset=utf-8' },
         });
       }
@@ -304,13 +322,19 @@ export async function onRequest({ request, env, waitUntil }) {
         : 'RECAPTCHA_SITE_KEY';
       let siteKey = await db.getSetting(siteKeySetting);
       let sliderTarget = null;
-      // 滑块验证：生成随机目标位置并存入 KV
+      // 滑块验证：生成拼图图片并存入 KV
       if (captchaType === 'slider') {
-        sliderTarget = Math.floor(Math.random() * 60) + 20; // 20-80 之间
+        const puzzleSeed = webVerifyId + ':' + Date.now();
+        const puzzle = await renderSliderPuzzle(puzzleSeed);
+        sliderTarget = puzzle.targetX;
+        // 将图片转为 base64 存入 KV（避免重复生成）
+        const bgB64 = btoa(String.fromCharCode(...new Uint8Array(puzzle.bg)));
+        const pieceB64 = btoa(String.fromCharCode(...new Uint8Array(puzzle.piece)));
+        await kv.put(`slider_img:${webVerifyId}`, JSON.stringify({ bg: bgB64, piece: pieceB64 }), { expirationTtl: 600 });
         await kv.put(`slider_target:${webVerifyId}`, JSON.stringify({ pos: sliderTarget }), { expirationTtl: 600 });
         siteKey = String(sliderTarget);
       }
-      return new Response(buildVerifyPage(captchaType, siteKey, null, url.origin), {
+      return new Response(buildVerifyPage(captchaType, siteKey, null, url.origin, webVerifyId), {
         headers: { 'Content-Type': 'text/html; charset=utf-8' },
       });
     }
@@ -814,7 +838,7 @@ function cookie(token, maxAge = 86400) {
   return `session=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}`;
 }
 
-function buildVerifyPage(captchaType, siteKey, error, origin) {
+function buildVerifyPage(captchaType, siteKey, error, origin, webVerifyId) {
   const isTurnstile = captchaType === 'turnstile';
   const isRecaptcha = captchaType === 'recaptcha';
   const isRecaptchaV3 = captchaType === 'recaptcha_v3';
@@ -840,12 +864,15 @@ function buildVerifyPage(captchaType, siteKey, error, origin) {
         : isHcaptcha
           ? '<div class="h-captcha" data-sitekey="' + siteKey + '" data-callback="onVerify"></div>'
           : isSlider
-            ? '<div id="slider-wrap">'
-              + '<div id="slider-hint" class="desc">请拖动滑块到目标位置</div>'
+            ? '<div id="puzzle-wrap">'
+              + '<div id="puzzle-hint" class="desc">请拖动下方拼图块到缺口位置</div>'
+              + '<div id="puzzle-container">'
+              + '<img id="puzzle-bg" src="/api/slider-bg/' + webVerifyId + '" />'
+              + '<img id="puzzle-piece" src="/api/slider-piece/' + webVerifyId + '" />'
+              + '</div>'
               + '<div id="slider-track">'
-              + '<div id="slider-target" style="left:' + siteKey + '%"></div>'
-              + '<div id="slider-thumb"></div>'
-              + '<div id="slider-ok" style="left:' + siteKey + '%"></div>'
+              + '<div id="slider-fill"></div>'
+              + '<div id="slider-thumb"><span>◀▶</span></div>'
               + '</div></div>'
             : '';
 
@@ -858,14 +885,16 @@ function buildVerifyPage(captchaType, siteKey, error, origin) {
     : '';
 
   const sliderCSS = isSlider
-    ? '#slider-wrap{padding:10px 0}\n'
-      + '#slider-hint{text-align:center;margin-bottom:12px;font-size:14px}\n'
-      + '#slider-track{position:relative;width:100%;height:44px;background:#e8e8e8;border-radius:22px;overflow:visible;touch-action:none}\n'
-      + '#slider-target{position:absolute;top:0;width:4px;height:100%;background:rgba(102,126,234,.3);border-radius:2px;transform:translateX(-50%)}\n'
-      + '#slider-ok{position:absolute;top:50%;width:12px;height:12px;background:rgba(102,126,234,.25);border:2px dashed rgba(102,126,234,.5);border-radius:50%;transform:translate(-50%,-50%)}\n'
-      + '#slider-thumb{position:absolute;top:50%;left:0;width:40px;height:40px;background:#fff;border:2px solid #667eea;border-radius:50%;transform:translate(-50%,-50%);cursor:grab;box-shadow:0 2px 8px rgba(0,0,0,.15)}\n'
+    ? '#puzzle-wrap{padding:0}\n'
+      + '#puzzle-hint{text-align:center;margin-bottom:10px;font-size:14px}\n'
+      + '#puzzle-container{position:relative;width:100%;border-radius:8px;overflow:hidden;margin-bottom:16px;line-height:0}\n'
+      + '#puzzle-bg{width:100%;height:auto;display:block}\n'
+      + '#puzzle-piece{position:absolute;top:0;left:0;height:100%;width:auto;pointer-events:none;transition:none}\n'
+      + '#slider-track{position:relative;width:100%;height:40px;background:#e8e8e8;border-radius:20px;overflow:visible;touch-action:none;margin-top:4px}\n'
+      + '#slider-fill{position:absolute;top:0;left:0;height:100%;background:linear-gradient(90deg,#667eea,#764ba2);border-radius:20px;pointer-events:none;transition:none}\n'
+      + '#slider-thumb{position:absolute;top:50%;left:0;width:44px;height:44px;background:#fff;border:2px solid #667eea;border-radius:50%;transform:translate(-50%,-50%);cursor:grab;box-shadow:0 2px 8px rgba(0,0,0,.15);display:flex;align-items:center;justify-content:center;font-size:14px;color:#667eea}\n'
       + '#slider-thumb:active{cursor:grabbing;box-shadow:0 4px 16px rgba(0,0,0,.25)}\n'
-      + '#slider-thumb.done{border-color:#52c41a;background:#f6ffed}\n'
+      + '#slider-thumb.done{border-color:#52c41a;background:#f6ffed;color:#52c41a}\n'
     : '';
 
   const cardBody = expiredMsg
@@ -961,51 +990,62 @@ function buildVerifyPage(captchaType, siteKey, error, origin) {
 
     if (isSlider) {
       verifyScript += ''
-        + '  // 滑块验证：拖动交互\n'
+        + '  // 拼图滑块验证：拖动交互\n'
         + '  (function() {\n'
         + '    var track = document.getElementById("slider-track");\n'
         + '    var thumb = document.getElementById("slider-thumb");\n'
-        + '    var okMark = document.getElementById("slider-ok");\n'
-        + '    var hint = document.getElementById("slider-hint");\n'
-        + '    if (!track || !thumb) return;\n'
-        + '    var trackW = track.offsetWidth;\n'
+        + '    var fill = document.getElementById("slider-fill");\n'
+        + '    var piece = document.getElementById("puzzle-piece");\n'
+        + '    var hint = document.getElementById("puzzle-hint");\n'
+        + '    var container = document.getElementById("puzzle-container");\n'
+        + '    if (!track || !thumb || !piece || !container) return;\n'
         + '    var dragging = false;\n'
+        + '    var maxLeft = 0;\n'
         + '    function getX(e) { return e.touches ? e.touches[0].clientX : e.clientX; }\n'
         + '    function move(clientX) {\n'
         + '      var rect = track.getBoundingClientRect();\n'
-        + '      var x = Math.max(0, Math.min(clientX - rect.left, rect.width));\n'
-        + '      var pct = (x / rect.width) * 100;\n'
-        + '      thumb.style.left = pct + "%";\n'
+        + '      maxLeft = rect.width - 44;\n'
+        + '      var x = Math.max(0, Math.min(clientX - rect.left - 22, maxLeft));\n'
+        + '      var pct = x / maxLeft;\n'
+        + '      thumb.style.left = x + "px";\n'
+        + '      if (fill) fill.style.width = (x + 22) + "px";\n'
+        + '      // 同步拼图块位置\n'
+        + '      var bgW = container.offsetWidth;\n'
+        + '      piece.style.left = (pct * (bgW - piece.offsetWidth)) + "px";\n'
         + '    }\n'
         + '    function up() {\n'
         + '      if (!dragging) return;\n'
         + '      dragging = false;\n'
-        + '      var pct = parseFloat(thumb.style.left) || 0;\n'
+        + '      var x = parseFloat(thumb.style.left) || 0;\n'
+        + '      var pct = Math.round((x / maxLeft) * 100 * 10) / 10;\n'
         + '      thumb.classList.add("done");\n'
         + '      if (hint) hint.textContent = "正在验证…";\n'
-        + '      // 提交位置\n'
         + '      fetch(window.location.href, {\n'
         + '        method: "POST",\n'
         + '        headers: { "Content-Type": "application/json" },\n'
-        + '        body: JSON.stringify({ "slider-position": Math.round(pct * 10) / 10 }),\n'
+        + '        body: JSON.stringify({ "slider-position": pct }),\n'
         + '      }).then(function(r) { return r.json(); }).then(function(data) {\n'
         + '        var status = document.getElementById("status");\n'
         + '        if (data.ok) {\n'
-        + '          if (status) { status.style.display = "block"; status.className = "status success"; status.textContent = "✅ 验证成功！正在返回…"; }\n'
+        + '          if (hint) hint.textContent = "✅ 验证成功！";\n'
+        + '          if (status) { status.style.display = "block"; status.className = "status success"; status.textContent = "正在返回…"; }\n'
         + '          if (tg) {\n'
         + '            tg.sendData(JSON.stringify({ type: "web_verify_ok", webVerifyId: webVerifyId }));\n'
         + '            setTimeout(function() { tg.close(); }, 300);\n'
         + '          }\n'
         + '        } else {\n'
-        + '          if (hint) hint.textContent = "❌ 验证失败，请重试";\n'
-        + '          if (status) { status.style.display = "block"; status.className = "status error"; }\n'
+        + '          if (hint) hint.textContent = "❌ 位置不对，请重试";\n'
         + '          thumb.classList.remove("done");\n'
         + '          thumb.style.left = "0";\n'
+        + '          if (fill) fill.style.width = "0";\n'
+        + '          piece.style.left = "0";\n'
         + '        }\n'
         + '      }).catch(function() {\n'
         + '        if (hint) hint.textContent = "❌ 网络错误，请重试";\n'
         + '        thumb.classList.remove("done");\n'
         + '        thumb.style.left = "0";\n'
+        + '        if (fill) fill.style.width = "0";\n'
+        + '        piece.style.left = "0";\n'
         + '      });\n'
         + '    }\n'
         + '    track.addEventListener("mousedown", function(e) { dragging = true; move(getX(e)); e.preventDefault(); });\n'
