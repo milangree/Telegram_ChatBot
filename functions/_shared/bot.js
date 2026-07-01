@@ -486,15 +486,15 @@ async function sendToUserThreadOrAdminDm({ tg, db, settings, waitUntil, groupId,
 function fullUserKb(uid, u, t) {
   return [
     [
-      { text: u?.is_blocked ? t('kb.unblock') : t('kb.block'), callback_data: u?.is_blocked ? `ub:${uid}` : `bl:${uid}` },
-      { text: u?.is_blocked ? t('kb.permBan') : t('kb.detail'), callback_data: u?.is_blocked ? `pb:${uid}` : `ui:${uid}` },
+      { text: u?.is_blocked ? `✅ ${t('kb.unblock')}` : `🚫 ${t('kb.block')}`, callback_data: u?.is_blocked ? `ub:${uid}` : `bl:${uid}` },
+      { text: u?.is_blocked ? `♾️ ${t('kb.permBan')}` : `📋 ${t('kb.detail')}`, callback_data: u?.is_blocked ? `pb:${uid}` : `ui:${uid}` },
     ],
     [
-      { text: t('kb.whitelist'), callback_data: `wl:${uid}` },
-      { text: t('kb.msgHistory'), callback_data: `ml:${uid}:1` },
+      { text: `⚪ ${t('kb.whitelist')}`, callback_data: `wl:${uid}` },
+      { text: `📨 ${t('kb.msgHistory')}`, callback_data: `ml:${uid}:1` },
     ],
     [
-      { text: t('kb.refresh'), callback_data: `rf:${uid}` },
+      { text: `🔄 ${t('kb.refresh')}`, callback_data: `rf:${uid}` },
     ],
   ];
 }
@@ -505,30 +505,31 @@ function adminFeatureMenuKb(s, t) {
     : (s.CAPTCHA_TYPE === 'image_alphanumeric' ? t('panel.cap.imageAlnum') : t('panel.cap.math'));
   const inlineKbDeleteSec = getInlineKbMsgDeleteSeconds(s);
   const filterCount = getMessageFilterRules(s).length;
+  const on = (v) => v === 'true' ? '✅' : '⬜';
   return [
     [
-      { text: `✅ ${t('panel.verify')}: ${s.VERIFICATION_ENABLED === 'true' ? t('panel.on') : t('panel.off')}`, callback_data: 'adm:tv' },
-      { text: `🔓 ${t('panel.appeal')}: ${s.AUTO_UNBLOCK_ENABLED === 'true' ? t('panel.on') : t('panel.off')}`, callback_data: 'adm:ta' },
+      { text: `${on(s.VERIFICATION_ENABLED)} ${t('panel.verify')}`, callback_data: 'adm:tv' },
+      { text: `${on(s.AUTO_UNBLOCK_ENABLED)} ${t('panel.appeal')}`, callback_data: 'adm:ta' },
     ],
     [
-      { text: `⚪ ${t('panel.whitelist')}: ${s.WHITELIST_ENABLED === 'true' ? t('panel.on') : t('panel.off')}`, callback_data: 'adm:tw' },
-      { text: `🤖 ${t('panel.cmdFilter')}: ${s.BOT_COMMAND_FILTER === 'true' ? t('panel.on') : t('panel.off')}`, callback_data: 'adm:tf' },
+      { text: `${on(s.WHITELIST_ENABLED)} ${t('panel.whitelist')}`, callback_data: 'adm:tw' },
+      { text: `${on(s.BOT_COMMAND_FILTER)} ${t('panel.cmdFilter')}`, callback_data: 'adm:tf' },
     ],
     [
       { text: `🧩 ${t('panel.captchaType')}: ${capLabel}`, callback_data: 'adm:ct' },
       { text: `⏱ ${t('panel.timeout')}: ${s.VERIFICATION_TIMEOUT || '300'}s`, callback_data: 'adm:to' },
     ],
     [
-      { text: `🔁 ${t('panel.attempts')}: ${s.MAX_VERIFICATION_ATTEMPTS || '3'}`, callback_data: 'adm:ma' },
-      { text: `📩 ${t('panel.adminNotify')}: ${s.ADMIN_NOTIFY_ENABLED === 'true' ? t('panel.on') : t('panel.off')}`, callback_data: 'adm:tn' },
+      { text: `🔢 ${t('panel.attempts')}: ${s.MAX_VERIFICATION_ATTEMPTS || '3'}`, callback_data: 'adm:ma' },
+      { text: `${on(s.ADMIN_NOTIFY_ENABLED)} ${t('panel.adminNotify')}`, callback_data: 'adm:tn' },
     ],
     [
       { text: `🧹 ${t('panel.inlineKbDelete')}: ${inlineKbDeleteSec}s`, callback_data: 'adm:ik' },
       { text: `🛡 ${t('panel.messageFilter')}: ${filterCount}`, callback_data: 'adm:mf' },
     ],
     [
-      { text: t('cb.back'), callback_data: 'adm:menu' },
-      { text: t('admin.close'), callback_data: 'adm:close' },
+      { text: `← ${t('cb.back')}`, callback_data: 'adm:menu' },
+      { text: `✖️ ${t('admin.close')}`, callback_data: 'adm:close' },
     ],
   ];
 }
@@ -536,15 +537,15 @@ function adminFeatureMenuKb(s, t) {
 function adminListMenuKb(t) {
   return [
     [
-      { text: t('kb.stats'), callback_data: 'adm:st' },
-      { text: t('kb.blacklist'), callback_data: 'adm:bk:1' },
+      { text: `📊 ${t('kb.stats')}`, callback_data: 'adm:st' },
+      { text: `🚫 ${t('kb.blacklist')}`, callback_data: 'adm:bk:1' },
     ],
     [
-      { text: t('kb.userList'), callback_data: 'adm:ul:1' },
+      { text: `👥 ${t('kb.userList')}`, callback_data: 'adm:ul:1' },
     ],
     [
-      { text: t('cb.back'), callback_data: 'adm:menu' },
-      { text: t('admin.close'), callback_data: 'adm:close' },
+      { text: `← ${t('cb.back')}`, callback_data: 'adm:menu' },
+      { text: `✖️ ${t('admin.close')}`, callback_data: 'adm:close' },
     ],
   ];
 }
@@ -552,14 +553,14 @@ function adminListMenuKb(t) {
 function adminMainMenuKb(t) {
   return [
     [
-      { text: t('admin.menu.features'), callback_data: 'adm:cfg' },
-      { text: t('admin.menu.lists'), callback_data: 'adm:list' },
+      { text: `⚙️ ${t('admin.menu.features')}`, callback_data: 'adm:cfg' },
+      { text: `📚 ${t('admin.menu.lists')}`, callback_data: 'adm:list' },
     ],
     [
-      { text: t('admin.menu.filters'), callback_data: 'adm:mf' },
+      { text: `🛡 ${t('admin.menu.filters')}`, callback_data: 'adm:mf' },
     ],
     [
-      { text: t('admin.close'), callback_data: 'adm:close' },
+      { text: `✖️ ${t('admin.close')}`, callback_data: 'adm:close' },
     ],
   ];
 }
@@ -590,11 +591,15 @@ function userMenuNavRow(t, backCallback = 'user:menu') {
 function userMainMenuKb(t) {
   return [
     [
-      { text: t('user.contact'), callback_data: 'user:contact' },
-      { text: t('user.statusBtn'), callback_data: 'user:status' },
+      { text: `📨 ${t('user.contact')}`, callback_data: 'user:contact' },
+      { text: `📋 ${t('user.statusBtn')}`, callback_data: 'user:status' },
     ],
-    [{ text: t('user.help'), callback_data: 'user:help' }],
-    [{ text: t('user.close'), callback_data: 'user:close' }],
+    [
+      { text: `🆘 ${t('user.help')}`, callback_data: 'user:help' },
+    ],
+    [
+      { text: `✖️ ${t('user.close')}`, callback_data: 'user:close' },
+    ],
   ];
 }
 
@@ -1351,7 +1356,7 @@ async function handleCb(q, { tg, db, kv, settings, t, waitUntil }) {
       const u   = await db.getUser(uid);
       if (!u) { await tg.answerCb({ id: q.id, text: t('admin.userNotFound') }); return; }
       const isWl = await db.isWhitelisted(uid);
-      await editCard(tg, chatId, msgId, message, buildDetailText(u, isWl, t), [...fullUserKb(uid, u, t), [{ text: t('collapse'), callback_data: `rf:${uid}` }]]);
+      await editCard(tg, chatId, msgId, message, buildDetailText(u, isWl, t), [...fullUserKb(uid, u, t), [{ text: `🔙 ${t('collapse')}`, callback_data: `rf:${uid}` }]]);
       await tg.answerCb({ id: q.id });
       return;
     }
@@ -1368,10 +1373,12 @@ async function handleCb(q, { tg, db, kv, settings, t, waitUntil }) {
       const msgs = await db.getMsgs(parseInt(uid, 10), ps, (page - 1) * ps);
       if (!msgs.length) { await tg.answerCb({ id: q.id, text: t('cb.noRecord') }); return; }
       const lines = msgs.map(m => `[${fmtMsgTime(m.created_at)}] ${m.direction === 'incoming' ? '→' : '←'} ${esc((m.content || '').slice(0, 36))}`).join('\n');
+      const hasMore = msgs.length === ps;
       const nav = [];
-      if (page > 1)           nav.push({ text: '◀', callback_data: `ml:${uid}:${page - 1}` });
-      if (msgs.length === ps) nav.push({ text: '▶', callback_data: `ml:${uid}:${page + 1}` });
-      await editCard(tg, chatId, msgId, message, `📨 <b>${t('msgHistoryTitle', { page })}</b>\n\n<code>${lines}</code>`, [nav, [{ text: t('cb.back'), callback_data: `ui:${uid}` }]]);
+      if (page > 1)  nav.push({ text: `◀ ${page - 1}`, callback_data: `ml:${uid}:${page - 1}` });
+      nav.push({ text: `📄 ${page}`, callback_data: 'adm:none' });
+      if (hasMore)   nav.push({ text: `${page + 1} ▶`, callback_data: `ml:${uid}:${page + 1}` });
+      await editCard(tg, chatId, msgId, message, `📨 <b>${t('msgHistoryTitle', { page })}</b>\n\n<code>${lines}</code>`, [nav, [{ text: `← ${t('cb.back')}`, callback_data: `ui:${uid}` }]]);
       await tg.answerCb({ id: q.id });
       return;
     }
@@ -1528,6 +1535,12 @@ async function handleAdmCb(q, action, { tg, db, kv, settings, chatId, msgId, adm
     return;
   }
 
+  // Page indicator button — no-op
+  if (action === 'none') {
+    await tg.answerCb({ id: q.id }).catch(() => {});
+    return;
+  }
+
   if (action === 'cfg') {
     await openFeatureMenu();
     await tg.answerCb({ id: q.id }).catch(() => {});
@@ -1626,8 +1639,8 @@ async function handleAdmCb(q, action, { tg, db, kv, settings, chatId, msgId, adm
       msgId,
       text: t('admin.stats', s),
       kb: [[
-        { text: t('cb.back'), callback_data: 'adm:list' },
-        { text: t('admin.close'), callback_data: 'adm:close' },
+        { text: `← ${t('cb.back')}`, callback_data: 'adm:list' },
+        { text: `✖️ ${t('admin.close')}`, callback_data: 'adm:close' },
       ]],
     });
   } else if (action.startsWith('bk:')) {
@@ -1636,8 +1649,9 @@ async function handleAdmCb(q, action, { tg, db, kv, settings, chatId, msgId, adm
     const tp = Math.ceil(total / ps) || 1;
     const lines = users.map(u => `• <code>${u.user_id}</code> ${esc(name(u))} — ${esc(u.block_reason || t('list.none'))}`).join('\n') || t('list.none');
     const nav = [];
-    if (page > 1) nav.push({ text: '◀', callback_data: `adm:bk:${page - 1}` });
-    if (page < tp) nav.push({ text: '▶', callback_data: `adm:bk:${page + 1}` });
+    if (page > 1)  nav.push({ text: `◀ ${page - 1}`, callback_data: `adm:bk:${page - 1}` });
+    nav.push({ text: `📄 ${page}/${tp}`, callback_data: 'adm:none' });
+    if (page < tp) nav.push({ text: `${page + 1} ▶`, callback_data: `adm:bk:${page + 1}` });
     await editUserText({
       tg,
       settings,
@@ -1648,8 +1662,8 @@ async function handleAdmCb(q, action, { tg, db, kv, settings, chatId, msgId, adm
       kb: [
         nav,
         [
-          { text: t('cb.back'), callback_data: 'adm:list' },
-          { text: t('admin.close'), callback_data: 'adm:close' },
+          { text: `← ${t('cb.back')}`, callback_data: 'adm:list' },
+          { text: `✖️ ${t('admin.close')}`, callback_data: 'adm:close' },
         ],
       ],
     });
@@ -1659,8 +1673,9 @@ async function handleAdmCb(q, action, { tg, db, kv, settings, chatId, msgId, adm
     const tp = Math.ceil(total / ps) || 1;
     const lines = users.map(u => `• <code>${u.user_id}</code> ${esc(name(u))} ${u.is_blocked ? '⛔' : '✅'}`).join('\n') || t('list.none');
     const nav = [];
-    if (page > 1) nav.push({ text: '◀', callback_data: `adm:ul:${page - 1}` });
-    if (page < tp) nav.push({ text: '▶', callback_data: `adm:ul:${page + 1}` });
+    if (page > 1)  nav.push({ text: `◀ ${page - 1}`, callback_data: `adm:ul:${page - 1}` });
+    nav.push({ text: `📄 ${page}/${tp}`, callback_data: 'adm:none' });
+    if (page < tp) nav.push({ text: `${page + 1} ▶`, callback_data: `adm:ul:${page + 1}` });
     await editUserText({
       tg,
       settings,
@@ -1671,8 +1686,8 @@ async function handleAdmCb(q, action, { tg, db, kv, settings, chatId, msgId, adm
       kb: [
         nav,
         [
-          { text: t('cb.back'), callback_data: 'adm:list' },
-          { text: t('admin.close'), callback_data: 'adm:close' },
+          { text: `← ${t('cb.back')}`, callback_data: 'adm:list' },
+          { text: `✖️ ${t('admin.close')}`, callback_data: 'adm:close' },
         ],
       ],
     });

@@ -168,7 +168,7 @@ app.all('/webhook', async (req, res) => {
 })
 
 // API 路由 — 所有 /api/* 请求
-app.all('/api/*', async (req, res) => {
+app.all('/api/{*path}', async (req, res) => {
   try {
     const fullUrl = `${req.protocol}://${req.get('host')}${req.originalUrl}`
     const cfReq = expressToCfRequest(req, fullUrl)
@@ -187,7 +187,7 @@ if (fs.existsSync(distDir)) {
   app.use(express.static(distDir))
 
   // SPA 回退 — 所有非文件请求返回 index.html
-  app.get('*', (req, res) => {
+  app.get('{*path}', (req, res) => {
     const indexPath = path.join(distDir, 'index.html')
     if (fs.existsSync(indexPath)) {
       res.sendFile(indexPath)
@@ -199,7 +199,7 @@ if (fs.existsSync(distDir)) {
   console.log(`[server] 静态文件目录: ${distDir}`)
 } else {
   console.warn('[server] dist/ 目录不存在，请先运行 npm run build')
-  app.get('*', (req, res) => {
+  app.get('{*path}', (req, res) => {
     res.status(503).send('Frontend not built. Run: npm run build first.')
   })
 }
