@@ -117,15 +117,6 @@ docker build -t telegram-chatbot .
 docker run -d -p 3000:3000 -v data:/app/data telegram-chatbot
 ```
 
-### 自动发布到 Docker Hub
-
-配置 GitHub Secrets（`DOCKERHUB_USERNAME` + `DOCKERHUB_TOKEN`），推送 tag 自动构建：
-
-```bash
-git tag v1.0.0
-git push origin v1.0.0
-```
-
 ---
 
 ## 🔐 首次访问
