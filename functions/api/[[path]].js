@@ -187,12 +187,8 @@ export async function onRequest({ request, env }) {
 
       if (!verifyResult) return j({ ok: false, error: 'captcha_failed' }, 400);
 
-      // Mark user as verified
+      // Mark user as verified — bot handles UI cleanup and pending message forwarding via web_app_data
       await db.setUserVerified(userId, true);
-      await db.delVerify(userId);
-      await kv.delete(`webverify:${webVerifyId}`).catch(() => {});
-
-      // Bot handles UI notifications and pending message forwarding via web_app_data callback
       return j({ ok: true });
     }
 

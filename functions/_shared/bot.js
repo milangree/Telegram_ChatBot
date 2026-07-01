@@ -54,10 +54,14 @@ function scheduleVerifyTimeout({ waitUntil, tg, db, kv, userId, timeout, verifyM
     const v = await db.getVerify(userId).catch(() => null);
     if (!v) return; // already verified or expired & cleaned up
     if (v.expires_at > Date.now()) return; // not yet expired
-    await db.delVerify(userId).catch(() => {});
+    // Clean up all verification state
+    if (v.web_verify_id) await kv.delete(`webverify:${v.web_verify_id}`).catch(() => {});
     await kv.delete(`pending:${userId}`).catch(() => {});
-    if (verifyMsgId) {
-      await tg.editText({ chatId: userId, msgId: verifyMsgId, text: '⏳ 验证已超时，请重新发送消息以发起新的验证。', kb: [] }).catch(() => {});
+    await db.delVerify(userId).catch(() => {});
+    // Edit verification message to show timeout
+    const msgId = verifyMsgId || v.verify_msg_id;
+    if (msgId) {
+      await tg.editText({ chatId: userId, msgId, text: '⏳ 验证已超时，请重新发送消息以发起新的验证。', kb: [] }).catch(() => {});
     }
   })();
   waitUntil(task);
@@ -863,9 +867,9 @@ async function handleMsg(msg, { tg, db, kv, settings, baseUrl, t, waitUntil }) {
 
           if (captchaType === 'math') {
             const { question, answer, kb } = mkMathVerify();
-            await db.setVerify(user.id, { answer, captcha_type: 'math' }, timeout);
             const r = await tg.sendMsg({ chatId: user.id, text: t('verify.title', { question }), kb });
             const verifyMsgId = r?.result?.message_id;
+            await db.setVerify(user.id, { answer, captcha_type: 'math', verify_msg_id: verifyMsgId }, timeout);
             scheduleVerifyTimeout({ waitUntil, tg, db, kv, userId: user.id, timeout, verifyMsgId });
             return { done: true };
           }
@@ -874,28 +878,26 @@ async function handleMsg(msg, { tg, db, kv, settings, baseUrl, t, waitUntil }) {
             const secretKey = captchaType === 'turnstile' ? settings.TURNSTILE_SECRET_KEY : settings.RECAPTCHA_SECRET_KEY;
             if (!secretKey) {
               const { question, answer, kb } = mkMathVerify();
-              await db.setVerify(user.id, { answer, captcha_type: 'math' }, timeout);
               const r = await tg.sendMsg({ chatId: user.id, text: t('verify.title', { question }), kb });
               const verifyMsgId = r?.result?.message_id;
+              await db.setVerify(user.id, { answer, captcha_type: 'math', verify_msg_id: verifyMsgId }, timeout);
               scheduleVerifyTimeout({ waitUntil, tg, db, kv, userId: user.id, timeout, verifyMsgId });
               return { done: true };
             }
             const siteUrl = settings.CAPTCHA_SITE_URL || baseUrl;
             if (!siteUrl) {
               const { question, answer, kb } = mkMathVerify();
-              await db.setVerify(user.id, { answer, captcha_type: 'math' }, timeout);
               const r = await tg.sendMsg({ chatId: user.id, text: t('verify.title', { question }), kb });
               const verifyMsgId = r?.result?.message_id;
+              await db.setVerify(user.id, { answer, captcha_type: 'math', verify_msg_id: verifyMsgId }, timeout);
               scheduleVerifyTimeout({ waitUntil, tg, db, kv, userId: user.id, timeout, verifyMsgId });
               return { done: true };
             }
             const webVerifyId = randId();
-            await kv.put(`webverify:${webVerifyId}`, JSON.stringify({ userId: user.id, captchaType }), { expirationTtl: timeout + 60 });
-            await db.setVerify(user.id, { captcha_type: captchaType, web_verify_id: webVerifyId }, timeout);
-            const verifyUrl = `${siteUrl}/api/verify/${webVerifyId}`;
-            const kb = [[{ text: t('verify.webBtn'), web_app: { url: verifyUrl } }]];
-            const r = await tg.sendMsg({ chatId: user.id, text: t('verify.webTitle'), kb });
+            const r = await tg.sendMsg({ chatId: user.id, text: t('verify.webTitle'), kb: [[{ text: t('verify.webBtn'), web_app: { url: `${siteUrl}/api/verify/${webVerifyId}` } }]] });
             const verifyMsgId = r?.result?.message_id;
+            await kv.put(`webverify:${webVerifyId}`, JSON.stringify({ userId: user.id, captchaType, verifyMsgId }), { expirationTtl: timeout + 60 });
+            await db.setVerify(user.id, { captcha_type: captchaType, web_verify_id: webVerifyId, verify_msg_id: verifyMsgId }, timeout);
             scheduleVerifyTimeout({ waitUntil, tg, db, kv, userId: user.id, timeout, verifyMsgId });
             return { done: true };
           }
@@ -903,9 +905,9 @@ async function handleMsg(msg, { tg, db, kv, settings, baseUrl, t, waitUntil }) {
           const siteUrl = settings.CAPTCHA_SITE_URL || baseUrl;
           if (!siteUrl) {
             const { question, answer, kb } = mkMathVerify();
-            await db.setVerify(user.id, { answer, captcha_type: 'math' }, timeout);
             const r = await tg.sendMsg({ chatId: user.id, text: t('verify.title', { question }), kb });
             const verifyMsgId = r?.result?.message_id;
+            await db.setVerify(user.id, { answer, captcha_type: 'math', verify_msg_id: verifyMsgId }, timeout);
             scheduleVerifyTimeout({ waitUntil, tg, db, kv, userId: user.id, timeout, verifyMsgId });
             return { done: true };
           }
@@ -916,18 +918,18 @@ async function handleMsg(msg, { tg, db, kv, settings, baseUrl, t, waitUntil }) {
           const wrongs     = generateWrongOptions(code, captchaType, VERIFY_OPTION_COUNT - 1);
           const opts       = [code, ...wrongs].sort(() => Math.random() - 0.5);
           const kb         = rowsN(opts, VERIFY_OPTION_COLUMNS, o => ({ text: o, callback_data: `iv:${o}:${captchaId}` }));
-          await db.setVerify(user.id, { answer: code, captcha_id: captchaId, captcha_type: captchaType }, timeout);
           const typeLabel  = captchaType === 'image_alphanumeric' ? t('verify.imgAlpha') : t('verify.imgNum');
           const caption    = t('verify.image', { typeLabel });
           const imgUrl     = `${siteUrl}/api/captcha/${captchaId}`;
           const r          = await tg.sendPhoto({ chatId: user.id, url: imgUrl, caption, kb });
           const verifyMsgId = r?.result?.message_id;
+          await db.setVerify(user.id, { answer: code, captcha_id: captchaId, captcha_type: captchaType, verify_msg_id: verifyMsgId }, timeout);
           scheduleVerifyTimeout({ waitUntil, tg, db, kv, userId: user.id, timeout, verifyMsgId });
           if (!r.ok) {
             const { question, answer, kb: mathKb } = mkMathVerify();
-            await db.setVerify(user.id, { answer, captcha_type: 'math' }, timeout);
             const r2 = await tg.sendMsg({ chatId: user.id, text: t('verify.title', { question }), kb: mathKb });
             const fallbackMsgId = r2?.result?.message_id;
+            await db.setVerify(user.id, { answer, captcha_type: 'math', verify_msg_id: fallbackMsgId }, timeout);
             scheduleVerifyTimeout({ waitUntil, tg, db, kv, userId: user.id, timeout, verifyMsgId: fallbackMsgId });
           }
           return { done: true };
@@ -1538,18 +1540,44 @@ async function handleWebAppVerify(msg, user, { tg, db, kv, settings, groupId, t,
   try { payload = JSON.parse(data); } catch { return; }
   if (payload.type !== 'web_verify_ok') return;
 
-  // Server-side verification already completed in POST /api/verify/{token}.
-  // This handler only sends UI feedback and attempts pending message forwarding.
+  // Read webverify entry to get verifyMsgId for message cleanup
+  const v = await db.getVerify(user.id);
+  let verifyMsgId = v?.verify_msg_id;
+
+  // Also check webverify KV for verifyMsgId (more reliable for web captcha types)
+  const webVerifyId = v?.web_verify_id;
+  if (webVerifyId) {
+    const wvRaw = await kv.get(`webverify:${webVerifyId}`).catch(() => null);
+    if (wvRaw) {
+      try {
+        const wv = JSON.parse(wvRaw);
+        if (wv.verifyMsgId) verifyMsgId = wv.verifyMsgId;
+      } catch {}
+    }
+    await kv.delete(`webverify:${webVerifyId}`).catch(() => {});
+  }
+
+  // Mark verified (POST handler already did this, but ensure it)
   const dbUser = await db.getUser(user.id);
   if (!dbUser?.is_verified) {
-    // Edge case: POST handler may not have finished yet — mark verified as fallback
     await db.setUserVerified(user.id, true);
   }
 
+  // Clean up verify record
+  await db.delVerify(user.id);
+
+  // Delete verification message
+  if (verifyMsgId) {
+    await tg.deleteMsg({ chatId: user.id, msgId: verifyMsgId }).catch(() => {});
+  }
+
+  // Delete the web_app_data system message
   await tg.deleteMsg({ chatId: user.id, msgId: msg.message_id }).catch(() => {});
+
+  // Send success notification
   await tg.sendMsg({ chatId: user.id, text: t('verify.success') }).catch(() => {});
 
-  // Forward pending message (POST handler may have already done this — dedup by pending key)
+  // Forward pending message
   const pr = await kv.get(`pending:${user.id}`);
   if (pr && groupId) {
     await kv.delete(`pending:${user.id}`);
@@ -1567,6 +1595,9 @@ async function handleWebAppVerify(msg, user, { tg, db, kv, settings, groupId, t,
     } catch (e) {
       console.error('[web_app_verify] forward pending failed:', e);
     }
+  } else {
+    // No pending message — just clean up the key if it exists
+    await kv.delete(`pending:${user.id}`).catch(() => {});
   }
 }
 
