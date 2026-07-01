@@ -11,8 +11,12 @@ export const DEFAULT_SETTINGS = {
   INLINE_KB_MSG_DELETE_ENABLED: 'true',
   INLINE_KB_MSG_DELETE_SECONDS: '30',
   WEBHOOK_SECRET: '',
-  CAPTCHA_TYPE: 'math', // 验证类型：数学题 / 数字图片 / 字母数字图片
+  CAPTCHA_TYPE: 'math', // 验证类型：数学题 / 数字图片 / 字母数字图片 / Turnstile / reCAPTCHA
   CAPTCHA_SITE_URL: '',
+  TURNSTILE_SITE_KEY: '',
+  TURNSTILE_SECRET_KEY: '',
+  RECAPTCHA_SITE_KEY: '',
+  RECAPTCHA_SECRET_KEY: '',
   WELCOME_ENABLED: 'true',
   WELCOME_MESSAGE: '👋 欢迎使用双向消息机器人！\n\n请直接发送您的问题或留言，管理员将尽快回复。\n\n发送 /help 查看帮助。',
   BOT_COMMAND_FILTER: 'true',
