@@ -578,6 +578,8 @@ function adminFeatureMenuKb(s, t) {
     turnstile: t('panel.cap.turnstile'),
     recaptcha: t('panel.cap.recaptcha'),
     recaptcha_v3: t('panel.cap.recaptchaV3'),
+    hcaptcha: t('panel.cap.hcaptcha'),
+    slider: t('panel.cap.slider'),
   };
   const capLabel = capLabelMap[s.CAPTCHA_TYPE] || t('panel.cap.math');
   const inlineKbDeleteSec = getInlineKbMsgDeleteSeconds(s);
@@ -929,17 +931,20 @@ async function handleMsg(msg, { tg, db, kv, settings, baseUrl, t, waitUntil }) {
             return { done: true };
           }
 
-          if (captchaType === 'turnstile' || captchaType === 'recaptcha' || captchaType === 'recaptcha_v3') {
-            const secretKey = captchaType === 'turnstile' ? settings.TURNSTILE_SECRET_KEY
-              : captchaType === 'recaptcha_v3' ? settings.RECAPTCHA_V3_SECRET_KEY
-              : settings.RECAPTCHA_SECRET_KEY;
-            if (!secretKey) {
-              const { question, answer, kb } = mkMathVerify();
-              const r = await tg.sendMsg({ chatId: user.id, text: t('verify.title', { question }), kb });
-              const verifyMsgId = r?.result?.message_id;
-              await db.setVerify(user.id, { answer, captcha_type: 'math', verify_msg_id: verifyMsgId }, timeout);
-              scheduleVerifyTimeout({ waitUntil, tg, db, kv, userId: user.id, timeout, verifyMsgId });
-              return { done: true };
+          if (captchaType === 'turnstile' || captchaType === 'recaptcha' || captchaType === 'recaptcha_v3' || captchaType === 'hcaptcha' || captchaType === 'slider') {
+            if (captchaType !== 'slider') {
+              const secretKey = captchaType === 'turnstile' ? settings.TURNSTILE_SECRET_KEY
+                : captchaType === 'recaptcha_v3' ? settings.RECAPTCHA_V3_SECRET_KEY
+                : captchaType === 'hcaptcha' ? settings.HCAPTCHA_SECRET_KEY
+                : settings.RECAPTCHA_SECRET_KEY;
+              if (!secretKey) {
+                const { question, answer, kb } = mkMathVerify();
+                const r = await tg.sendMsg({ chatId: user.id, text: t('verify.title', { question }), kb });
+                const verifyMsgId = r?.result?.message_id;
+                await db.setVerify(user.id, { answer, captcha_type: 'math', verify_msg_id: verifyMsgId }, timeout);
+                scheduleVerifyTimeout({ waitUntil, tg, db, kv, userId: user.id, timeout, verifyMsgId });
+                return { done: true };
+              }
             }
             const siteUrl = settings.CAPTCHA_SITE_URL || baseUrl;
             if (!siteUrl) {
@@ -1785,7 +1790,7 @@ async function handleAdmCb(q, action, { tg, db, kv, settings, chatId, msgId, adm
   if (action === 'tn') return toggle('ADMIN_NOTIFY_ENABLED', t('panel.adminNotify'));
 
   if (action === 'ct') {
-    const all = ['math', 'image_numeric', 'image_alphanumeric', 'turnstile', 'recaptcha', 'recaptcha_v3'];
+    const all = ['math', 'image_numeric', 'image_alphanumeric', 'turnstile', 'recaptcha', 'recaptcha_v3', 'hcaptcha', 'slider'];
     const cur = all.indexOf(settings.CAPTCHA_TYPE || 'math');
     const next = all[(cur + 1) % all.length];
     await db.setSetting('CAPTCHA_TYPE', next);

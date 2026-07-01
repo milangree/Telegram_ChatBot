@@ -164,11 +164,31 @@ export async function onRequest({ request, env, waitUntil }) {
       }
 
       const body = await request.json().catch(() => ({}));
-      const captchaResponse = body['cf-turnstile-response'] || body['g-recaptcha-response'] || '';
-      if (!captchaResponse) return j({ ok: false, error: 'missing_captcha' }, 400);
+      const captchaResponse = body['cf-turnstile-response'] || body['g-recaptcha-response'] || body['h-captcha-response'] || '';
+      const sliderPosition = body['slider-position'];
 
       let verifyResult = false;
-      if (captchaType === 'turnstile') {
+      if (captchaType === 'slider') {
+        // 滑块验证：比对用户提交的位置和 KV 中存储的目标位置
+        const targetRaw = await kv.get(`slider_target:${webVerifyId}`).catch(() => null);
+        if (targetRaw && sliderPosition !== undefined) {
+          const target = JSON.parse(targetRaw);
+          verifyResult = Math.abs(sliderPosition - target.pos) <= 3; // 容差 ±3%
+        }
+      } else if (captchaType === 'hcaptcha') {
+        const secretKey = await db.getSetting('HCAPTCHA_SECRET_KEY');
+        if (!secretKey) return j({ ok: false, error: 'not_configured' }, 500);
+        if (!captchaResponse) return j({ ok: false, error: 'missing_captcha' }, 400);
+        const formData = new URLSearchParams({ secret: secretKey, response: captchaResponse });
+        const remoteIp = request.headers.get('CF-Connecting-IP') || request.headers.get('X-Forwarded-For');
+        if (remoteIp) formData.append('remoteip', remoteIp);
+        try {
+          const resp = await fetch('https://api.hcaptcha.com/siteverify', { method: 'POST', body: formData });
+          const result = await resp.json();
+          verifyResult = result.success === true;
+        } catch { verifyResult = false; }
+      } else if (captchaType === 'turnstile') {
+        if (!captchaResponse) return j({ ok: false, error: 'missing_captcha' }, 400);
         const secretKey = await db.getSetting('TURNSTILE_SECRET_KEY');
         if (!secretKey) return j({ ok: false, error: 'not_configured' }, 500);
         const formData = new URLSearchParams({ secret: secretKey, response: captchaResponse });
@@ -180,6 +200,7 @@ export async function onRequest({ request, env, waitUntil }) {
           verifyResult = result.success === true;
         } catch { verifyResult = false; }
       } else if (captchaType === 'recaptcha' || captchaType === 'recaptcha_v3') {
+        if (!captchaResponse) return j({ ok: false, error: 'missing_captcha' }, 400);
         const secretKey = captchaType === 'recaptcha_v3'
           ? await db.getSetting('RECAPTCHA_V3_SECRET_KEY')
           : await db.getSetting('RECAPTCHA_SECRET_KEY');
@@ -279,8 +300,16 @@ export async function onRequest({ request, env, waitUntil }) {
       }
       const siteKeySetting = captchaType === 'turnstile' ? 'TURNSTILE_SITE_KEY'
         : captchaType === 'recaptcha_v3' ? 'RECAPTCHA_V3_SITE_KEY'
+        : captchaType === 'hcaptcha' ? 'HCAPTCHA_SITE_KEY'
         : 'RECAPTCHA_SITE_KEY';
-      const siteKey = await db.getSetting(siteKeySetting);
+      let siteKey = await db.getSetting(siteKeySetting);
+      let sliderTarget = null;
+      // 滑块验证：生成随机目标位置并存入 KV
+      if (captchaType === 'slider') {
+        sliderTarget = Math.floor(Math.random() * 60) + 20; // 20-80 之间
+        await kv.put(`slider_target:${webVerifyId}`, JSON.stringify({ pos: sliderTarget }), { expirationTtl: 600 });
+        siteKey = String(sliderTarget);
+      }
       return new Response(buildVerifyPage(captchaType, siteKey, null, url.origin), {
         headers: { 'Content-Type': 'text/html; charset=utf-8' },
       });
@@ -370,6 +399,7 @@ export async function onRequest({ request, env, waitUntil }) {
         'TURNSTILE_SITE_KEY', 'TURNSTILE_SECRET_KEY',
         'RECAPTCHA_SITE_KEY', 'RECAPTCHA_SECRET_KEY',
         'RECAPTCHA_V3_SITE_KEY', 'RECAPTCHA_V3_SECRET_KEY', 'RECAPTCHA_V3_SCORE_THRESHOLD',
+        'HCAPTCHA_SITE_KEY', 'HCAPTCHA_SECRET_KEY',
         'WELCOME_ENABLED', 'WELCOME_MESSAGE', 'BOT_COMMAND_FILTER', 'WHITELIST_ENABLED',
         'ADMIN_NOTIFY_ENABLED',
         'LOGIN_SESSION_TTL',
@@ -788,6 +818,8 @@ function buildVerifyPage(captchaType, siteKey, error, origin) {
   const isTurnstile = captchaType === 'turnstile';
   const isRecaptcha = captchaType === 'recaptcha';
   const isRecaptchaV3 = captchaType === 'recaptcha_v3';
+  const isHcaptcha = captchaType === 'hcaptcha';
+  const isSlider = captchaType === 'slider';
 
   const scriptSrc = isTurnstile
     ? 'https://challenges.cloudflare.com/turnstile/v0/api.js'
@@ -795,7 +827,9 @@ function buildVerifyPage(captchaType, siteKey, error, origin) {
       ? 'https://www.google.com/recaptcha/api.js'
       : isRecaptchaV3
         ? 'https://www.google.com/recaptcha/api.js?render=' + siteKey
-        : '';
+        : isHcaptcha
+          ? 'https://js.hcaptcha.com/1/api.js'
+          : '';
 
   const widgetHtml = isTurnstile
     ? '<div class="cf-turnstile" data-sitekey="' + siteKey + '" data-callback="onVerify"></div>'
@@ -803,7 +837,17 @@ function buildVerifyPage(captchaType, siteKey, error, origin) {
       ? '<div class="g-recaptcha" data-sitekey="' + siteKey + '" data-callback="onVerify"></div>'
       : isRecaptchaV3
         ? '<div id="v3-status" class="desc">正在自动验证…</div>'
-        : '';
+        : isHcaptcha
+          ? '<div class="h-captcha" data-sitekey="' + siteKey + '" data-callback="onVerify"></div>'
+          : isSlider
+            ? '<div id="slider-wrap">'
+              + '<div id="slider-hint" class="desc">请拖动滑块到目标位置</div>'
+              + '<div id="slider-track">'
+              + '<div id="slider-target" style="left:' + siteKey + '%"></div>'
+              + '<div id="slider-thumb"></div>'
+              + '<div id="slider-ok" style="left:' + siteKey + '%"></div>'
+              + '</div></div>'
+            : '';
 
   const scriptTag = scriptSrc
     ? '<script src="' + scriptSrc + '" async defer><\/script>'
@@ -813,14 +857,27 @@ function buildVerifyPage(captchaType, siteKey, error, origin) {
     ? '<div class="status expired">⏳ 验证链接已过期，请重新发送消息获取新链接。</div>'
     : '';
 
+  const sliderCSS = isSlider
+    ? '#slider-wrap{padding:10px 0}\n'
+      + '#slider-hint{text-align:center;margin-bottom:12px;font-size:14px}\n'
+      + '#slider-track{position:relative;width:100%;height:44px;background:#e8e8e8;border-radius:22px;overflow:visible;touch-action:none}\n'
+      + '#slider-target{position:absolute;top:0;width:4px;height:100%;background:rgba(102,126,234,.3);border-radius:2px;transform:translateX(-50%)}\n'
+      + '#slider-ok{position:absolute;top:50%;width:12px;height:12px;background:rgba(102,126,234,.25);border:2px dashed rgba(102,126,234,.5);border-radius:50%;transform:translate(-50%,-50%)}\n'
+      + '#slider-thumb{position:absolute;top:50%;left:0;width:40px;height:40px;background:#fff;border:2px solid #667eea;border-radius:50%;transform:translate(-50%,-50%);cursor:grab;box-shadow:0 2px 8px rgba(0,0,0,.15)}\n'
+      + '#slider-thumb:active{cursor:grabbing;box-shadow:0 4px 16px rgba(0,0,0,.25)}\n'
+      + '#slider-thumb.done{border-color:#52c41a;background:#f6ffed}\n'
+    : '';
+
   const cardBody = expiredMsg
     ? expiredMsg
-    : '<p class="desc">请完成下方验证以继续使用</p>'
+    : '<p class="desc">' + (isSlider ? '请拖动下方滑块到虚线位置' : '请完成下方验证以继续使用') + '</p>'
       + '<div class="widget">' + widgetHtml + '</div>'
-      + '<button id="submitBtn" class="btn btn-primary" disabled>验证中...</button>'
+      + (isSlider ? '' : '<button id="submitBtn" class="btn btn-primary" disabled>验证中...</button>')
       + '<div id="status" class="status"></div>';
 
-  const payloadKey = isTurnstile ? 'cf-turnstile-response' : 'g-recaptcha-response';
+  const payloadKey = isTurnstile ? 'cf-turnstile-response'
+    : isHcaptcha ? 'h-captcha-response'
+    : 'g-recaptcha-response';
 
   let verifyScript = '';
   if (!error) {
@@ -855,6 +912,7 @@ function buildVerifyPage(captchaType, siteKey, error, origin) {
       + '        if (btn) { btn.disabled = false; btn.textContent = "重新验证"; }\n'
       + '        if (window.turnstile) turnstile.reset();\n'
       + '        if (window.grecaptcha) grecaptcha.reset();\n'
+      + '        if (window.hcaptcha) hcaptcha.reset();\n'
       + '      }\n'
       + '    }).catch(function() {\n'
       + '      if (status) { status.className = "status error"; status.textContent = "❌ 网络错误，请重试。"; }\n'
@@ -900,6 +958,64 @@ function buildVerifyPage(captchaType, siteKey, error, origin) {
         + '    }\n'
         + '  }, 10000);\n';
     }
+
+    if (isSlider) {
+      verifyScript += ''
+        + '  // 滑块验证：拖动交互\n'
+        + '  (function() {\n'
+        + '    var track = document.getElementById("slider-track");\n'
+        + '    var thumb = document.getElementById("slider-thumb");\n'
+        + '    var okMark = document.getElementById("slider-ok");\n'
+        + '    var hint = document.getElementById("slider-hint");\n'
+        + '    if (!track || !thumb) return;\n'
+        + '    var trackW = track.offsetWidth;\n'
+        + '    var dragging = false;\n'
+        + '    function getX(e) { return e.touches ? e.touches[0].clientX : e.clientX; }\n'
+        + '    function move(clientX) {\n'
+        + '      var rect = track.getBoundingClientRect();\n'
+        + '      var x = Math.max(0, Math.min(clientX - rect.left, rect.width));\n'
+        + '      var pct = (x / rect.width) * 100;\n'
+        + '      thumb.style.left = pct + "%";\n'
+        + '    }\n'
+        + '    function up() {\n'
+        + '      if (!dragging) return;\n'
+        + '      dragging = false;\n'
+        + '      var pct = parseFloat(thumb.style.left) || 0;\n'
+        + '      thumb.classList.add("done");\n'
+        + '      if (hint) hint.textContent = "正在验证…";\n'
+        + '      // 提交位置\n'
+        + '      fetch(window.location.href, {\n'
+        + '        method: "POST",\n'
+        + '        headers: { "Content-Type": "application/json" },\n'
+        + '        body: JSON.stringify({ "slider-position": Math.round(pct * 10) / 10 }),\n'
+        + '      }).then(function(r) { return r.json(); }).then(function(data) {\n'
+        + '        var status = document.getElementById("status");\n'
+        + '        if (data.ok) {\n'
+        + '          if (status) { status.style.display = "block"; status.className = "status success"; status.textContent = "✅ 验证成功！正在返回…"; }\n'
+        + '          if (tg) {\n'
+        + '            tg.sendData(JSON.stringify({ type: "web_verify_ok", webVerifyId: webVerifyId }));\n'
+        + '            setTimeout(function() { tg.close(); }, 300);\n'
+        + '          }\n'
+        + '        } else {\n'
+        + '          if (hint) hint.textContent = "❌ 验证失败，请重试";\n'
+        + '          if (status) { status.style.display = "block"; status.className = "status error"; }\n'
+        + '          thumb.classList.remove("done");\n'
+        + '          thumb.style.left = "0";\n'
+        + '        }\n'
+        + '      }).catch(function() {\n'
+        + '        if (hint) hint.textContent = "❌ 网络错误，请重试";\n'
+        + '        thumb.classList.remove("done");\n'
+        + '        thumb.style.left = "0";\n'
+        + '      });\n'
+        + '    }\n'
+        + '    track.addEventListener("mousedown", function(e) { dragging = true; move(getX(e)); e.preventDefault(); });\n'
+        + '    track.addEventListener("touchstart", function(e) { dragging = true; move(getX(e)); }, { passive: true });\n'
+        + '    document.addEventListener("mousemove", function(e) { if (dragging) move(getX(e)); });\n'
+        + '    document.addEventListener("touchmove", function(e) { if (dragging) move(getX(e)); }, { passive: true });\n'
+        + '    document.addEventListener("mouseup", up);\n'
+        + '    document.addEventListener("touchend", up);\n'
+        + '  })();\n';
+    }
   }
 
   return '<!DOCTYPE html>\n'
@@ -935,6 +1051,7 @@ function buildVerifyPage(captchaType, siteKey, error, origin) {
     + '.btn-primary{background:var(--tg-theme-button-color,linear-gradient(135deg,#667eea,#764ba2));color:var(--tg-theme-button-text-color,#fff)}\n'
     + '.btn-primary:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(102,126,234,.4)}\n'
     + '.btn-primary:disabled{opacity:.6;cursor:not-allowed;transform:none;box-shadow:none}\n'
+    + sliderCSS
     + '</style>\n'
     + '<script src="https://telegram.org/js/telegram-web-app.js"><\/script>\n'
     + scriptTag + '\n'

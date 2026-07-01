@@ -181,6 +181,8 @@
                     <option value="turnstile">{{ t('settings.verify.turnstile') }}</option>
                     <option value="recaptcha">{{ t('settings.verify.recaptcha') }}</option>
                     <option value="recaptcha_v3">{{ t('settings.verify.recaptchaV3') }}</option>
+                    <option value="hcaptcha">{{ t('settings.verify.hcaptcha') }}</option>
+                    <option value="slider">{{ t('settings.verify.slider') }}</option>
                   </select>
                 </div>
                 <template v-if="form.CAPTCHA_TYPE === 'turnstile'">
@@ -215,6 +217,16 @@
                   <div class="toggle-row">
                     <div class="toggle-label">{{ t('settings.verify.recaptchaV3Threshold') }}</div>
                     <input v-model="form.RECAPTCHA_V3_SCORE_THRESHOLD" type="number" min="0" max="1" step="0.1" style="width:90px" />
+                  </div>
+                </template>
+                <template v-if="form.CAPTCHA_TYPE === 'hcaptcha'">
+                  <div class="form-group">
+                    <label>{{ t('settings.verify.hcaptchaSiteKey') }}</label>
+                    <input v-model="form.HCAPTCHA_SITE_KEY" placeholder="10000000-ffff-ffff-ffff-000000000001" />
+                  </div>
+                  <div class="form-group">
+                    <label>{{ t('settings.verify.hcaptchaSecretKey') }}</label>
+                    <input v-model="form.HCAPTCHA_SECRET_KEY" type="password" :placeholder="t('settings.verify.secretKeyPh')" />
                   </div>
                 </template>
                 <div class="form-group">
