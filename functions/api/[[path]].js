@@ -156,6 +156,13 @@ export async function onRequest({ request, env }) {
     if (request.method === 'POST') {
       if (!webVerifyRaw) return j({ ok: false, error: 'expired' }, 404);
       const { userId, captchaType } = JSON.parse(webVerifyRaw);
+
+      // Check if verification has expired
+      const verifyRecord = await db.getVerify(userId).catch(() => null);
+      if (!verifyRecord || verifyRecord.expires_at < Date.now()) {
+        return j({ ok: false, error: 'expired' }, 410);
+      }
+
       const body = await request.json().catch(() => ({}));
       const captchaResponse = body['cf-turnstile-response'] || body['g-recaptcha-response'] || '';
       if (!captchaResponse) return j({ ok: false, error: 'missing_captcha' }, 400);
@@ -206,7 +213,14 @@ export async function onRequest({ request, env }) {
           headers: { 'Content-Type': 'text/html; charset=utf-8' },
         });
       }
-      const { captchaType } = JSON.parse(webVerifyRaw);
+      const { userId: wvUserId, captchaType } = JSON.parse(webVerifyRaw);
+      // Check if verification has expired
+      const verifyRecord = await db.getVerify(wvUserId).catch(() => null);
+      if (!verifyRecord || verifyRecord.expires_at < Date.now()) {
+        return new Response(buildVerifyPage(null, null, 'expired', url.origin), {
+          headers: { 'Content-Type': 'text/html; charset=utf-8' },
+        });
+      }
       const siteKeySetting = captchaType === 'turnstile' ? 'TURNSTILE_SITE_KEY'
         : captchaType === 'recaptcha_v3' ? 'RECAPTCHA_V3_SITE_KEY'
         : 'RECAPTCHA_SITE_KEY';

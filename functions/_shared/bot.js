@@ -50,12 +50,16 @@ function randId() {
 function scheduleVerifyTimeout({ waitUntil, tg, db, kv, userId, timeout, verifyMsgId }) {
   const cleanup = async () => {
     const v = await db.getVerify(userId).catch(() => null);
-    if (!v) return; // already verified or cleaned up
-    if (v.expires_at > Date.now()) return; // not yet expired
-    if (v.web_verify_id) await kv.delete(`webverify:${v.web_verify_id}`).catch(() => {});
+    // If record still exists and not yet expired, skip (shouldn't happen after timeout+2s)
+    if (v && v.expires_at > Date.now()) return;
+    // Clean up webverify KV if present
+    const wvId = v?.web_verify_id;
+    if (wvId) await kv.delete(`webverify:${wvId}`).catch(() => {});
+    // Clean up pending and verify records
     await kv.delete(`pending:${userId}`).catch(() => {});
     await db.delVerify(userId).catch(() => {});
-    const msgId = verifyMsgId || v.verify_msg_id;
+    // Edit verification message — use captured param, fallback to record field
+    const msgId = verifyMsgId || v?.verify_msg_id;
     if (msgId) {
       await tg.editText({ chatId: userId, msgId, text: '⏳ 验证已超时，请重新发送消息以发起新的验证。', kb: [] }).catch(() => {});
     }
