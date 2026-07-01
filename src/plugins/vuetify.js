@@ -8,8 +8,8 @@ const darkTheme = {
   colors: {
     background: '#121218',
     surface: '#1e1e2e',
-    'surface-bright': '#272937',
-    'surface-variant': '#2a2d3e',
+    'surface-bright': '#2a2d3e',
+    'surface-variant': '#252836',
     'on-surface': '#e2e2e8',
     primary: '#4f8ef7',
     'primary-darken-1': '#3a6fd4',
@@ -59,7 +59,7 @@ export default createVuetify({
   },
   defaults: {
     VBtn: { rounded: 'lg', variant: 'flat' },
-    VCard: { rounded: 'xl', elevation: 0 },
+    VCard: { rounded: 'xl', elevation: 1 },
     VTextField: { variant: 'outlined', density: 'comfortable', rounded: 'lg' },
     VSelect: { variant: 'outlined', density: 'comfortable', rounded: 'lg' },
     VTextarea: { variant: 'outlined', density: 'comfortable', rounded: 'lg' },

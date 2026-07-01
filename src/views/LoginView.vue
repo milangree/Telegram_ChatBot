@@ -1,128 +1,130 @@
 <template>
-  <v-container fluid class="d-flex align-center justify-center" style="min-height:100vh">
-    <v-card width="400" class="pa-5" rounded="xl">
-      <!-- 顶栏：语言 + 主题 -->
-      <div class="d-flex justify-end align-center ga-2 mb-3">
-        <v-select
-          v-model="selectedLocale"
-          :items="localeOptions"
-          item-title="label"
-          item-value="value"
-          density="compact"
-          variant="outlined"
-          hide-details
-          style="max-width:130px"
-        />
-        <v-menu>
-          <template #activator="{ props }">
-            <v-btn v-bind="props" variant="text" icon size="small">
-              <v-icon :icon="currentThemeIcon" size="20" />
-            </v-btn>
-          </template>
-          <v-list density="compact" rounded="lg" elevation="3">
-            <v-list-item
-              v-for="opt in themeOptions" :key="opt.value"
-              :prepend-icon="opt.icon" :title="opt.label"
-              @click="applyTheme(opt.value)"
+  <div style="width:100%;max-width:420px;padding:16px">
+    <v-card elevation="8" rounded="xl" class="overflow-hidden">
+      <!-- 顶部装饰条 -->
+      <div style="height:4px;background:linear-gradient(90deg, rgb(var(--v-theme-primary)), rgb(var(--v-theme-secondary)))" />
+
+      <div class="pa-7 pb-6">
+        <!-- 语言 + 主题切换 -->
+        <div class="d-flex justify-end align-center ga-1 mb-5">
+          <v-btn-toggle v-model="selectedThemeIdx" mandatory variant="text" density="compact" rounded="lg" divided>
+            <v-btn :value="0" size="x-small"><v-icon :icon="mdiWeatherSunny" size="16" /></v-btn>
+            <v-btn :value="1" size="x-small"><v-icon :icon="mdiWeatherNight" size="16" /></v-btn>
+            <v-btn :value="2" size="x-small"><v-icon :icon="mdiThemeLightDark" size="16" /></v-btn>
+          </v-btn-toggle>
+          <v-divider vertical class="mx-1" />
+          <v-menu>
+            <template #activator="{ props }">
+              <v-btn v-bind="props" variant="text" size="x-small" class="text-caption">
+                {{ currentLocaleLabel }}
+              </v-btn>
+            </template>
+            <v-list density="compact" rounded="lg" elevation="3">
+              <v-list-item
+                v-for="opt in localeOptions" :key="opt.value"
+                :title="opt.label" @click="selectedLocale = opt.value"
+              >
+                <template #append>
+                  <v-icon v-if="i18n.locale === opt.value" :icon="mdiCheck" size="16" color="primary" />
+                </template>
+              </v-list-item>
+            </v-list>
+          </v-menu>
+        </div>
+
+        <!-- Logo + 标题 -->
+        <div class="text-center mb-6">
+          <v-avatar size="64" color="primary" rounded="xl" class="mb-3">
+            <v-icon :icon="mdiRobotOutline" size="36" />
+          </v-avatar>
+          <h1 class="text-h5 font-weight-bold mb-1">{{ t('auth.login.title') }}</h1>
+          <p class="text-body-2 text-medium-emphasis">{{ t('auth.login.defaultAccountTip') }}</p>
+        </div>
+
+        <!-- 错误提示 -->
+        <v-alert v-if="error" type="error" variant="tonal" density="compact" class="mb-4" closable @click:close="error = ''">
+          {{ error }}
+        </v-alert>
+
+        <!-- 登录模式切换 -->
+        <v-tabs v-model="mode" density="compact" class="mb-5" grow color="primary">
+          <v-tab value="password" :prepend-icon="mdiLock">{{ t('auth.login.password') }}</v-tab>
+          <v-tab value="totp_only" :prepend-icon="mdiKeyVariant" :disabled="!totpAvailable">{{ t('auth.login.totp') }}</v-tab>
+        </v-tabs>
+
+        <v-window v-model="mode">
+          <!-- 密码登录 -->
+          <v-window-item value="password">
+            <v-text-field
+              v-model="username"
+              :label="t('auth.login.username')"
+              autocomplete="username"
+              :prepend-inner-icon="mdiAccount"
+              density="comfortable"
+              @keydown.enter="$refs.pwInput?.focus()"
+            />
+            <v-text-field
+              ref="pwInput"
+              v-model="password"
+              :label="t('auth.login.password')"
+              type="password"
+              autocomplete="current-password"
+              :prepend-inner-icon="mdiLock"
+              density="comfortable"
+              @keydown.enter="handleLogin"
+            />
+            <v-btn
+              block color="primary" size="large" rounded="lg"
+              :loading="loading" class="mt-2"
+              @click="handleLogin"
             >
-              <template #append>
-                <v-icon v-if="themeMode === opt.value" :icon="mdiCheck" size="18" color="primary" />
-              </template>
-            </v-list-item>
-          </v-list>
-        </v-menu>
+              {{ t('auth.login.login') }}
+            </v-btn>
+          </v-window-item>
+
+          <!-- TOTP 登录 -->
+          <v-window-item value="totp_only">
+            <v-text-field
+              v-model="username"
+              :label="t('auth.login.username')"
+              autocomplete="username"
+              :prepend-inner-icon="mdiAccount"
+              density="comfortable"
+            />
+            <v-text-field
+              v-model="totp"
+              :label="t('auth.login.totp')"
+              :placeholder="t('auth.login.sixDigits')"
+              maxlength="6"
+              inputmode="numeric"
+              autocomplete="one-time-code"
+              :prepend-inner-icon="mdiKeyVariant"
+              density="comfortable"
+              @keydown.enter="handleLoginTotp"
+            />
+            <v-btn
+              block color="primary" size="large" rounded="lg"
+              :loading="loading" class="mt-2"
+              @click="handleLoginTotp"
+            >
+              {{ t('auth.login.login') }}
+            </v-btn>
+          </v-window-item>
+        </v-window>
+
+        <!-- 底部链接 -->
+        <div class="d-flex justify-space-between mt-5">
+          <RouterLink v-if="needsRegistration" to="/register" class="text-body-2 text-primary text-decoration-none">
+            {{ t('auth.login.register') }}
+          </RouterLink>
+          <span v-else />
+          <RouterLink to="/recover" class="text-body-2 text-primary text-decoration-none">
+            {{ t('auth.login.recover') }}
+          </RouterLink>
+        </div>
       </div>
-
-      <!-- Logo + 标题 -->
-      <div class="text-center mb-4">
-        <v-icon :icon="mdiRobotOutline" size="48" color="primary" class="mb-2" />
-        <h1 class="text-h5 font-weight-bold">{{ t('auth.login.title') }}</h1>
-      </div>
-
-      <!-- 错误提示 -->
-      <v-alert v-if="error" type="error" variant="tonal" class="mb-4" closable @click:close="error = ''">
-        {{ error }}
-      </v-alert>
-
-      <!-- 链接 -->
-      <div class="d-flex justify-space-between mb-4 text-caption">
-        <RouterLink v-if="needsRegistration" to="/register" class="text-primary">
-          {{ t('auth.login.register') }}
-        </RouterLink>
-        <span v-else />
-        <RouterLink to="/recover" class="text-primary">
-          {{ t('auth.login.recover') }}
-        </RouterLink>
-      </div>
-
-      <!-- 登录模式切换 -->
-      <v-tabs v-model="mode" density="compact" class="mb-4" grow>
-        <v-tab value="password">{{ t('auth.login.password') }}</v-tab>
-        <v-tab value="totp_only" :disabled="!totpAvailable">{{ t('auth.login.totp') }}</v-tab>
-      </v-tabs>
-
-      <v-window v-model="mode">
-        <!-- 密码登录 -->
-        <v-window-item value="password">
-          <v-text-field
-            v-model="username"
-            :label="t('auth.login.username')"
-            autocomplete="username"
-            :prepend-inner-icon="mdiAccount"
-            @keydown.enter="$refs.pwInput?.focus()"
-          />
-          <v-text-field
-            ref="pwInput"
-            v-model="password"
-            :label="t('auth.login.password')"
-            type="password"
-            autocomplete="current-password"
-            prepend-inner-:icon="mdiLock"
-            @keydown.enter="handleLogin"
-          />
-          <v-btn
-            block color="primary" size="large"
-            :loading="loading"
-            @click="handleLogin"
-          >
-            {{ t('auth.login.login') }}
-          </v-btn>
-        </v-window-item>
-
-        <!-- TOTP 登录 -->
-        <v-window-item value="totp_only">
-          <v-text-field
-            v-model="username"
-            :label="t('auth.login.username')"
-            autocomplete="username"
-            :prepend-inner-icon="mdiAccount"
-          />
-          <v-text-field
-            v-model="totp"
-            :label="t('auth.login.totp')"
-            :placeholder="t('auth.login.sixDigits')"
-            maxlength="6"
-            inputmode="numeric"
-            autocomplete="one-time-code"
-            :prepend-inner-icon="mdiKeyVariant"
-            @keydown.enter="handleLoginTotp"
-          />
-          <v-btn
-            block color="primary" size="large"
-            :loading="loading"
-            @click="handleLoginTotp"
-          >
-            {{ t('auth.login.login') }}
-          </v-btn>
-        </v-window-item>
-      </v-window>
-
-      <!-- 默认账号提示 -->
-      <p class="text-caption text-medium-emphasis text-center mt-5">
-        {{ t('auth.login.defaultAccountTip') }}
-      </p>
     </v-card>
-  </v-container>
+  </div>
 </template>
 
 <script setup>
@@ -160,20 +162,20 @@ const localeOptions = computed(() =>
   }),
 )
 
+const currentLocaleLabel = computed(() => {
+  const opt = localeOptions.value.find(o => o.value === i18n.locale)
+  return opt?.label || i18n.locale
+})
+
 const selectedLocale = computed({
   get: () => i18n.locale,
   set: (next) => i18n.setLocale(next),
 })
 
-const themeOptions = computed(() => [
-  { value: 'light', label: t('app.themeLight'), icon: mdiWeatherSunny },
-  { value: 'dark', label: t('app.themeDark'), icon: mdiWeatherNight },
-  { value: 'system', label: t('app.themeSystem'), icon: mdiThemeLightDark },
-])
-
-const currentThemeIcon = computed(() => {
-  const opt = themeOptions.value.find(o => o.value === themeMode.value)
-  return opt?.icon || mdiThemeLightDark
+const themeMap = ['light', 'dark', 'system']
+const selectedThemeIdx = computed({
+  get: () => themeMap.indexOf(themeMode.value),
+  set: (idx) => applyTheme(themeMap[idx] || 'system'),
 })
 
 function resolveThemeMode(m) {
