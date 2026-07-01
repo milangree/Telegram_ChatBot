@@ -1,92 +1,82 @@
 <template>
-  <v-container class="py-6" style="max-width:800px">
-    <div class="d-flex align-center justify-space-between mb-5">
-      <h2 class="text-h5 font-weight-bold d-flex align-center ga-2">
-        <v-icon :icon="mdiShieldCheckOutline" size="28" />
+  <div class="page">
+    <div class="page-header">
+      <h2 class="page-title page-title-with-icon">
+        <AppIcon name="whitelist" :size="20" />
         {{ t('whitelist.title') }}
       </h2>
-      <v-btn variant="text" size="small" @click="load">
-        <v-icon :icon="mdiRefresh" size="18" class="mr-1" />{{ t('whitelist.refresh') }}
-      </v-btn>
+      <button class="btn-ghost btn-sm" @click="load">
+        <AppIcon name="refresh" :size="14" />
+        {{ t('whitelist.refresh') }}
+      </button>
     </div>
 
-    <!-- 添加用户 -->
-    <v-card class="mb-4 pa-4">
-      <h3 class="text-subtitle-1 font-weight-bold d-flex align-center ga-2 mb-3">
-        <v-icon :icon="mdiPlus" size="20" />{{ t('whitelist.addUser') }}
+    <div class="card mb-2">
+      <h3 class="sec-title sec-title-with-icon">
+        <AppIcon name="add" :size="18" />
+        {{ t('whitelist.addUser') }}
       </h3>
-      <v-row dense>
-        <v-col cols="12" sm="5">
-          <UserSearchPicker v-model="addId" :placeholder="t('whitelist.search')" @selected="u => addId = String(u.user_id)" />
-        </v-col>
-        <v-col cols="12" sm="4">
-          <v-text-field v-model="addReason" :placeholder="t('whitelist.reasonOptional')" density="comfortable" hide-details />
-        </v-col>
-        <v-col cols="12" sm="3">
-          <v-btn block color="primary" :disabled="!addId || adding" :loading="adding" @click="doAdd">
-            {{ t('whitelist.add') }}
-          </v-btn>
-        </v-col>
-      </v-row>
-      <v-alert v-if="addMsg" :type="addOk ? 'success' : 'error'" variant="tonal" class="mt-3" closable @click:close="addMsg = ''">
-        {{ addMsg }}
-      </v-alert>
-      <p class="text-caption text-medium-emphasis mt-2">{{ t('whitelist.tip') }}</p>
-    </v-card>
-
-    <!-- 白名单表格 -->
-    <v-card class="pa-4">
-      <v-progress-linear v-if="loading" indeterminate color="primary" />
-      <div v-else-if="!users.length" class="empty-state">
-        <v-icon :icon="mdiShieldCheckOutline" size="48" />
-        <span>{{ t('whitelist.empty') }}</span>
+      <div class="quick-row">
+        <UserSearchPicker v-model="addId" :placeholder="t('whitelist.search')" @selected="u => addId = String(u.user_id)" style="flex:1" />
+        <input v-model="addReason" :placeholder="t('whitelist.reasonOptional')" style="flex:1" />
+        <button class="btn-primary btn-sm" :disabled="!addId || adding" @click="doAdd">
+          <span v-if="adding" class="spinner"></span>{{ t('whitelist.add') }}
+        </button>
       </div>
+      <div v-if="addMsg" class="alert mt-1" :class="addOk ? 'alert-success' : 'alert-error'">{{ addMsg }}</div>
+      <div class="form-hint mt-1">{{ t('whitelist.tip') }}</div>
+    </div>
 
-      <v-table v-else density="compact">
-        <thead>
-          <tr>
-            <th>{{ t('whitelist.table.user') }}</th>
-            <th class="d-none d-sm-table-cell">{{ t('whitelist.table.telegramId') }}</th>
-            <th>{{ t('whitelist.table.reason') }}</th>
-            <th class="d-none d-sm-table-cell">{{ t('whitelist.table.addedAt') }}</th>
-            <th>{{ t('whitelist.table.actions') }}</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="u in users" :key="u.user_id">
-            <td>
-              <div class="d-flex align-center ga-2">
-                <v-avatar color="primary" size="32" rounded="circle">
-                  <span class="text-white text-caption font-weight-bold">{{ (u.first_name || u.username || '?')[0].toUpperCase() }}</span>
-                </v-avatar>
-                <div>
-                  <div class="text-body-2 font-weight-medium">{{ u.first_name }} {{ u.last_name }}</div>
-                  <div class="text-caption text-medium-emphasis">{{ u.username ? '@' + u.username : '—' }}</div>
-                </div>
-              </div>
-            </td>
-            <td class="d-none d-sm-table-cell"><code class="text-caption">{{ u.user_id }}</code></td>
-            <td class="text-caption text-medium-emphasis">{{ u.reason || '—' }}</td>
-            <td class="d-none d-sm-table-cell text-caption text-medium-emphasis">{{ fmtDate(u.created_at) }}</td>
-            <td>
-              <v-btn color="error" variant="tonal" size="x-small" @click="doRemove(u)">{{ t('whitelist.remove') }}</v-btn>
-            </td>
-          </tr>
-        </tbody>
-      </v-table>
-
-      <div v-if="total > pageSize" class="d-flex align-center justify-center ga-3 mt-3">
-        <v-btn variant="text" size="small" :disabled="page <= 1" @click="page--; load()">◀</v-btn>
-        <span class="text-caption text-medium-emphasis">{{ t('whitelist.pageInfo', { page, total }) }}</span>
-        <v-btn variant="text" size="small" :disabled="page * pageSize >= total" @click="page++; load()">▶</v-btn>
-      </div>
-    </v-card>
-  </v-container>
+    <div class="card">
+      <div v-if="loading" class="flex-center" style="padding:30px"><div class="spinner"></div></div>
+      <template v-else>
+        <div v-if="!users.length" class="text-center text-muted" style="padding:32px">{{ t('whitelist.empty') }}</div>
+        <div style="overflow-x:auto" v-else>
+          <table class="table">
+            <thead>
+              <tr>
+                <th>{{ t('whitelist.table.user') }}</th>
+                <th class="hide-mobile">{{ t('whitelist.table.telegramId') }}</th>
+                <th>{{ t('whitelist.table.reason') }}</th>
+                <th class="hide-mobile">{{ t('whitelist.table.addedAt') }}</th>
+                <th>{{ t('whitelist.table.actions') }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="u in users" :key="u.user_id">
+                <td>
+                  <div class="user-cell">
+                    <div class="u-ava">{{ (u.first_name || u.username || '?')[0].toUpperCase() }}</div>
+                    <div class="user-cell-line">
+                      <span class="u-name">{{ u.first_name }} {{ u.last_name }}</span>
+                      <span class="user-cell-sep">·</span>
+                      <span class="user-cell-meta">{{ u.username ? '@' + u.username : '—' }}</span>
+                    </div>
+                  </div>
+                </td>
+                <td class="hide-mobile"><code style="font-size:12px">{{ u.user_id }}</code></td>
+                <td class="text-muted text-sm">{{ u.reason || '—' }}</td>
+                <td class="hide-mobile text-muted text-sm">{{ fmtDate(u.created_at) }}</td>
+                <td>
+                  <button class="btn-danger btn-sm" @click="doRemove(u)">{{ t('whitelist.remove') }}</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="pagination" v-if="total > pageSize">
+          <button class="btn-ghost btn-sm" :disabled="page <= 1" @click="page--; load()">◀</button>
+          <span class="text-muted text-sm">{{ t('whitelist.pageInfo', { page, total }) }}</span>
+          <button class="btn-ghost btn-sm" :disabled="page * pageSize >= total" @click="page++; load()">▶</button>
+        </div>
+      </template>
+    </div>
+  </div>
 </template>
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { mdiShieldCheckOutline, mdiRefresh, mdiPlus } from '@mdi/js'
+import AppIcon from '../components/AppIcon.vue'
 import api from '../stores/api.js'
 import UserSearchPicker from '../components/UserSearchPicker.vue'
 import { useI18nStore } from '../stores/i18n'
@@ -94,16 +84,9 @@ import { useI18nStore } from '../stores/i18n'
 const i18n = useI18nStore()
 const t = i18n.t
 
-const users = ref([])
-const total = ref(0)
-const page = ref(1)
-const pageSize = 20
+const users = ref([]), total = ref(0), page = ref(1), pageSize = 20
 const loading = ref(true)
-const addId = ref('')
-const addReason = ref('')
-const addMsg = ref('')
-const addOk = ref(true)
-const adding = ref(false)
+const addId = ref(''), addReason = ref(''), addMsg = ref(''), addOk = ref(true), adding = ref(false)
 
 async function load() {
   loading.value = true
@@ -134,6 +117,19 @@ async function doRemove(u) {
   } catch (e) { alert(e.message) }
 }
 
-function fmtDate(ts) { return ts ? new Date(ts).toLocaleDateString() : '—' }
+function fmtDate(ts) { return ts ? new Date(ts).toLocaleDateString('zh-CN') : '—' }
 onMounted(load)
 </script>
+
+<style scoped>
+.page{max-width:720px;margin:0 auto}
+.page-title-with-icon,
+.sec-title-with-icon{display:flex;align-items:center;gap:8px}
+.quick-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.user-cell{display:flex;align-items:center;gap:10px;min-width:0}
+.user-cell-line{min-width:0;display:flex;align-items:center;gap:6px;white-space:nowrap}
+.u-name{min-width:0;font-weight:500;font-size:13px;overflow:hidden;text-overflow:ellipsis}
+.user-cell-meta{min-width:0;font-size:12px;color:var(--text2);overflow:hidden;text-overflow:ellipsis}
+.user-cell-sep{color:var(--text3);flex-shrink:0}
+.u-ava{width:32px;height:32px;border-radius:50%;flex-shrink:0;background:var(--accent-dim);color:var(--accent);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px}
+</style>

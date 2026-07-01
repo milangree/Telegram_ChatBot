@@ -1,51 +1,48 @@
 <template>
-  <div style="width:420px;max-width:calc(100vw - 32px);padding:16px;margin:0 auto">
-    <v-card elevation="8" rounded="xl" class="overflow-hidden" style="width:100%">
-      <div style="height:4px;background:linear-gradient(90deg, var(--v-theme-primary), var(--v-theme-secondary))" />
-      <div class="pa-7 pb-6">
-        <div class="text-center mb-5">
-          <v-avatar size="64" color="primary" rounded="xl" class="mb-3">
-            <v-icon :icon="mdiLock" size="36" />
-          </v-avatar>
-          <h1 class="text-h5 font-weight-bold">{{ t('auth.recover.title') }}</h1>
-        </div>
+  <div class="auth-page">
+    <div class="auth-card card">
+      <h1 class="login-title login-title-with-icon">
+        <AppIcon name="lock" :size="20" />
+        {{ t('auth.recover.title') }}
+      </h1>
+      <div class="alert alert-info mb-2">{{ t('auth.recover.tip') }}</div>
+      <div v-if="error" class="alert alert-error">{{ error }}</div>
+      <div v-if="success" class="alert alert-success">{{ t('auth.recover.success') }}</div>
 
-        <v-alert type="info" variant="tonal" density="compact" class="mb-4">{{ t('auth.recover.tip') }}</v-alert>
-        <v-alert v-if="error" type="error" variant="tonal" density="compact" class="mb-4" closable @click:close="error = ''">{{ error }}</v-alert>
-        <v-alert v-if="success" type="success" variant="tonal" density="compact" class="mb-4">{{ t('auth.recover.success') }}</v-alert>
-
-        <v-text-field v-model="username" :label="t('auth.recover.username')" :prepend-inner-icon="mdiAccount" density="comfortable" />
-        <v-text-field v-model="totp" :label="t('auth.recover.totp')" :placeholder="t('auth.recover.totpPh')" maxlength="6" inputmode="numeric" :prepend-inner-icon="mdiKeyVariant" density="comfortable" />
-        <v-text-field v-model="newPassword" :label="t('auth.recover.newPassword')" :placeholder="t('auth.recover.newPasswordPh')" type="password" :prepend-inner-icon="mdiLock" density="comfortable" @keydown.enter="doRecover" />
-
-        <v-btn block color="primary" size="large" rounded="lg" :loading="loading" :disabled="success" class="mt-2" @click="doRecover">
-          {{ t('auth.recover.submit') }}
-        </v-btn>
-
-        <div class="text-center mt-5">
-          <RouterLink to="/login" class="text-body-2 text-primary text-decoration-none">← {{ t('auth.recover.backLogin') }}</RouterLink>
-        </div>
+      <div class="form-group">
+        <label>{{ t('auth.recover.username') }}</label>
+        <input v-model="username" :placeholder="t('auth.recover.username')" />
       </div>
-    </v-card>
+      <div class="form-group">
+        <label>{{ t('auth.recover.totp') }}</label>
+        <input v-model="totp" :placeholder="t('auth.recover.totpPh')" maxlength="6" />
+      </div>
+      <div class="form-group">
+        <label>{{ t('auth.recover.newPassword') }}</label>
+        <input v-model="newPassword" type="password" :placeholder="t('auth.recover.newPasswordPh')" />
+      </div>
+      <button class="btn-primary w-full" @click="doRecover" :disabled="loading">
+        <span v-if="loading" class="spinner"></span>{{ loading ? t('auth.recover.submitting') : t('auth.recover.submit') }}
+      </button>
+      <div style="margin-top:12px;text-align:center">
+        <RouterLink to="/login" class="text-sm">← {{ t('auth.recover.backLogin') }}</RouterLink>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
 import { ref } from 'vue'
 import { useRouter, RouterLink } from 'vue-router'
-import { mdiLock, mdiAccount, mdiKeyVariant } from '@mdi/js'
+import AppIcon from '../components/AppIcon.vue'
 import api from '../stores/api.js'
 import { useI18nStore } from '../stores/i18n'
 
-const router = useRouter()
-const i18n = useI18nStore()
-const t = i18n.t
-const username = ref('')
-const totp = ref('')
-const newPassword = ref('')
-const loading = ref(false)
-const error = ref('')
-const success = ref(false)
+const router      = useRouter()
+const i18n        = useI18nStore()
+const t           = i18n.t
+const username    = ref(''), totp = ref(''), newPassword = ref('')
+const loading     = ref(false), error = ref(''), success = ref(false)
 
 async function doRecover() {
   if (!username.value || !totp.value || !newPassword.value) { error.value = t('auth.recover.err.required'); return }
@@ -58,3 +55,10 @@ async function doRecover() {
   finally { loading.value = false }
 }
 </script>
+
+<style scoped>
+.auth-page{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);padding:20px}
+.auth-card{width:100%;max-width:380px;padding:36px 28px}
+.login-title{font-size:20px;font-weight:700;text-align:center;margin-bottom:20px}
+.login-title-with-icon{display:flex;align-items:center;justify-content:center;gap:8px}
+</style>

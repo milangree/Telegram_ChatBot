@@ -1,43 +1,40 @@
 <template>
-  <v-autocomplete
-    v-model="selected"
-    v-model:search="searchQuery"
-    :items="results"
-    :loading="loading"
-    :placeholder="placeholder || t('users.searchUser')"
-    :no-data-text="searchQuery?.length > 0 ? t('picker.empty') : ''"
-    item-title="display_name"
-    item-value="user_id"
-    return-object
-    hide-no-data
-    clearable
-    @update:search="onSearch"
-    @update:model-value="onSelect"
-  >
-    <template #item="{ item, props: itemProps }">
-      <v-list-item v-bind="itemProps">
-        <template #prepend>
-          <v-avatar color="primary" size="32" rounded="circle" class="mr-2">
-            <span class="text-white text-caption font-weight-bold">
-              {{ (item.raw.first_name || item.raw.username || '?')[0].toUpperCase() }}
-            </span>
-          </v-avatar>
-        </template>
-        <template #subtitle>
-          <span v-if="item.raw.username" class="text-medium-emphasis">@{{ item.raw.username }}</span>
-          <span class="ml-2 text-caption">{{ item.raw.user_id }}</span>
-          <v-chip v-if="item.raw.is_blocked" color="error" size="x-small" variant="tonal" class="ml-1">
-            {{ t('picker.blocked') }}
-          </v-chip>
-        </template>
-      </v-list-item>
-    </template>
-    <template #append><slot name="append" /></template>
-  </v-autocomplete>
+  <div class="id-picker" ref="root">
+    <div class="input-row">
+      <input
+        v-model="query"
+        :placeholder="placeholder || t('users.searchUser')"
+        @input="onInput"
+        @focus="open = true"
+        @keydown.esc="open = false"
+        autocomplete="off"
+      />
+      <slot name="append" />
+    </div>
+
+    <div v-if="open && (results.length || loading || query.length > 0)" class="id-dropdown">
+      <div v-if="loading" class="id-dropdown-item text-muted">{{ t('picker.searching') }}</div>
+      <div v-else-if="!results.length" class="id-dropdown-item text-muted">{{ t('picker.empty') }}</div>
+      <div
+        v-for="u in results"
+        :key="u.user_id"
+        class="id-dropdown-item"
+        @mousedown.prevent="select(u)"
+      >
+        <div class="user-ava-sm">{{ (u.first_name || u.username || '?')[0].toUpperCase() }}</div>
+        <div>
+          <div style="font-weight:500">{{ u.first_name }} {{ u.last_name }}</div>
+          <div class="text-sm text-muted">{{ u.username ? '@' + u.username : '' }}</div>
+        </div>
+        <span class="item-id">{{ u.user_id }}</span>
+        <span v-if="u.is_blocked" class="badge badge-danger" style="font-size:9px">{{ t('picker.blocked') }}</span>
+      </div>
+    </div>
+  </div>
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import api from '../stores/api.js'
 import { useI18nStore } from '../stores/i18n'
 import { readLocalCache, writeLocalCache } from '../stores/local-cache.js'
@@ -51,53 +48,87 @@ const props = defineProps({
 })
 const emit = defineEmits(['update:modelValue', 'selected'])
 
-const selected = ref(null)
-const searchQuery = ref('')
+const query = ref(props.modelValue)
 const results = ref([])
 const loading = ref(false)
+const open = ref(false)
+const root = ref(null)
 
 let timer = null
 let searchSeq = 0
 
-function onSearch(val) {
-  emit('update:modelValue', val || '')
+const searchCacheKey = keyword => `users:search:${String(keyword || '').trim().toLowerCase()}`
+
+function onInput() {
+  emit('update:modelValue', query.value)
   clearTimeout(timer)
-  const trimmed = String(val || '').trim()
-  if (!trimmed) { results.value = []; return }
+
+  const trimmed = String(query.value || '').trim()
+  if (!trimmed) {
+    results.value = []
+    loading.value = false
+    open.value = false
+    return
+  }
+
+  open.value = true
   timer = setTimeout(() => doSearch(trimmed), 250)
 }
 
-async function doSearch(keyword) {
+async function doSearch(keyword = String(query.value || '').trim()) {
+  if (!keyword) {
+    results.value = []
+    loading.value = false
+    return
+  }
+
   const currentSeq = ++searchSeq
-  const cacheKey = `users:search:${keyword.toLowerCase()}`
+  const cacheKey = searchCacheKey(keyword)
   const cached = readLocalCache(cacheKey, { ttlMs: 5 * 60 * 1000 })
 
   if (Array.isArray(cached)) {
-    results.value = cached.map(u => ({ ...u, display_name: `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.username || String(u.user_id) }))
+    results.value = cached
+    loading.value = false
     return
   }
 
   loading.value = true
+
   try {
     const data = await api.get(`/api/users/search?q=${encodeURIComponent(keyword)}`)
-    if (currentSeq !== searchSeq) return
-    const mapped = data.map(u => ({ ...u, display_name: `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.username || String(u.user_id) }))
-    results.value = mapped
-    writeLocalCache(cacheKey, data)
+    if (currentSeq === searchSeq && keyword === String(query.value || '').trim()) {
+      results.value = data
+      writeLocalCache(cacheKey, data)
+    }
   } catch {
     if (currentSeq === searchSeq) results.value = []
   } finally {
     if (currentSeq === searchSeq) loading.value = false
   }
 }
-
-function onSelect(user) {
-  if (!user) return
-  emit('update:modelValue', String(user.user_id))
-  emit('selected', user)
+function select(u) {
+  query.value = String(u.user_id)
+  emit('update:modelValue', String(u.user_id))
+  emit('selected', u)
+  open.value = false
 }
 
+function onClickOutside(e) { if (root.value && !root.value.contains(e.target)) open.value = false }
+
 watch(() => props.modelValue, (v) => {
-  if (v && v !== searchQuery.value) searchQuery.value = v
+  if (v !== query.value) query.value = v || ''
+})
+
+onMounted(() => document.addEventListener('mousedown', onClickOutside))
+onBeforeUnmount(() => {
+  document.removeEventListener('mousedown', onClickOutside)
+  clearTimeout(timer)
+  searchSeq++
 })
 </script>
+
+<style scoped>
+.input-row { display: flex; gap: 8px; align-items: center }
+.input-row input { flex: 1 }
+.user-ava-sm { width: 28px; height: 28px; border-radius: 50%; background: var(--accent-dim); color: var(--accent); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px; flex-shrink: 0 }
+</style>

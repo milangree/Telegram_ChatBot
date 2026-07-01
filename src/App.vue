@@ -1,194 +1,157 @@
 <template>
-  <v-app>
-    <!-- ═══ 登录态布局 ═══ -->
-    <template v-if="auth.isLoggedIn">
-      <!-- 侧边栏 -->
-      <v-navigation-drawer
-        v-model="drawer"
-        :permanent="!isMobile"
-        :temporary="isMobile"
-        width="240"
-        color="surface"
-      >
-        <v-list-item
-          class="py-4 px-5"
-          :title="t('app.title')"
-          :subtitle="auth.username"
-        >
-          <template #prepend>
-            <v-avatar color="primary" size="36" rounded="lg">
-              <span class="text-white font-weight-bold">{{ auth.username?.[0]?.toUpperCase() || 'U' }}</span>
-            </v-avatar>
-          </template>
-        </v-list-item>
+  <div class="app-container" v-if="auth.isLoggedIn">
+    <!-- Mobile overlay -->
+    <div v-if="sidebarOpen" class="sidebar-overlay" @click="sidebarOpen = false"></div>
 
-        <v-divider class="mb-1" />
+    <!-- Sidebar -->
+    <nav class="sidebar" :class="{ open: sidebarOpen }">
+      <div class="sidebar-header">
+        <RouterLink to="/" class="logo-link" @click="closeSidebar">
+          <AppIcon name="logo" :size="22" class="logo" />
+          <span class="logo-text">{{ t('app.title') }}</span>
+        </RouterLink>
+        <button class="btn-icon mobile-only" @click="sidebarOpen = false" :title="t('app.close')">
+          <AppIcon name="close" :size="16" />
+        </button>
+      </div>
 
-        <v-list nav density="compact" class="px-2">
-          <v-list-item
-            v-for="item in navItems"
-            :key="item.to"
-            :to="item.to"
-            :prepend-icon="item.icon"
-            :title="item.label"
-            rounded="lg"
-            color="primary"
-          />
-        </v-list>
+      <div class="nav-links">
+        <span class="nav-section">{{ t('app.mainMenu') }}</span>
+        <RouterLink v-for="item in navItems" :key="item.to" :to="item.to" class="nav-item" @click="closeSidebar">
+          <AppIcon :name="item.icon" :size="18" />
+          <span>{{ item.label }}</span>
+        </RouterLink>
+      </div>
 
-        <template #append>
-          <div class="pa-3 d-flex flex-column ga-1">
-            <v-select
-              v-model="selectedLocale"
-              :items="localeOptions"
-              item-title="label"
-              item-value="value"
-              density="compact"
-              variant="outlined"
-              hide-details
-              :prepend-inner-icon="mdiTranslate"
-              class="mb-1"
-            />
-            <div class="d-flex align-center ga-1">
-              <v-menu>
-                <template #activator="{ props }">
-                  <v-btn v-bind="props" variant="text" icon size="small">
-                    <v-icon :icon="currentThemeIcon" size="20" />
-                  </v-btn>
-                </template>
-                <v-list density="compact" rounded="lg" elevation="3">
-                  <v-list-item
-                    v-for="opt in themeOptions"
-                    :key="opt.value"
-                    :prepend-icon="opt.icon"
-                    :title="opt.label"
-                    @click="applyTheme(opt.value)"
-                  >
-                    <template #append>
-                      <v-icon v-if="themeMode === opt.value" :icon="mdiCheck" size="18" color="primary" />
-                    </template>
-                  </v-list-item>
-                </v-list>
-              </v-menu>
-              <v-spacer />
-              <v-btn
-                variant="text"
-                icon
-                size="small"
-                color="error"
-                :title="t('app.logout')"
-                @click="handleLogout"
-              >
-                <v-icon :icon="mdiLogout" size="20" />
-              </v-btn>
-            </div>
+      <div class="sidebar-footer">
+        <div class="user-info">
+          <div class="user-ava">{{ auth.username?.[0]?.toUpperCase() || 'U' }}</div>
+          <span class="user-name">{{ auth.username }}</span>
+        </div>
+        <select class="lang-select" v-model="selectedLocale" :title="t('app.language')">
+          <option v-for="opt in localeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+        </select>
+        <div class="theme-menu-wrap">
+          <button class="btn-icon theme-trigger" @click.stop="toggleThemeMenu" :title="t('app.toggleTheme')">
+            <AppIcon :name="currentThemeOption.icon" :size="18" />
+          </button>
+          <div v-if="themeMenuOpen" class="theme-menu">
+            <button
+              v-for="option in themeOptions"
+              :key="option.value"
+              class="theme-menu-item"
+              :class="{ active: themeMode === option.value }"
+              @click.stop="applyTheme(option.value)"
+            >
+              <AppIcon :name="option.icon" :size="16" class="theme-menu-icon" />
+              <span class="theme-menu-label">{{ option.label }}</span>
+              <span class="theme-menu-check">{{ themeMode === option.value ? '●' : '' }}</span>
+            </button>
           </div>
-        </template>
-      </v-navigation-drawer>
+        </div>
+        <button class="btn-icon glass-toggle-btn" @click="toggleGlass" :title="glassEnabled ? t('app.disableGlass') : t('app.enableGlass')">
+          <span class="glass-toggle-icon" :class="{ active: glassEnabled }" aria-hidden="true"></span>
+        </button>
+        <button class="btn-icon" @click="handleLogout" :title="t('app.logout')" style="color:var(--danger)">
+          <AppIcon name="logout" :size="18" />
+        </button>
+      </div>
+    </nav>
 
-      <!-- 移动端顶栏 -->
-      <v-app-bar v-if="isMobile" density="comfortable" color="surface">
-        <template #prepend>
-          <v-app-bar-nav-icon @click="drawer = !drawer" />
-        </template>
-        <v-app-bar-title>{{ t('app.title') }}</v-app-bar-title>
-        <template #append>
-          <v-menu>
-            <template #activator="{ props }">
-              <v-btn v-bind="props" variant="text" icon size="small">
-                <v-icon :icon="currentThemeIcon" size="20" />
-              </v-btn>
-            </template>
-            <v-list density="compact" rounded="lg" elevation="3">
-              <v-list-item
-                v-for="opt in themeOptions"
-                :key="opt.value"
-                :prepend-icon="opt.icon"
-                :title="opt.label"
-                @click="applyTheme(opt.value)"
-              >
-                <template #append>
-                  <v-icon v-if="themeMode === opt.value" :icon="mdiCheck" size="18" color="primary" />
-                </template>
-              </v-list-item>
-            </v-list>
-          </v-menu>
-          <v-btn variant="text" icon size="small" color="error" @click="handleLogout">
-            <v-icon :icon="mdiLogout" size="20" />
-          </v-btn>
-        </template>
-      </v-app-bar>
+    <!-- Mobile top bar -->
+    <div class="mobile-header mobile-only">
+      <button class="btn-icon" @click="sidebarOpen = true" :title="t('app.menu')">
+        <AppIcon name="menu" :size="18" />
+      </button>
+      <span class="mobile-title">
+        <AppIcon name="logo" :size="18" class="logo" />
+        {{ t('app.title') }}
+      </span>
+      <select class="lang-select" v-model="selectedLocale" :title="t('app.language')" style="margin-left:auto">
+        <option v-for="opt in localeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+      </select>
+      <div class="theme-menu-wrap">
+        <button class="btn-icon theme-trigger" @click.stop="toggleThemeMenu" :title="t('app.toggleTheme')">
+          <AppIcon :name="currentThemeOption.icon" :size="18" />
+        </button>
+        <div v-if="themeMenuOpen" class="theme-menu">
+          <button
+            v-for="option in themeOptions"
+            :key="option.value"
+            class="theme-menu-item"
+            :class="{ active: themeMode === option.value }"
+            @click.stop="applyTheme(option.value)"
+            >
+              <AppIcon :name="option.icon" :size="16" class="theme-menu-icon" />
+              <span class="theme-menu-label">{{ option.label }}</span>
+              <span class="theme-menu-check">{{ themeMode === option.value ? '●' : '' }}</span>
+            </button>
+        </div>
+      </div>
+      <button class="btn-icon glass-toggle-btn" @click="toggleGlass" :title="glassEnabled ? t('app.disableGlass') : t('app.enableGlass')">
+        <span class="glass-toggle-icon" :class="{ active: glassEnabled }" aria-hidden="true"></span>
+      </button>
+      <button class="btn-icon" @click="handleLogout" :title="t('app.logoutLogin')" style="color:var(--danger)">
+        <AppIcon name="logout" :size="18" />
+      </button>
+    </div>
 
-      <!-- 主内容区 -->
-      <v-main>
-        <RouterView />
-      </v-main>
-    </template>
+    <main class="main-content">
+      <RouterView />
+    </main>
+  </div>
 
-    <!-- ═══ 未登录态布局 ═══ -->
-    <template v-else>
-      <v-app-bar v-if="showAuthControls" density="comfortable" color="surface" flat>
-        <template #append>
-          <v-select
-            v-model="selectedLocale"
-            :items="localeOptions"
-            item-title="label"
-            item-value="value"
-            density="compact"
-            variant="outlined"
-            hide-details
-            style="max-width: 130px"
-            class="mr-2"
-          />
-          <v-menu>
-            <template #activator="{ props }">
-              <v-btn v-bind="props" variant="text" icon size="small">
-                <v-icon :icon="currentThemeIcon" size="20" />
-              </v-btn>
-            </template>
-            <v-list density="compact" rounded="lg" elevation="3">
-              <v-list-item
-                v-for="opt in themeOptions"
-                :key="opt.value"
-                :prepend-icon="opt.icon"
-                :title="opt.label"
-                @click="applyTheme(opt.value)"
-              >
-                <template #append>
-                  <v-icon v-if="themeMode === opt.value" :icon="mdiCheck" size="18" color="primary" />
-                </template>
-              </v-list-item>
-            </v-list>
-          </v-menu>
-        </template>
-      </v-app-bar>
-      <v-main style="display:flex;align-items:center;justify-content:center;min-height:100vh">
-        <RouterView />
-      </v-main>
-    </template>
-  </v-app>
+  <!-- Auth pages (login/register etc.) -->
+  <div v-else class="main-content no-sidebar">
+    <div v-if="routeReady && showAuthControls" class="auth-topbar">
+      <select class="lang-select auth-lang-select" v-model="selectedLocale" :title="t('app.language')">
+        <option v-for="opt in localeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+      </select>
+      <div class="theme-menu-wrap">
+        <button class="btn-icon theme-trigger" @click.stop="toggleThemeMenu" :title="t('app.toggleTheme')">
+          <AppIcon :name="currentThemeOption.icon" :size="18" />
+        </button>
+        <div v-if="themeMenuOpen" class="theme-menu">
+          <button
+            v-for="option in themeOptions"
+            :key="option.value"
+            class="theme-menu-item"
+            :class="{ active: themeMode === option.value }"
+            @click.stop="applyTheme(option.value)"
+            >
+              <AppIcon :name="option.icon" :size="16" class="theme-menu-icon" />
+              <span class="theme-menu-label">{{ option.label }}</span>
+              <span class="theme-menu-check">{{ themeMode === option.value ? '●' : '' }}</span>
+            </button>
+        </div>
+      </div>
+      <button class="btn-icon glass-toggle-btn" @click="toggleGlass" :title="glassEnabled ? t('app.disableGlass') : t('app.enableGlass')">
+        <span class="glass-toggle-icon" :class="{ active: glassEnabled }" aria-hidden="true"></span>
+      </button>
+    </div>
+    <RouterView />
+  </div>
 </template>
 
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { RouterView, useRouter, useRoute } from 'vue-router'
-import { useTheme, useDisplay } from 'vuetify'
-import { mdiViewDashboardOutline, mdiMessageTextOutline, mdiAccountGroupOutline, mdiShieldCheckOutline, mdiCogOutline, mdiAccountCircleOutline, mdiWeatherSunny, mdiWeatherNight, mdiThemeLightDark, mdiLogout, mdiTranslate, mdiCheck, mdiAccount, mdiLock, mdiKeyVariant, mdiBlockHelper, mdiCheckCircleOutline, mdiDeleteOutline } from '@mdi/js'
+import { RouterLink, RouterView, useRouter, useRoute } from 'vue-router'
 import { AUTH_EXPIRED_EVENT, useAuthStore } from './stores/auth'
 import { useI18nStore } from './stores/i18n'
+import AppIcon from './components/AppIcon.vue'
 import api from './stores/api'
 
 const auth = useAuthStore()
 const i18n = useI18nStore()
 const router = useRouter()
 const route = useRoute()
-const vTheme = useTheme()
-const { mobile } = useDisplay()
-
-const drawer = ref(true)
-const themeMode = ref('system')
+const sidebarOpen = ref(false)
+const isDark = ref(true)
+const glassEnabled = ref(false)
 const routeReady = ref(false)
-const isMobile = computed(() => mobile.value)
+const themeMode = ref('system')
+const themeMenuOpen = ref(false)
+
 const t = i18n.t
 
 let syncLocaleTimer = null
@@ -201,15 +164,14 @@ const localeOptions = computed(() => i18n.localeOptions.map((locale) => {
 }))
 
 const themeOptions = computed(() => [
-  { value: 'light', label: t('app.themeLight'), icon: mdiWeatherSunny },
-  { value: 'dark', label: t('app.themeDark'), icon: mdiWeatherNight },
-  { value: 'system', label: t('app.themeSystem'), icon: mdiThemeLightDark },
+  { value: 'light', label: t('app.themeLight'), icon: 'light' },
+  { value: 'dark', label: t('app.themeDark'), icon: 'dark' },
+  { value: 'system', label: t('app.themeSystem'), icon: 'system' },
 ])
 
-const currentThemeIcon = computed(() => {
-  const opt = themeOptions.value.find(o => o.value === themeMode.value)
-  return opt?.icon || mdiThemeLightDark
-})
+const currentThemeOption = computed(() => (
+  themeOptions.value.find((option) => option.value === themeMode.value) || themeOptions.value[2]
+))
 
 const selectedLocale = computed({
   get: () => i18n.locale,
@@ -219,47 +181,78 @@ const selectedLocale = computed({
 const showAuthControls = computed(() => route.path !== '/login')
 
 const navItems = computed(() => [
-  { to: '/', icon: mdiViewDashboardOutline, label: t('nav.dashboard') },
-  { to: '/conversations', icon: mdiMessageTextOutline, label: t('nav.conversations') },
-  { to: '/users', icon: mdiAccountGroupOutline, label: t('nav.users') },
-  { to: '/whitelist', icon: mdiShieldCheckOutline, label: t('nav.whitelist') },
-  { to: '/settings', icon: mdiCogOutline, label: t('nav.settings') },
-  { to: '/profile', icon: mdiAccountCircleOutline, label: t('nav.profile') },
+  { to: '/', icon: 'dashboard', label: t('nav.dashboard') },
+  { to: '/conversations', icon: 'conversations', label: t('nav.conversations') },
+  { to: '/users', icon: 'users', label: t('nav.users') },
+  { to: '/whitelist', icon: 'whitelist', label: t('nav.whitelist') },
+  { to: '/settings', icon: 'settings', label: t('nav.settings') },
+  { to: '/profile', icon: 'profile', label: t('nav.profile') },
 ])
+
+function closeSidebar() {
+  sidebarOpen.value = false
+}
+
+function toggleThemeMenu() {
+  themeMenuOpen.value = !themeMenuOpen.value
+}
+
+function closeThemeMenu() {
+  themeMenuOpen.value = false
+}
 
 function resolveThemeMode(mode) {
   if (mode === 'system') {
-    return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+    const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+    return prefersDark ? 'dark' : 'light'
   }
   return mode === 'light' ? 'light' : 'dark'
+}
+
+function applyResolvedTheme(resolved) {
+  isDark.value = resolved !== 'light'
+  document.documentElement.classList.toggle('light', resolved === 'light')
 }
 
 function applyTheme(mode) {
   const normalized = ['light', 'dark', 'system'].includes(mode) ? mode : 'system'
   themeMode.value = normalized
   const resolved = resolveThemeMode(normalized)
-  vTheme.global.name.value = resolved === 'light' ? 'lightTheme' : 'darkTheme'
-  document.documentElement.classList.toggle('light', resolved === 'light')
+  applyResolvedTheme(resolved)
   localStorage.setItem('theme_mode', normalized)
   localStorage.setItem('theme', resolved)
+  themeMenuOpen.value = false
 }
 
 function handleSystemThemeChange() {
   if (themeMode.value !== 'system') return
   const resolved = resolveThemeMode('system')
-  vTheme.global.name.value = resolved === 'light' ? 'lightTheme' : 'darkTheme'
-  document.documentElement.classList.toggle('light', resolved === 'light')
+  applyResolvedTheme(resolved)
   localStorage.setItem('theme', resolved)
+}
+
+function applyGlass(enabled) {
+  glassEnabled.value = !!enabled
+  document.documentElement.classList.toggle('glass', glassEnabled.value)
+  localStorage.setItem('visual_glass', glassEnabled.value ? 'true' : 'false')
+}
+
+function toggleGlass() {
+  applyGlass(!glassEnabled.value)
 }
 
 async function handleAuthExpired() {
   await auth.logout({ skipRequest: true, keepNotice: true })
-  if (route.path !== '/login') router.replace('/login')
+  if (route.path !== '/login') {
+    router.replace('/login')
+  }
 }
 
 async function syncLocaleToBackend() {
   if (!auth.isLoggedIn) return
-  try { await api.put('/api/settings', { BOT_LOCALE: i18n.locale }) } catch {}
+  try {
+    await api.put('/api/settings', { BOT_LOCALE: i18n.locale })
+  } catch {}
 }
 
 async function handleLogout() {
@@ -269,35 +262,51 @@ async function handleLogout() {
 
 onMounted(async () => {
   const savedMode = localStorage.getItem('theme_mode')
-  const legacy = localStorage.getItem('theme')
-  if (['light', 'dark', 'system'].includes(savedMode)) applyTheme(savedMode)
-  else if (legacy === 'light' || legacy === 'dark') applyTheme(legacy)
-  else applyTheme('system')
+  const legacyTheme = localStorage.getItem('theme')
 
+  if (savedMode === 'light' || savedMode === 'dark' || savedMode === 'system') {
+    applyTheme(savedMode)
+  } else if (legacyTheme === 'light' || legacyTheme === 'dark') {
+    applyTheme(legacyTheme)
+  } else {
+    applyTheme('system')
+  }
+
+  applyGlass(localStorage.getItem('visual_glass') === 'true')
   i18n.setLocale(i18n.locale)
   document.title = t('app.title')
 
   if (window.matchMedia) {
     systemThemeQuery = window.matchMedia('(prefers-color-scheme: dark)')
-    systemThemeQuery.addEventListener?.('change', handleSystemThemeChange)
+    if (systemThemeQuery.addEventListener) systemThemeQuery.addEventListener('change', handleSystemThemeChange)
+    else if (systemThemeQuery.addListener) systemThemeQuery.addListener(handleSystemThemeChange)
   }
 
+  document.addEventListener('click', closeThemeMenu)
   window.addEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired)
+
   await router.isReady()
   routeReady.value = true
 })
 
 onUnmounted(() => {
   if (syncLocaleTimer) clearTimeout(syncLocaleTimer)
+  document.removeEventListener('click', closeThemeMenu)
   window.removeEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired)
-  systemThemeQuery?.removeEventListener?.('change', handleSystemThemeChange)
+
+  if (systemThemeQuery?.removeEventListener) systemThemeQuery.removeEventListener('change', handleSystemThemeChange)
+  else if (systemThemeQuery?.removeListener) systemThemeQuery.removeListener(handleSystemThemeChange)
 })
 
-watch(() => route.path, () => { if (isMobile.value) drawer.value = false })
+// Close sidebar on route change
+watch(() => route.path, () => {
+  sidebarOpen.value = false
+  closeThemeMenu()
+})
 
 watch(() => i18n.locale, () => {
   document.title = t('app.title')
   if (syncLocaleTimer) clearTimeout(syncLocaleTimer)
-  syncLocaleTimer = setTimeout(() => syncLocaleToBackend(), 250)
+  syncLocaleTimer = setTimeout(() => { syncLocaleToBackend() }, 250)
 })
 </script>

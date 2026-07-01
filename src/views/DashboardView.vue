@@ -1,122 +1,90 @@
 <template>
-  <v-container class="py-6" style="max-width:800px">
-    <!-- 标题栏 -->
-    <div class="d-flex align-center justify-space-between mb-5">
-      <h2 class="text-h5 font-weight-bold d-flex align-center ga-2">
-        <v-icon :icon="mdiViewDashboardOutline" size="28" />
+  <div class="page">
+    <div class="page-header">
+      <h2 class="page-title page-title-with-icon">
+        <AppIcon name="dashboard" :size="20" />
         {{ t('dashboard.title') }}
       </h2>
-      <v-btn variant="text" size="small" :loading="loading" @click="load(true)">
-        <v-icon :icon="mdiRefresh" size="18" class="mr-1" />
+      <button class="btn-ghost btn-sm" @click="load(true)">
+        <AppIcon name="refresh" :size="14" />
         {{ t('dashboard.refresh') }}
-      </v-btn>
+      </button>
     </div>
 
-    <v-progress-linear v-if="loading && !stats.totalUsers" indeterminate color="primary" class="mb-4" />
-
+    <div v-if="loading" class="flex-center mt-3"><div class="spinner"></div></div>
     <template v-else>
-      <!-- 统计卡片 -->
-      <v-row class="mb-4">
-        <v-col v-for="s in statCards" :key="s.label" cols="6" md="3">
-          <v-card :color="s.color" variant="tonal" class="pa-4 cursor-pointer" hover @click="goTo(s.to)">
-            <div class="d-flex align-center ga-3">
-              <v-icon :icon="s.icon" size="32" />
-              <div>
-                <div class="text-h5 font-weight-bold">{{ s.val }}</div>
-                <div class="text-caption text-medium-emphasis">{{ s.label }}</div>
-              </div>
-            </div>
-          </v-card>
-        </v-col>
-      </v-row>
+      <div class="stat-grid mb-2">
+        <div class="stat-card card clickable" v-for="s in statCards" :key="s.label" @click="goTo(s.to)">
+          <div class="stat-icon">
+            <AppIcon :name="s.icon" :size="26" />
+          </div>
+          <div>
+            <div class="stat-val" :class="s.cls">{{ s.val }}</div>
+            <div class="text-muted text-sm">{{ s.label }}</div>
+          </div>
+        </div>
+      </div>
 
-      <!-- 机器人状态 -->
-      <v-card class="mb-4 pa-4">
-        <h3 class="text-subtitle-1 font-weight-bold d-flex align-center ga-2 mb-3">
-          <v-icon :icon="mdiRobotOutline" size="20" />
+      <div class="card mb-2">
+        <h3 class="sec-title sec-title-with-icon">
+          <AppIcon name="bot" :size="18" />
           {{ t('dashboard.botStatus') }}
         </h3>
-
-        <div v-if="bot" class="d-flex align-center ga-3">
-          <v-avatar color="primary" size="44" rounded="lg">
-            <v-icon :icon="mdiRobotOutline" size="24" />
-          </v-avatar>
-          <div>
-            <div class="font-weight-medium">{{ bot.first_name }}</div>
-            <div class="text-caption text-medium-emphasis">@{{ bot.username }} · ID: {{ bot.id }}</div>
+        <div v-if="bot" class="bot-info">
+          <div class="bot-ava">
+            <AppIcon name="bot" :size="28" />
           </div>
-          <v-chip color="success" size="small" variant="tonal" class="ml-auto">
-            {{ t('dashboard.botOnline') }}
-          </v-chip>
+          <div>
+            <div style="font-weight:600">{{ bot.first_name }}</div>
+            <div class="text-muted text-sm">@{{ bot.username }} · ID: {{ bot.id }}</div>
+          </div>
+          <span class="badge badge-success">{{ t('dashboard.botOnline') }}</span>
         </div>
-
-        <v-alert v-else type="error" variant="tonal" class="mb-2">
-          {{ t('dashboard.botTokenMissing') }}
-          <RouterLink to="/settings" class="text-primary font-weight-medium">{{ t('nav.settings') }}</RouterLink>
-        </v-alert>
-
-        <v-divider class="my-3" />
-
-        <div v-for="c in configChecks" :key="c.label" class="d-flex align-center justify-space-between py-1">
-          <span class="text-caption text-medium-emphasis">{{ c.label }}</span>
-          <v-chip :color="c.ok ? 'success' : 'error'" size="x-small" variant="tonal">
-            {{ c.ok ? t('dashboard.config.ok') : t('dashboard.config.missing') }}
-          </v-chip>
+        <div v-else class="alert alert-error mb-1">
+          {{ t('dashboard.botTokenMissing') }} <RouterLink to="/settings">{{ t('nav.settings') }}</RouterLink>
         </div>
-      </v-card>
+        <div class="config-checks mt-2">
+          <div class="config-row" v-for="c in configChecks" :key="c.label">
+            <span class="text-muted" style="font-size:13px">{{ c.label }}</span>
+            <span class="badge" :class="c.ok ? 'badge-success' : 'badge-danger'">
+              {{ c.ok ? t('dashboard.config.ok') : t('dashboard.config.missing') }}
+            </span>
+          </div>
+        </div>
+      </div>
 
-      <!-- 最近对话 -->
-      <v-card class="pa-4">
-        <div class="d-flex align-center justify-space-between mb-3">
-          <h3 class="text-subtitle-1 font-weight-bold d-flex align-center ga-2" style="margin:0">
-            <v-icon :icon="mdiMessageTextOutline" size="20" />
+      <div class="card">
+        <div class="flex" style="justify-content:space-between;align-items:center;margin-bottom:12px">
+          <h3 class="sec-title sec-title-with-icon" style="margin:0">
+            <AppIcon name="conversations" :size="18" />
             {{ t('dashboard.recentConversations') }}
           </h3>
-          <RouterLink to="/conversations" class="text-primary text-caption">{{ t('dashboard.viewAll') }} →</RouterLink>
+          <RouterLink to="/conversations" class="text-sm">{{ t('dashboard.viewAll') }} →</RouterLink>
         </div>
-
-        <div v-if="!convs.length" class="text-center text-medium-emphasis py-4">
-          {{ t('dashboard.emptyConversations') }}
-        </div>
-
-        <v-list v-else density="compact">
-          <v-list-item
-            v-for="c in convs.slice(0, 8)"
-            :key="c.user_id"
-            :to="`/conversations?user=${c.user_id}`"
-            rounded="lg"
-          >
-            <template #prepend>
-              <v-avatar color="primary" size="36" rounded="circle" class="mr-3">
-                <v-img v-if="avatars[c.user_id]" :src="avatars[c.user_id]" cover />
-                <span v-else class="text-white font-weight-bold text-caption">
-                  {{ (c.first_name || c.username || '?')[0].toUpperCase() }}
-                </span>
-              </v-avatar>
-            </template>
-            <v-list-item-title class="d-flex align-center ga-1">
+        <div v-if="!convs.length" class="text-muted text-sm text-center" style="padding:16px">{{ t('dashboard.emptyConversations') }}</div>
+        <RouterLink v-for="c in convs.slice(0, 8)" :key="c.user_id" :to="`/conversations?user=${c.user_id}`" class="conv-row">
+          <div class="conv-ava">
+            <img v-if="avatars[c.user_id]" :src="avatars[c.user_id]" class="ava-img" @error="avatars[c.user_id] = ''" />
+            <span v-else>{{ (c.first_name || c.username || '?')[0].toUpperCase() }}</span>
+          </div>
+          <div class="conv-body">
+            <div class="conv-name">
               {{ c.first_name || c.username || c.user_id }}
-              <v-chip v-if="c.is_blocked" color="error" size="x-small" variant="tonal">
-                {{ t('dashboard.blockedShort') }}
-              </v-chip>
-            </v-list-item-title>
-            <v-list-item-subtitle>
-              {{ c.last_direction === 'outgoing' ? '← ' : '→ ' }}{{ c.last_message || t('dashboard.noMessage') }}
-            </v-list-item-subtitle>
-            <template #append>
-              <span class="text-caption text-medium-emphasis">{{ fmtTime(c.last_at) }}</span>
-            </template>
-          </v-list-item>
-        </v-list>
-      </v-card>
+              <span v-if="c.is_blocked" class="badge badge-danger" style="font-size:9px;margin-left:4px">{{ t('dashboard.blockedShort') }}</span>
+            </div>
+            <div class="conv-preview text-muted">{{ c.last_direction === 'outgoing' ? '← ' : '→ ' }}{{ c.last_message || t('dashboard.noMessage') }}</div>
+          </div>
+          <div class="text-sm text-muted">{{ fmtTime(c.last_at) }}</div>
+        </RouterLink>
+      </div>
     </template>
-  </v-container>
+  </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
-import { mdiAccountGroupOutline, mdiBlockHelper, mdiMessageTextOutline, mdiCalendarToday, mdiViewDashboardOutline, mdiRefresh, mdiRobotOutline } from '@mdi/js'
+import AppIcon from '../components/AppIcon.vue'
 import api from '../stores/api.js'
 import { useI18nStore } from '../stores/i18n'
 import { getLatestTimestamp, mergeByKey, readLocalCache, writeLocalCache } from '../stores/local-cache.js'
@@ -125,18 +93,19 @@ const router = useRouter()
 const i18n = useI18nStore()
 const t = i18n.t
 
-const stats = ref({})
-const convs = ref([])
-const settings = ref({})
-const bot = ref(null)
-const loading = ref(true)
-const avatars = ref({})
+const stats = ref({}), convs = ref([]), settings = ref({}), bot = ref(null)
+const loading = ref(true), avatars = ref({})
+
+const DASHBOARD_STATS_CACHE_KEY = 'dashboard:stats'
+const DASHBOARD_SETTINGS_CACHE_KEY = 'dashboard:settings'
+const DASHBOARD_BOT_CACHE_KEY = 'dashboard:bot'
+const DASHBOARD_CONVS_CACHE_KEY = 'conversations:list'
 
 const statCards = computed(() => [
-  { icon: mdiAccountGroupOutline, label: t('dashboard.totalUsers'), val: stats.value.totalUsers ?? '—', color: 'primary', to: '/users' },
-  { icon: mdiBlockHelper, label: t('dashboard.blockedUsers'), val: stats.value.blockedUsers ?? '—', color: 'error', to: '/users?filter=blocked' },
-  { icon: mdiMessageTextOutline, label: t('dashboard.totalMessages'), val: stats.value.totalMessages ?? '—', color: 'info', to: '/conversations' },
-  { icon: mdiCalendarToday, label: t('dashboard.todayMessages'), val: stats.value.todayMessages ?? '—', color: 'success', to: '/conversations' },
+  { icon: 'users', label: t('dashboard.totalUsers'), val: stats.value.totalUsers ?? '—', cls: '', to: '/users' },
+  { icon: 'block', label: t('dashboard.blockedUsers'), val: stats.value.blockedUsers ?? '—', cls: 'text-danger', to: '/users?filter=blocked' },
+  { icon: 'conversations', label: t('dashboard.totalMessages'), val: stats.value.totalMessages ?? '—', cls: '', to: '/conversations' },
+  { icon: 'today', label: t('dashboard.todayMessages'), val: stats.value.todayMessages ?? '—', cls: 'text-success', to: '/conversations' },
 ])
 
 const configChecks = computed(() => [
@@ -148,15 +117,17 @@ const configChecks = computed(() => [
 function tryLoadAvatar(uid) {
   const img = new Image()
   img.onload = () => { avatars.value[uid] = `/api/users/${uid}/avatar` }
+  img.onerror = () => {}
   img.src = `/api/users/${uid}/avatar`
 }
 
 async function load(force = false) {
   loading.value = true
-  const cachedStats = readLocalCache('dashboard:stats', { ttlMs: 60000 })
-  const cachedSettings = readLocalCache('dashboard:settings', { ttlMs: 300000 })
-  const cachedBot = readLocalCache('dashboard:bot', { ttlMs: 300000 })
-  const cachedConvs = readLocalCache('conversations:list')
+
+  const cachedStats = readLocalCache(DASHBOARD_STATS_CACHE_KEY, { ttlMs: 60 * 1000 })
+  const cachedSettings = readLocalCache(DASHBOARD_SETTINGS_CACHE_KEY, { ttlMs: 5 * 60 * 1000 })
+  const cachedBot = readLocalCache(DASHBOARD_BOT_CACHE_KEY, { ttlMs: 5 * 60 * 1000 })
+  const cachedConvs = readLocalCache(DASHBOARD_CONVS_CACHE_KEY)
 
   if (cachedStats) stats.value = cachedStats
   if (cachedSettings) settings.value = cachedSettings
@@ -175,21 +146,26 @@ async function load(force = false) {
       !force && cachedSettings ? Promise.resolve(cachedSettings) : api.get('/api/settings'),
       !force && cachedBot !== null ? Promise.resolve(cachedBot) : api.get('/api/tg/me').then(r => r.bot).catch(() => null),
     ])
+
     stats.value = st
     convs.value = since
       ? mergeByKey(convs.value, Array.isArray(cv?.items) ? cv.items : [], 'user_id', (a, b) => new Date(b.last_at || 0) - new Date(a.last_at || 0))
       : (Array.isArray(cv?.items) ? cv.items : [])
     settings.value = se
     bot.value = botInfo
-    writeLocalCache('dashboard:stats', st)
-    writeLocalCache('conversations:list', convs.value)
-    writeLocalCache('dashboard:settings', se)
-    writeLocalCache('dashboard:bot', bot.value)
+
+    writeLocalCache(DASHBOARD_STATS_CACHE_KEY, st)
+    writeLocalCache(DASHBOARD_CONVS_CACHE_KEY, convs.value)
+    writeLocalCache(DASHBOARD_SETTINGS_CACHE_KEY, se)
+    writeLocalCache(DASHBOARD_BOT_CACHE_KEY, bot.value)
+
     for (const c of convs.value) tryLoadAvatar(c.user_id)
   } finally { loading.value = false }
 }
 
-function goTo(path) { if (path) router.push(path) }
+function goTo(path) {
+  if (path) router.push(path)
+}
 
 function fmtTime(ts) {
   if (!ts) return ''
@@ -204,3 +180,27 @@ function fmtTime(ts) {
 
 onMounted(load)
 </script>
+
+<style scoped>
+.page{max-width:720px;margin:0 auto}
+.page-title-with-icon,
+.sec-title-with-icon{display:flex;align-items:center;gap:8px}
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.stat-card{display:flex;align-items:center;gap:14px}
+.stat-card.clickable{cursor:pointer;user-select:none}
+.stat-card.clickable:hover{border-color:var(--accent);transform:translateY(-1px)}
+.stat-icon{display:flex;align-items:center;justify-content:center}
+.stat-val{font-size:26px;font-weight:700;line-height:1}
+.text-danger{color:var(--danger)}.text-success{color:var(--success)}
+.bot-info{display:flex;align-items:center;gap:12px}
+.bot-ava{display:flex;align-items:center;justify-content:center}
+.config-checks{display:flex;flex-direction:column;gap:8px}
+.config-row{display:flex;align-items:center;justify-content:space-between}
+.conv-row{display:flex;align-items:center;gap:12px;padding:9px;border-radius:var(--rs);text-decoration:none;color:inherit;transition:var(--tr)}
+.conv-row:hover{background:var(--bg3)}
+.conv-ava{width:36px;height:36px;border-radius:50%;background:var(--accent-dim);color:var(--accent);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex-shrink:0;overflow:hidden}
+.ava-img{width:100%;height:100%;object-fit:cover}
+.conv-body{flex:1;min-width:0}
+.conv-name{font-size:13px;font-weight:500;display:flex;align-items:center;gap:4px}
+.conv-preview{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+</style>
