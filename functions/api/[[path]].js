@@ -4,8 +4,8 @@ import { TG } from '../_shared/tg.js';
 import { CORS, j, err, hashPw, verifyPw, createSession, getSession, delSession, extractToken, genToken } from '../_shared/auth.js';
 import { verifyTOTP, generateTOTPSecret } from '../_shared/totp.js';
 import { renderCaptchaPNG } from '../_shared/captcha.js';
-import { setupCommands } from '../_shared/bot.js';
-import { normalizeBotLocale } from '../_shared/bot-i18n.js';
+import { setupCommands, getOrCreateThread } from '../_shared/bot.js';
+import { normalizeBotLocale, createBotT } from '../_shared/bot-i18n.js';
 import { exportBusinessDataSql, importBusinessDataSql } from '../_shared/db-sql.js';
 import { createT, normalizeLocale } from '../../shared/i18n.js';
 
@@ -146,6 +146,97 @@ export async function onRequest({ request, env }) {
     return new Response(png, { headers: { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=300', ...CORS } });
   }
 
+  // Web verification page (public) — Turnstile / reCAPTCHA
+  const webVerifyMatch = path.match(/^\/verify\/([a-f0-9]+)$/);
+  if (webVerifyMatch) {
+    const webVerifyId = webVerifyMatch[1];
+    const webVerifyRaw = await kv.get(`webverify:${webVerifyId}`);
+
+    // POST /api/verify/{token} — submit CAPTCHA response
+    if (request.method === 'POST') {
+      if (!webVerifyRaw) return j({ ok: false, error: 'expired' }, 404);
+      const { userId, captchaType } = JSON.parse(webVerifyRaw);
+      const body = await request.json().catch(() => ({}));
+      const captchaResponse = body['cf-turnstile-response'] || body['g-recaptcha-response'] || '';
+      if (!captchaResponse) return j({ ok: false, error: 'missing_captcha' }, 400);
+
+      let verifyResult = false;
+      if (captchaType === 'turnstile') {
+        const secretKey = await db.getSetting('TURNSTILE_SECRET_KEY');
+        if (!secretKey) return j({ ok: false, error: 'not_configured' }, 500);
+        const formData = new URLSearchParams({ secret: secretKey, response: captchaResponse });
+        const remoteIp = request.headers.get('CF-Connecting-IP') || request.headers.get('X-Forwarded-For');
+        if (remoteIp) formData.append('remoteip', remoteIp);
+        try {
+          const resp = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', { method: 'POST', body: formData });
+          const result = await resp.json();
+          verifyResult = result.success === true;
+        } catch { verifyResult = false; }
+      } else if (captchaType === 'recaptcha') {
+        const secretKey = await db.getSetting('RECAPTCHA_SECRET_KEY');
+        if (!secretKey) return j({ ok: false, error: 'not_configured' }, 500);
+        const formData = new URLSearchParams({ secret: secretKey, response: captchaResponse });
+        const remoteIp = request.headers.get('CF-Connecting-IP') || request.headers.get('X-Forwarded-For');
+        if (remoteIp) formData.append('remoteip', remoteIp);
+        try {
+          const resp = await fetch('https://www.google.com/recaptcha/api/siteverify', { method: 'POST', body: formData });
+          const result = await resp.json();
+          verifyResult = result.success === true;
+        } catch { verifyResult = false; }
+      }
+
+      if (!verifyResult) return j({ ok: false, error: 'captcha_failed' }, 400);
+
+      // Mark user as verified
+      await db.setUserVerified(userId, true);
+      await db.delVerify(userId);
+      await kv.delete(`webverify:${webVerifyId}`).catch(() => {});
+
+      // Forward pending message
+      const pr = await kv.get(`pending:${userId}`);
+      if (pr) {
+        await kv.delete(`pending:${userId}`);
+        try {
+          const p = JSON.parse(pr);
+          const groupId = parseInt(await db.getSetting('FORUM_GROUP_ID'), 10);
+          const botToken = await db.getSetting('BOT_TOKEN');
+          if (groupId && p.msgId && botToken) {
+            const tg = new TG(botToken);
+            const locale = normalizeBotLocale(await db.getSetting('BOT_LOCALE'));
+            const botT = createBotT(locale);
+            const fakeUser = { id: userId };
+            const tid = await getOrCreateThread(tg, db, fakeUser, groupId, kv, botT);
+            if (tid) {
+              await tg.copyMsg({ chatId: groupId, fromChatId: userId, msgId: p.msgId, threadId: tid });
+              await db.addMsg({ userId, direction: 'incoming', content: 'verified-forwarded' });
+              await tg.sendMsg({ chatId: userId, text: botT('sentAfterVerify') }).catch(() => {});
+            }
+          }
+        } catch (e) {
+          console.error('[verify] forward pending failed:', e);
+        }
+      }
+
+      return j({ ok: true });
+    }
+
+    // GET /api/verify/{token} — serve verification HTML page
+    if (request.method === 'GET') {
+      if (!webVerifyRaw) {
+        return new Response(buildVerifyPage(null, null, 'expired', url.origin), {
+          headers: { 'Content-Type': 'text/html; charset=utf-8' },
+        });
+      }
+      const { captchaType } = JSON.parse(webVerifyRaw);
+      const siteKey = captchaType === 'turnstile'
+        ? await db.getSetting('TURNSTILE_SITE_KEY')
+        : await db.getSetting('RECAPTCHA_SITE_KEY');
+      return new Response(buildVerifyPage(captchaType, siteKey, null, url.origin), {
+        headers: { 'Content-Type': 'text/html; charset=utf-8' },
+      });
+    }
+  }
+
   // ═══════════════════════════════════════════════
   // AUTHENTICATED ROUTES
   // ═══════════════════════════════════════════════
@@ -226,6 +317,8 @@ export async function onRequest({ request, env }) {
         'AUTO_UNBLOCK_ENABLED', 'MAX_MESSAGES_PER_MINUTE',
         'INLINE_KB_MSG_DELETE_ENABLED', 'INLINE_KB_MSG_DELETE_SECONDS',
         'CAPTCHA_TYPE', 'CAPTCHA_SITE_URL',
+        'TURNSTILE_SITE_KEY', 'TURNSTILE_SECRET_KEY',
+        'RECAPTCHA_SITE_KEY', 'RECAPTCHA_SECRET_KEY',
         'WELCOME_ENABLED', 'WELCOME_MESSAGE', 'BOT_COMMAND_FILTER', 'WHITELIST_ENABLED',
         'ADMIN_NOTIFY_ENABLED',
         'LOGIN_SESSION_TTL',
@@ -638,4 +731,125 @@ function parseAdminIds(str) {
 
 function cookie(token, maxAge = 86400) {
   return `session=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}`;
+}
+
+function buildVerifyPage(captchaType, siteKey, error, origin) {
+  const isTurnstile = captchaType === 'turnstile';
+  const isRecaptcha = captchaType === 'recaptcha';
+  const verifyToken = (typeof location !== 'undefined' ? '' : ''); // placeholder — token comes from URL path
+
+  const scriptSrc = isTurnstile
+    ? 'https://challenges.cloudflare.com/turnstile/v0/api.js'
+    : isRecaptcha
+      ? 'https://www.google.com/recaptcha/api.js'
+      : '';
+
+  const widgetHtml = isTurnstile
+    ? `<div class="cf-turnstile" data-sitekey="${siteKey}" data-callback="onVerify"></div>`
+    : isRecaptcha
+      ? `<div class="g-recaptcha" data-sitekey="${siteKey}" data-callback="onVerify"></div>`
+      : '';
+
+  const expiredMsg = error === 'expired'
+    ? '<div class="status expired">⏳ 验证链接已过期，请重新发送消息获取新链接。</div>'
+    : '';
+
+  return `<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>人机验证</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{min-height:100vh;display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  padding:20px}
+.card{background:#fff;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.2);
+  padding:40px 32px;max-width:420px;width:100%;text-align:center}
+.icon{font-size:48px;margin-bottom:16px}
+h1{font-size:20px;color:#1a1a2e;margin-bottom:8px;font-weight:600}
+.desc{font-size:14px;color:#666;margin-bottom:24px;line-height:1.5}
+.widget{display:flex;justify-content:center;margin-bottom:20px;min-height:65px}
+.status{padding:12px 16px;border-radius:8px;font-size:14px;margin-top:16px;display:none}
+.status.success{display:block;background:#d4edda;color:#155724;border:1px solid #c3e6cb}
+.status.error{display:block;background:#f8d7da;color:#721c24;border:1px solid #f5c6cb}
+.status.expired{display:block;background:#fff3cd;color:#856404;border:1px solid #ffeaa7}
+.spinner{display:inline-block;width:20px;height:20px;border:2px solid #fff;border-top-color:transparent;
+  border-radius:50%;animation:spin .6s linear infinite;vertical-align:middle;margin-right:8px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.btn{display:inline-block;padding:12px 32px;border:none;border-radius:8px;font-size:15px;font-weight:500;
+  cursor:pointer;transition:all .2s}
+.btn-primary{background:linear-gradient(135deg,#667eea,#764ba2);color:#fff}
+.btn-primary:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(102,126,234,.4)}
+.btn-primary:disabled{opacity:.6;cursor:not-allowed;transform:none;box-shadow:none}
+</style>
+${scriptSrc ? `<script src="${scriptSrc}" async defer></script>` : ''}
+</head>
+<body>
+<div class="card">
+  <div class="icon">🔐</div>
+  <h1>人机验证</h1>
+  ${expiredMsg ? expiredMsg : `
+  <p class="desc">请完成下方验证以继续使用</p>
+  <div class="widget">${widgetHtml}</div>
+  <button id="submitBtn" class="btn btn-primary" disabled>验证中...</button>
+  <div id="status" class="status"></div>
+  `}
+</div>
+<script>
+${error === 'expired' ? '' : `
+var _token = '';
+function onVerify(response) {
+  _token = response;
+  var btn = document.getElementById('submitBtn');
+  btn.disabled = false;
+  btn.textContent = '提交验证';
+  btn.onclick = submitVerify;
+}
+function submitVerify() {
+  var btn = document.getElementById('submitBtn');
+  var status = document.getElementById('status');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>验证中...';
+  var payload = ${isTurnstile ? '{"cf-turnstile-response": _token}' : '{"g-recaptcha-response": _token}'};
+  fetch(window.location.href, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  }).then(function(r) { return r.json(); }).then(function(data) {
+    if (data.ok) {
+      status.className = 'status success';
+      status.textContent = '✅ 验证成功！你可以关闭此页面返回 Telegram。';
+      btn.style.display = 'none';
+      // Try to close Telegram Web App
+      if (window.Telegram && window.Telegram.WebApp) {
+        window.Telegram.WebApp.close();
+      }
+    } else {
+      status.className = 'status error';
+      status.textContent = '❌ 验证失败，请重试。';
+      btn.disabled = false;
+      btn.textContent = '重新验证';
+      // Reset widget
+      if (window.turnstile) turnstile.reset();
+      if (window.grecaptcha) grecaptcha.reset();
+    }
+  }).catch(function() {
+    status.className = 'status error';
+    status.textContent = '❌ 网络错误，请重试。';
+    btn.disabled = false;
+    btn.textContent = '重新验证';
+  });
+}
+// Auto-start hint after widget loads
+setTimeout(function() {
+  var btn = document.getElementById('submitBtn');
+  if (btn && !_token) btn.textContent = '请完成上方验证';
+}, 2000);
+`}
+</script>
+</body>
+</html>`;
 }

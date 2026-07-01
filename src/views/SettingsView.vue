@@ -178,8 +178,30 @@
                     <option value="math">{{ t('settings.verify.math') }}</option>
                     <option value="image_numeric">{{ t('settings.verify.imgNum') }}</option>
                     <option value="image_alphanumeric">{{ t('settings.verify.imgAlpha') }}</option>
+                    <option value="turnstile">{{ t('settings.verify.turnstile') }}</option>
+                    <option value="recaptcha">{{ t('settings.verify.recaptcha') }}</option>
                   </select>
                 </div>
+                <template v-if="form.CAPTCHA_TYPE === 'turnstile'">
+                  <div class="form-group">
+                    <label>{{ t('settings.verify.turnstileSiteKey') }}</label>
+                    <input v-model="form.TURNSTILE_SITE_KEY" placeholder="0x4AAAAA..." />
+                  </div>
+                  <div class="form-group">
+                    <label>{{ t('settings.verify.turnstileSecretKey') }}</label>
+                    <input v-model="form.TURNSTILE_SECRET_KEY" type="password" :placeholder="t('settings.verify.secretKeyPh')" />
+                  </div>
+                </template>
+                <template v-if="form.CAPTCHA_TYPE === 'recaptcha'">
+                  <div class="form-group">
+                    <label>{{ t('settings.verify.recaptchaSiteKey') }}</label>
+                    <input v-model="form.RECAPTCHA_SITE_KEY" placeholder="6Ld..." />
+                  </div>
+                  <div class="form-group">
+                    <label>{{ t('settings.verify.recaptchaSecretKey') }}</label>
+                    <input v-model="form.RECAPTCHA_SECRET_KEY" type="password" :placeholder="t('settings.verify.secretKeyPh')" />
+                  </div>
+                </template>
                 <div class="form-group">
                   <label>{{ t('settings.verify.siteUrl') }}</label>
                   <input v-model="form.CAPTCHA_SITE_URL" :placeholder="t('settings.verify.siteUrlPh')" />

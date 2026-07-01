@@ -398,7 +398,7 @@ async function withUserLock(kv, userLockId, fn, { ttlSeconds = 60, retries = 8, 
 }
 
 // ── 话题管理 ─────────────────────────────────────────────────────────────────
-async function getOrCreateThread(tg, db, user, groupId, kv, t) {
+export async function getOrCreateThread(tg, db, user, groupId, kv, t) {
   // 使用近似原子锁避免重复创建话题
   const lockKey = `lock:thread:${user.id}`;
   const existing = await db.getUser(user.id);
@@ -500,9 +500,13 @@ function fullUserKb(uid, u, t) {
 }
 
 function adminFeatureMenuKb(s, t) {
-  const capLabel = s.CAPTCHA_TYPE === 'image_numeric'
-    ? t('panel.cap.imageNumeric')
-    : (s.CAPTCHA_TYPE === 'image_alphanumeric' ? t('panel.cap.imageAlnum') : t('panel.cap.math'));
+  const capLabelMap = {
+    image_numeric: t('panel.cap.imageNumeric'),
+    image_alphanumeric: t('panel.cap.imageAlnum'),
+    turnstile: t('panel.cap.turnstile'),
+    recaptcha: t('panel.cap.recaptcha'),
+  };
+  const capLabel = capLabelMap[s.CAPTCHA_TYPE] || t('panel.cap.math');
   const inlineKbDeleteSec = getInlineKbMsgDeleteSeconds(s);
   const filterCount = getMessageFilterRules(s).length;
   const on = (v) => v === 'true' ? '✅' : '⬜';
@@ -841,6 +845,31 @@ async function handleMsg(msg, { tg, db, kv, settings, baseUrl, t, waitUntil }) {
             const { question, answer, kb } = mkMathVerify();
             await db.setVerify(user.id, { answer, captcha_type: 'math' }, timeout);
             await sendUserMsg({ tg, settings, waitUntil, chatId: user.id, text: t('verify.title', { question }), kb });
+            return { done: true };
+          }
+
+          if (captchaType === 'turnstile' || captchaType === 'recaptcha') {
+            const secretKey = captchaType === 'turnstile' ? settings.TURNSTILE_SECRET_KEY : settings.RECAPTCHA_SECRET_KEY;
+            if (!secretKey) {
+              // Fallback to math if secret key not configured
+              const { question, answer, kb } = mkMathVerify();
+              await db.setVerify(user.id, { answer, captcha_type: 'math' }, timeout);
+              await sendUserMsg({ tg, settings, waitUntil, chatId: user.id, text: t('verify.title', { question }), kb });
+              return { done: true };
+            }
+            const siteUrl = settings.CAPTCHA_SITE_URL || baseUrl;
+            if (!siteUrl) {
+              const { question, answer, kb } = mkMathVerify();
+              await db.setVerify(user.id, { answer, captcha_type: 'math' }, timeout);
+              await sendUserMsg({ tg, settings, waitUntil, chatId: user.id, text: t('verify.title', { question }), kb });
+              return { done: true };
+            }
+            const webVerifyId = randId();
+            await kv.put(`webverify:${webVerifyId}`, JSON.stringify({ userId: user.id, captchaType }), { expirationTtl: timeout + 60 });
+            await db.setVerify(user.id, { captcha_type: captchaType, web_verify_id: webVerifyId }, timeout);
+            const verifyUrl = `${siteUrl}/verify/${webVerifyId}`;
+            const kb = [[{ text: t('verify.webBtn'), url: verifyUrl }]];
+            await sendUserMsg({ tg, settings, waitUntil, chatId: user.id, text: t('verify.webTitle'), kb });
             return { done: true };
           }
 
@@ -1571,7 +1600,7 @@ async function handleAdmCb(q, action, { tg, db, kv, settings, chatId, msgId, adm
   if (action === 'tn') return toggle('ADMIN_NOTIFY_ENABLED', t('panel.adminNotify'));
 
   if (action === 'ct') {
-    const all = ['math', 'image_numeric', 'image_alphanumeric'];
+    const all = ['math', 'image_numeric', 'image_alphanumeric', 'turnstile', 'recaptcha'];
     const cur = all.indexOf(settings.CAPTCHA_TYPE || 'math');
     const next = all[(cur + 1) % all.length];
     await db.setSetting('CAPTCHA_TYPE', next);

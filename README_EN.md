@@ -1,7 +1,7 @@
 <h1 align="center">🤖 Telegram ChatBot</h1>
 
 <p align="center">
-  Telegram two-way chat bot · Web admin panel · Multi-storage backend
+  Telegram two-way chat bot · Web admin panel · Multi-storage backend.
 </p>
 
 <p align="center">
@@ -19,7 +19,9 @@
 
 ---
 
-A Telegram two-way chat bot built on **Cloudflare Pages + Pages Functions + Vue 3 (Vuetify 3)**. Deployable via **Cloudflare Pages** or **Docker**. Storage supports **KV / D1 / Hyperdrive (PostgreSQL & MySQL)** with seamless switching.
+A Telegram two-way chat bot built on **Cloudflare Pages + Pages Functions + Vue 3 (Vuetify 3)**. 
+
+Deployable via **Cloudflare Pages** or **Docker**. Storage supports **KV / D1 / Hyperdrive (PostgreSQL & MySQL)** with seamless switching.
 
 Users DM the bot → auto-creates a topic in admin forum group → admin replies → message forwarded back to user.
 
@@ -87,8 +89,10 @@ Docker uses the same business code as Cloudflare Pages, with local SQLite for st
 
 ```bash
 docker pull kakuwari/tg-chatbot:latest
+```
 
-# Or with docker compose
+### docker compose
+```bash
 git clone https://github.com/milangree/Telegram_ChatBot.git
 cd Telegram_ChatBot
 docker compose up -d
