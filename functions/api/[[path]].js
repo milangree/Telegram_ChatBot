@@ -728,147 +728,162 @@ function buildVerifyPage(captchaType, siteKey, error, origin) {
         : '';
 
   const widgetHtml = isTurnstile
-    ? `<div class="cf-turnstile" data-sitekey="${siteKey}" data-callback="onVerify"></div>`
+    ? '<div class="cf-turnstile" data-sitekey="' + siteKey + '" data-callback="onVerify"></div>'
     : isRecaptcha
-      ? `<div class="g-recaptcha" data-sitekey="${siteKey}" data-callback="onVerify"></div>`
+      ? '<div class="g-recaptcha" data-sitekey="' + siteKey + '" data-callback="onVerify"></div>'
       : isRecaptchaV3
         ? '<div id="v3-status" class="desc">正在自动验证…</div>'
         : '';
+
+  const scriptTag = scriptSrc
+    ? '<script src="' + scriptSrc + '" async defer><\/script>'
+    : '';
 
   const expiredMsg = error === 'expired'
     ? '<div class="status expired">⏳ 验证链接已过期，请重新发送消息获取新链接。</div>'
     : '';
 
-  return `<!DOCTYPE html>
-<html lang="zh">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>人机验证</title>
-<style>
-*{margin:0;padding:0;box-sizing:border-box}
-html,body{height:100%;overflow:hidden}
-body{min-height:100vh;display:flex;align-items:center;justify-content:center;
-  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
-  padding:20px}
-body.tg-bg{background:var(--tg-theme-bg-color,#f0f2f5)}
-body.tg-fg{color:var(--tg-theme-text-color,#1a1a2e)}
-.card{background:var(--tg-theme-bg-color,#fff);border-radius:16px;
-  box-shadow:0 8px 32px rgba(0,0,0,.1);
-  padding:40px 32px;max-width:420px;width:100%;text-align:center}
-.icon{font-size:48px;margin-bottom:16px}
-h1{font-size:20px;color:var(--tg-theme-text-color,#1a1a2e);margin-bottom:8px;font-weight:600}
-.desc{font-size:14px;color:var(--tg-theme-hint-color,#666);margin-bottom:24px;line-height:1.5}
-.widget{display:flex;justify-content:center;margin-bottom:20px;min-height:65px}
-.status{padding:12px 16px;border-radius:8px;font-size:14px;margin-top:16px;display:none}
-.status.success{display:block;background:#d4edda;color:#155724;border:1px solid #c3e6cb}
-.status.error{display:block;background:#f8d7da;color:#721c24;border:1px solid #f5c6cb}
-.status.expired{display:block;background:#fff3cd;color:#856404;border:1px solid #ffeaa7}
-.spinner{display:inline-block;width:20px;height:20px;border:2px solid #fff;border-top-color:transparent;
-  border-radius:50%;animation:spin .6s linear infinite;vertical-align:middle;margin-right:8px}
-@keyframes spin{to{transform:rotate(360deg)}}
-.btn{display:inline-block;padding:12px 32px;border:none;border-radius:8px;font-size:15px;font-weight:500;
-  cursor:pointer;transition:all .2s}
-.btn-primary{background:var(--tg-theme-button-color,linear-gradient(135deg,#667eea,#764ba2));color:var(--tg-theme-button-text-color,#fff)}
-.btn-primary:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(102,126,234,.4)}
-.btn-primary:disabled{opacity:.6;cursor:not-allowed;transform:none;box-shadow:none}
-</style>
-<script src="https://telegram.org/js/telegram-web-app.js"></script>
-${scriptSrc ? `<script src="${scriptSrc}" async defer></script>` : ''}
-</head>
-<body>
-<div class="card">
-  <div class="icon">🔐</div>
-  <h1>人机验证</h1>
-  ${expiredMsg ? expiredMsg : `
-  <p class="desc">请完成下方验证以继续使用</p>
-  <div class="widget">${widgetHtml}</div>
-  <button id="submitBtn" class="btn btn-primary" disabled>验证中...</button>
-  <div id="status" class="status"></div>
-  `}
-</div>
-<script>
-(function() {
-  var tg = window.Telegram && window.Telegram.WebApp;
-  if (tg) {
-    tg.ready();
-    tg.expand();
-    document.body.classList.add('tg-bg', 'tg-fg');
-  }
+  const cardBody = expiredMsg
+    ? expiredMsg
+    : '<p class="desc">请完成下方验证以继续使用</p>'
+      + '<div class="widget">' + widgetHtml + '</div>'
+      + '<button id="submitBtn" class="btn btn-primary" disabled>验证中...</button>'
+      + '<div id="status" class="status"></div>';
 
-  var path = window.location.pathname;
-  var webVerifyId = path.split('/').pop();
+  const payloadKey = isTurnstile ? 'cf-turnstile-response' : 'g-recaptcha-response';
 
-${error === 'expired' ? '' : `
-  var _token = '';
-  window.onVerify = function(response) {
-    _token = response;
-    var btn = document.getElementById('submitBtn');
-    btn.disabled = false;
-    btn.textContent = '提交验证';
-    btn.onclick = submitVerify;
-  };
+  let verifyScript = '';
+  if (!error) {
+    verifyScript = ''
+      + '  var _token = "";\n'
+      + '  window.onVerify = function(response) {\n'
+      + '    _token = response;\n'
+      + '    var btn = document.getElementById("submitBtn");\n'
+      + '    btn.disabled = false;\n'
+      + '    btn.textContent = "提交验证";\n'
+      + '    btn.onclick = submitVerify;\n'
+      + '  };\n'
+      + '\n'
+      + '  function submitVerify() {\n'
+      + '    var btn = document.getElementById("submitBtn");\n'
+      + '    var status = document.getElementById("status");\n'
+      + '    btn.disabled = true;\n'
+      + '    btn.innerHTML = \'<span class="spinner"></span>验证中...\';\n'
+      + '    var payload = {"' + payloadKey + '": _token};\n'
+      + '    fetch(window.location.href, {\n'
+      + '      method: "POST",\n'
+      + '      headers: { "Content-Type": "application/json" },\n'
+      + '      body: JSON.stringify(payload),\n'
+      + '    }).then(function(r) { return r.json(); }).then(function(data) {\n'
+      + '      if (data.ok) {\n'
+      + '        status.className = "status success";\n'
+      + '        status.textContent = "✅ 验证成功！正在返回…";\n'
+      + '        btn.style.display = "none";\n'
+      + '        if (tg) {\n'
+      + '          tg.sendData(JSON.stringify({ type: "web_verify_ok", webVerifyId: webVerifyId }));\n'
+      + '          setTimeout(function() { tg.close(); }, 300);\n'
+      + '        }\n'
+      + '      } else {\n'
+      + '        status.className = "status error";\n'
+      + '        status.textContent = "❌ 验证失败，请重试。";\n'
+      + '        btn.disabled = false;\n'
+      + '        btn.textContent = "重新验证";\n'
+      + '        if (window.turnstile) turnstile.reset();\n'
+      + '        if (window.grecaptcha) grecaptcha.reset();\n'
+      + '      }\n'
+      + '    }).catch(function() {\n'
+      + '      status.className = "status error";\n'
+      + '      status.textContent = "❌ 网络错误，请重试。";\n'
+      + '      btn.disabled = false;\n'
+      + '      btn.textContent = "重新验证";\n'
+      + '    });\n'
+      + '  }\n'
+      + '\n'
+      + '  setTimeout(function() {\n'
+      + '    var btn = document.getElementById("submitBtn");\n'
+      + '    if (btn && !_token) btn.textContent = "请完成上方验证";\n'
+      + '  }, 2000);\n';
 
-  function submitVerify() {
-    var btn = document.getElementById('submitBtn');
-    var status = document.getElementById('status');
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner"></span>验证中...';
-    var payload = ${isTurnstile ? '{"cf-turnstile-response": _token}' : '{"g-recaptcha-response": _token}'};
-    fetch(window.location.href, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    }).then(function(r) { return r.json(); }).then(function(data) {
-      if (data.ok) {
-        status.className = 'status success';
-        status.textContent = '✅ 验证成功！正在返回…';
-        btn.style.display = 'none';
-        if (tg) {
-          tg.sendData(JSON.stringify({ type: 'web_verify_ok', webVerifyId: webVerifyId }));
-          setTimeout(function() { tg.close(); }, 300);
-        }
-      } else {
-        status.className = 'status error';
-        status.textContent = '❌ 验证失败，请重试。';
-        btn.disabled = false;
-        btn.textContent = '重新验证';
-        if (window.turnstile) turnstile.reset();
-        if (window.grecaptcha) grecaptcha.reset();
-      }
-    }).catch(function() {
-      status.className = 'status error';
-      status.textContent = '❌ 网络错误，请重试。';
-      btn.disabled = false;
-      btn.textContent = '重新验证';
-    });
-  }
-
-  setTimeout(function() {
-    var btn = document.getElementById('submitBtn');
-    if (btn && !_token) btn.textContent = '请完成上方验证';
-  }, 2000);
-` : ''}${isRecaptchaV3 && !error ? `
-  // reCAPTCHA v3: auto-execute on page load
-  function v3Execute() {
-    if (!window.grecaptcha || !grecaptcha.execute) {
-      setTimeout(v3Execute, 200);
-      return;
+    if (isRecaptchaV3) {
+      verifyScript += ''
+        + '  // reCAPTCHA v3: auto-execute on page load\n'
+        + '  function v3Execute() {\n'
+        + '    if (!window.grecaptcha || !grecaptcha.execute) {\n'
+        + '      setTimeout(v3Execute, 200);\n'
+        + '      return;\n'
+        + '    }\n'
+        + '    grecaptcha.execute("' + siteKey + '", { action: "verify" }).then(function(token) {\n'
+        + '      _token = token;\n'
+        + '      submitVerify();\n'
+        + '    }).catch(function() {\n'
+        + '      var s = document.getElementById("v3-status");\n'
+        + '      if (s) s.textContent = "验证失败，点击重试";\n'
+        + '      s.style.cursor = "pointer";\n'
+        + '      s.onclick = v3Execute;\n'
+        + '    });\n'
+        + '  }\n'
+        + '  v3Execute();\n';
     }
-    grecaptcha.execute('${siteKey}', { action: 'verify' }).then(function(token) {
-      _token = token;
-      submitVerify();
-    }).catch(function() {
-      var s = document.getElementById('v3-status');
-      if (s) s.textContent = '验证失败，点击重试';
-      s.style.cursor = 'pointer';
-      s.onclick = v3Execute;
-    });
   }
-  v3Execute();
-` : ''}
-})();
-</script>
-</body>
-</html>`;
+
+  return '<!DOCTYPE html>\n'
+    + '<html lang="zh">\n'
+    + '<head>\n'
+    + '<meta charset="UTF-8">\n'
+    + '<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">\n'
+    + '<title>人机验证</title>\n'
+    + '<style>\n'
+    + '*{margin:0;padding:0;box-sizing:border-box}\n'
+    + 'html,body{height:100%;overflow:hidden}\n'
+    + 'body{min-height:100vh;display:flex;align-items:center;justify-content:center;\n'
+    + '  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;\n'
+    + '  padding:20px}\n'
+    + 'body.tg-bg{background:var(--tg-theme-bg-color,#f0f2f5)}\n'
+    + 'body.tg-fg{color:var(--tg-theme-text-color,#1a1a2e)}\n'
+    + '.card{background:var(--tg-theme-bg-color,#fff);border-radius:16px;\n'
+    + '  box-shadow:0 8px 32px rgba(0,0,0,.1);\n'
+    + '  padding:40px 32px;max-width:420px;width:100%;text-align:center}\n'
+    + '.icon{font-size:48px;margin-bottom:16px}\n'
+    + 'h1{font-size:20px;color:var(--tg-theme-text-color,#1a1a2e);margin-bottom:8px;font-weight:600}\n'
+    + '.desc{font-size:14px;color:var(--tg-theme-hint-color,#666);margin-bottom:24px;line-height:1.5}\n'
+    + '.widget{display:flex;justify-content:center;margin-bottom:20px;min-height:65px}\n'
+    + '.status{padding:12px 16px;border-radius:8px;font-size:14px;margin-top:16px;display:none}\n'
+    + '.status.success{display:block;background:#d4edda;color:#155724;border:1px solid #c3e6cb}\n'
+    + '.status.error{display:block;background:#f8d7da;color:#721c24;border:1px solid #f5c6cb}\n'
+    + '.status.expired{display:block;background:#fff3cd;color:#856404;border:1px solid #ffeaa7}\n'
+    + '.spinner{display:inline-block;width:20px;height:20px;border:2px solid #fff;border-top-color:transparent;\n'
+    + '  border-radius:50%;animation:spin .6s linear infinite;vertical-align:middle;margin-right:8px}\n'
+    + '@keyframes spin{to{transform:rotate(360deg)}}\n'
+    + '.btn{display:inline-block;padding:12px 32px;border:none;border-radius:8px;font-size:15px;font-weight:500;\n'
+    + '  cursor:pointer;transition:all .2s}\n'
+    + '.btn-primary{background:var(--tg-theme-button-color,linear-gradient(135deg,#667eea,#764ba2));color:var(--tg-theme-button-text-color,#fff)}\n'
+    + '.btn-primary:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(102,126,234,.4)}\n'
+    + '.btn-primary:disabled{opacity:.6;cursor:not-allowed;transform:none;box-shadow:none}\n'
+    + '</style>\n'
+    + '<script src="https://telegram.org/js/telegram-web-app.js"><\/script>\n'
+    + scriptTag + '\n'
+    + '</head>\n'
+    + '<body>\n'
+    + '<div class="card">\n'
+    + '  <div class="icon">🔐</div>\n'
+    + '  <h1>人机验证</h1>\n'
+    + '  ' + cardBody + '\n'
+    + '</div>\n'
+    + '<script>\n'
+    + '(function() {\n'
+    + '  var tg = window.Telegram && window.Telegram.WebApp;\n'
+    + '  if (tg) {\n'
+    + '    tg.ready();\n'
+    + '    tg.expand();\n'
+    + '    document.body.classList.add("tg-bg", "tg-fg");\n'
+    + '  }\n'
+    + '\n'
+    + '  var path = window.location.pathname;\n'
+    + '  var webVerifyId = path.split("/").pop();\n'
+    + '\n'
+    + verifyScript
+    + '})();\n'
+    + '<\/script>\n'
+    + '</body>\n'
+    + '</html>';
 }
