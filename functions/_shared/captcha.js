@@ -372,3 +372,163 @@ async function encodePNG(W, H, rgb) {
   for (const p of parts) { png.set(p, off); off += p.length; }
   return png.buffer;
 }
+
+// ── RGBA PNG 编码器（支持透明通道，用于拼图块）──────────────────────────────
+
+async function encodePNG_RGBA(W, H, rgba) {
+  const rowStride = 1 + W * 4;
+  const scanlines = new Uint8Array(H * rowStride);
+  for (let y = 0; y < H; y++) {
+    scanlines[y * rowStride] = 0;
+    for (let x = 0; x < W; x++) {
+      const src = (y * W + x) * 4;
+      const dst = y * rowStride + 1 + x * 4;
+      scanlines[dst]   = rgba[src];
+      scanlines[dst+1] = rgba[src+1];
+      scanlines[dst+2] = rgba[src+2];
+      scanlines[dst+3] = rgba[src+3];
+    }
+  }
+  const idat = await compress(scanlines);
+  const ihdr = new Uint8Array(13);
+  ihdr.set(be32(W)); ihdr.set(be32(H), 4);
+  ihdr[8] = 8; ihdr[9] = 6; // 8-bit RGBA
+  const sig   = new Uint8Array([137,80,78,71,13,10,26,10]);
+  const parts = [sig, pngChunk('IHDR', ihdr), pngChunk('IDAT', idat), pngChunk('IEND', new Uint8Array(0))];
+  const total = parts.reduce((n, p) => n + p.length, 0);
+  const out   = new Uint8Array(total);
+  let off = 0;
+  for (const p of parts) { out.set(p, off); off += p.length; }
+  return out.buffer;
+}
+
+// ── 拼图验证码生成器 ─────────────────────────────────────────────────────────
+
+const PUZZLE_W = 280;
+const PUZZLE_H = 150;
+const PIECE_SIZE = 42;
+const BUMP_R = 12;
+
+/** 判断点 (px, py) 是否在拼图块形状内（方块 + 右侧圆形凸起） */
+function isInsidePiece(px, py, cx, cy) {
+  // 方块主体
+  if (px >= cx && px < cx + PIECE_SIZE && py >= cy && py < cy + PIECE_SIZE) return true;
+  // 右侧圆形凸起（圆心在方块右边缘中点）
+  const bumpCx = cx + PIECE_SIZE;
+  const bumpCy = cy + PIECE_SIZE / 2;
+  const dx = px - bumpCx, dy = py - bumpCy;
+  return dx * dx + dy * dy <= BUMP_R * BUMP_R;
+}
+
+/**
+ * 生成拼图验证码
+ * @param {string} seed — 随机种子
+ * @returns {{ bg: ArrayBuffer, piece: ArrayBuffer, targetX: number }}
+ *   bg: 带暗色缺口的背景图 (RGB PNG)
+ *   piece: 拼图块 (RGBA PNG，透明背景)
+ *   targetX: 拼图块的正确 X 坐标（百分比 0-100）
+ */
+export async function renderSliderPuzzle(seed) {
+  const rng = lcg(seed);
+
+  // 随机目标位置（留边距）
+  const minX = 60, maxX = PUZZLE_W - PIECE_SIZE - 60;
+  const pieceX = Math.floor(rng() * (maxX - minX)) + minX;
+  const pieceY = Math.floor(rng() * (PUZZLE_H - PIECE_SIZE - 20)) + 10;
+  const targetX = Math.round((pieceX / PUZZLE_W) * 100);
+
+  // ── 生成渐变背景 ──
+  const bgRgb = new Uint8Array(PUZZLE_W * PUZZLE_H * 3);
+  const hue = Math.floor(rng() * 360);
+  for (let y = 0; y < PUZZLE_H; y++) {
+    for (let x = 0; x < PUZZLE_W; x++) {
+      const i = (y * PUZZLE_W + x) * 3;
+      const t = x / PUZZLE_W;
+      // HSL 简化：渐变色带微扰
+      const r0 = 80 + Math.floor(t * 100) + Math.floor(rng() * 15);
+      const g0 = 120 + Math.floor(t * 60) + Math.floor(rng() * 15);
+      const b0 = 180 + Math.floor(t * 50) + Math.floor(rng() * 15);
+      bgRgb[i]   = clamp8(r0);
+      bgRgb[i+1] = clamp8(g0);
+      bgRgb[i+2] = clamp8(b0);
+    }
+  }
+
+  // 添加干扰线
+  for (let n = 0; n < 6; n++) {
+    const x1 = Math.floor(rng() * PUZZLE_W), y1 = Math.floor(rng() * PUZZLE_H);
+    const x2 = Math.floor(rng() * PUZZLE_W), y2 = Math.floor(rng() * PUZZLE_H);
+    const c = [100 + Math.floor(rng() * 100), 120 + Math.floor(rng() * 100), 140 + Math.floor(rng() * 100)];
+    drawWavyLine(bgRgb, PUZZLE_W, PUZZLE_H, x1, y1, x2, y2, c, 1 + Math.floor(rng() * 2), 1, rng() * Math.PI * 2);
+  }
+
+  // 添加噪点
+  const dots = Math.floor(PUZZLE_W * PUZZLE_H * 0.01);
+  for (let n = 0; n < dots; n++) {
+    const nx = Math.floor(rng() * PUZZLE_W);
+    const ny = Math.floor(rng() * PUZZLE_H);
+    const idx = (ny * PUZZLE_W + nx) * 3;
+    const d = 30 + Math.floor(rng() * 60);
+    bgRgb[idx] = clamp8(bgRgb[idx] + d);
+    bgRgb[idx+1] = clamp8(bgRgb[idx+1] + d);
+    bgRgb[idx+2] = clamp8(bgRgb[idx+2] + d);
+  }
+
+  // ── 生成拼图块（RGBA）和在背景上绘制缺口 ──
+  const pieceRgba = new Uint8Array(PUZZLE_W * PUZZLE_H * 4);
+
+  for (let y = 0; y < PUZZLE_H; y++) {
+    for (let x = 0; x < PUZZLE_W; x++) {
+      const bgIdx = (y * PUZZLE_W + x) * 3;
+      const pcIdx = (y * PUZZLE_W + x) * 4;
+
+      if (isInsidePiece(x, y, pieceX, pieceY)) {
+        // 拼图块：从背景取色，半透明边缘
+        pieceRgba[pcIdx]   = bgRgb[bgIdx];
+        pieceRgba[pcIdx+1] = bgRgb[bgIdx+1];
+        pieceRgba[pcIdx+2] = bgRgb[bgIdx+2];
+        pieceRgba[pcIdx+3] = 255;
+
+        // 背景上绘制暗色缺口（调暗 60%）
+        bgRgb[bgIdx]   = Math.floor(bgRgb[bgIdx] * 0.35);
+        bgRgb[bgIdx+1] = Math.floor(bgRgb[bgIdx+1] * 0.35);
+        bgRgb[bgIdx+2] = Math.floor(bgRgb[bgIdx+2] * 0.35);
+      } else {
+        // 拼图块之外：完全透明
+        pieceRgba[pcIdx]   = 0;
+        pieceRgba[pcIdx+1] = 0;
+        pieceRgba[pcIdx+2] = 0;
+        pieceRgba[pcIdx+3] = 0;
+      }
+    }
+  }
+
+  // 拼图块描边（白色半透明）
+  for (let y = 0; y < PUZZLE_H; y++) {
+    for (let x = 0; x < PUZZLE_W; x++) {
+      if (!isInsidePiece(x, y, pieceX, pieceY)) continue;
+      // 检查是否为边缘像素（邻居不在形状内）
+      const isEdge = !isInsidePiece(x - 1, y, pieceX, pieceY)
+                  || !isInsidePiece(x + 1, y, pieceX, pieceY)
+                  || !isInsidePiece(x, y - 1, pieceX, pieceY)
+                  || !isInsidePiece(x, y + 1, pieceX, pieceY);
+      if (isEdge) {
+        const pcIdx = (y * PUZZLE_W + x) * 4;
+        pieceRgba[pcIdx]   = 255;
+        pieceRgba[pcIdx+1] = 255;
+        pieceRgba[pcIdx+2] = 255;
+        pieceRgba[pcIdx+3] = 180;
+        // 背景上也画白色描边
+        const bgIdx = (y * PUZZLE_W + x) * 3;
+        bgRgb[bgIdx]   = 255;
+        bgRgb[bgIdx+1] = 255;
+        bgRgb[bgIdx+2] = 255;
+      }
+    }
+  }
+
+  const bgPng   = await encodePNG(PUZZLE_W, PUZZLE_H, bgRgb);
+  const piecePng = await encodePNG_RGBA(PUZZLE_W, PUZZLE_H, pieceRgba);
+
+  return { bg: bgPng, piece: piecePng, targetX };
+}
