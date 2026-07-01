@@ -193,8 +193,8 @@ function buildMessageFilterManageKb(t) {
     [{ text: `🔣 ${t('filter.type.regex')}`, callback_data: 'adm:mf:add:regex' }],
     [{ text: `🧩 ${t('filter.type.json')}`, callback_data: 'adm:mf:add:json' }],
     [{ text: `➖ ${t('filter.removeAction')}`, callback_data: 'adm:mf:remove' }],
-    [{ text: `🔄 ${t('kb.refresh')}`, callback_data: 'adm:mf' }],
-    [{ text: `← ${t('cb.back')}`, callback_data: 'adm:bk' }],
+    [{ text: t('kb.refresh'), callback_data: 'adm:mf' }],
+    [{ text: t('cb.back'), callback_data: 'adm:bk' }],
   ];
 }
 
@@ -486,15 +486,15 @@ async function sendToUserThreadOrAdminDm({ tg, db, settings, waitUntil, groupId,
 function fullUserKb(uid, u, t) {
   return [
     [
-      { text: u?.is_blocked ? `✅ ${t('kb.unblock')}` : `🚫 ${t('kb.block')}`, callback_data: u?.is_blocked ? `ub:${uid}` : `bl:${uid}` },
-      { text: u?.is_blocked ? `♾️ ${t('kb.permBan')}` : `📋 ${t('kb.detail')}`, callback_data: u?.is_blocked ? `pb:${uid}` : `ui:${uid}` },
+      { text: u?.is_blocked ? t('kb.unblock') : t('kb.block'), callback_data: u?.is_blocked ? `ub:${uid}` : `bl:${uid}` },
+      { text: u?.is_blocked ? t('kb.permBan') : t('kb.detail'), callback_data: u?.is_blocked ? `pb:${uid}` : `ui:${uid}` },
     ],
     [
-      { text: `⚪ ${t('kb.whitelist')}`, callback_data: `wl:${uid}` },
-      { text: `📨 ${t('kb.msgHistory')}`, callback_data: `ml:${uid}:1` },
+      { text: t('kb.whitelist'), callback_data: `wl:${uid}` },
+      { text: t('kb.msgHistory'), callback_data: `ml:${uid}:1` },
     ],
     [
-      { text: `🔄 ${t('kb.refresh')}`, callback_data: `rf:${uid}` },
+      { text: t('kb.refresh'), callback_data: `rf:${uid}` },
     ],
   ];
 }
@@ -528,8 +528,8 @@ function adminFeatureMenuKb(s, t) {
       { text: `🛡 ${t('panel.messageFilter')}: ${filterCount}`, callback_data: 'adm:mf' },
     ],
     [
-      { text: `← ${t('cb.back')}`, callback_data: 'adm:menu' },
-      { text: `✖️ ${t('admin.close')}`, callback_data: 'adm:close' },
+      { text: t('cb.back'), callback_data: 'adm:menu' },
+      { text: t('admin.close'), callback_data: 'adm:close' },
     ],
   ];
 }
@@ -537,15 +537,15 @@ function adminFeatureMenuKb(s, t) {
 function adminListMenuKb(t) {
   return [
     [
-      { text: `📊 ${t('kb.stats')}`, callback_data: 'adm:st' },
-      { text: `🚫 ${t('kb.blacklist')}`, callback_data: 'adm:bk:1' },
+      { text: t('kb.stats'), callback_data: 'adm:st' },
+      { text: t('kb.blacklist'), callback_data: 'adm:bk:1' },
     ],
     [
-      { text: `👥 ${t('kb.userList')}`, callback_data: 'adm:ul:1' },
+      { text: t('kb.userList'), callback_data: 'adm:ul:1' },
     ],
     [
-      { text: `← ${t('cb.back')}`, callback_data: 'adm:menu' },
-      { text: `✖️ ${t('admin.close')}`, callback_data: 'adm:close' },
+      { text: t('cb.back'), callback_data: 'adm:menu' },
+      { text: t('admin.close'), callback_data: 'adm:close' },
     ],
   ];
 }
@@ -553,14 +553,14 @@ function adminListMenuKb(t) {
 function adminMainMenuKb(t) {
   return [
     [
-      { text: `⚙️ ${t('admin.menu.features')}`, callback_data: 'adm:cfg' },
-      { text: `📚 ${t('admin.menu.lists')}`, callback_data: 'adm:list' },
+      { text: t('admin.menu.features'), callback_data: 'adm:cfg' },
+      { text: t('admin.menu.lists'), callback_data: 'adm:list' },
     ],
     [
-      { text: `🛡 ${t('admin.menu.filters')}`, callback_data: 'adm:mf' },
+      { text: t('admin.menu.filters'), callback_data: 'adm:mf' },
     ],
     [
-      { text: `✖️ ${t('admin.close')}`, callback_data: 'adm:close' },
+      { text: t('admin.close'), callback_data: 'adm:close' },
     ],
   ];
 }
@@ -591,14 +591,14 @@ function userMenuNavRow(t, backCallback = 'user:menu') {
 function userMainMenuKb(t) {
   return [
     [
-      { text: `📨 ${t('user.contact')}`, callback_data: 'user:contact' },
-      { text: `📋 ${t('user.statusBtn')}`, callback_data: 'user:status' },
+      { text: t('user.contact'), callback_data: 'user:contact' },
+      { text: t('user.statusBtn'), callback_data: 'user:status' },
     ],
     [
-      { text: `🆘 ${t('user.help')}`, callback_data: 'user:help' },
+      { text: t('user.help'), callback_data: 'user:help' },
     ],
     [
-      { text: `✖️ ${t('user.close')}`, callback_data: 'user:close' },
+      { text: t('user.close'), callback_data: 'user:close' },
     ],
   ];
 }
@@ -1050,6 +1050,17 @@ async function handleAdminPrivateMsg(msg, user, { tg, db, kv, settings, groupId,
       await sendPanel();
       return;
     }
+    if (cmd === 'start') {
+      await sendPanel();
+      return;
+    }
+    if (cmd === 'help') {
+      await tg.sendMsg({
+        chatId: user.id,
+        text: t('admin.helpText'),
+      });
+      return;
+    }
     if (cmd === 'stats') {
       const s = await db.getStats();
       await tg.sendMsg({
@@ -1356,7 +1367,7 @@ async function handleCb(q, { tg, db, kv, settings, t, waitUntil }) {
       const u   = await db.getUser(uid);
       if (!u) { await tg.answerCb({ id: q.id, text: t('admin.userNotFound') }); return; }
       const isWl = await db.isWhitelisted(uid);
-      await editCard(tg, chatId, msgId, message, buildDetailText(u, isWl, t), [...fullUserKb(uid, u, t), [{ text: `🔙 ${t('collapse')}`, callback_data: `rf:${uid}` }]]);
+      await editCard(tg, chatId, msgId, message, buildDetailText(u, isWl, t), [...fullUserKb(uid, u, t), [{ text: t('collapse'), callback_data: `rf:${uid}` }]]);
       await tg.answerCb({ id: q.id });
       return;
     }
@@ -1378,7 +1389,7 @@ async function handleCb(q, { tg, db, kv, settings, t, waitUntil }) {
       if (page > 1)  nav.push({ text: `◀ ${page - 1}`, callback_data: `ml:${uid}:${page - 1}` });
       nav.push({ text: `📄 ${page}`, callback_data: 'adm:none' });
       if (hasMore)   nav.push({ text: `${page + 1} ▶`, callback_data: `ml:${uid}:${page + 1}` });
-      await editCard(tg, chatId, msgId, message, `📨 <b>${t('msgHistoryTitle', { page })}</b>\n\n<code>${lines}</code>`, [nav, [{ text: `← ${t('cb.back')}`, callback_data: `ui:${uid}` }]]);
+      await editCard(tg, chatId, msgId, message, `📨 <b>${t('msgHistoryTitle', { page })}</b>\n\n<code>${lines}</code>`, [nav, [{ text: t('cb.back'), callback_data: `ui:${uid}` }]]);
       await tg.answerCb({ id: q.id });
       return;
     }
@@ -1639,8 +1650,8 @@ async function handleAdmCb(q, action, { tg, db, kv, settings, chatId, msgId, adm
       msgId,
       text: t('admin.stats', s),
       kb: [[
-        { text: `← ${t('cb.back')}`, callback_data: 'adm:list' },
-        { text: `✖️ ${t('admin.close')}`, callback_data: 'adm:close' },
+        { text: t('cb.back'), callback_data: 'adm:list' },
+        { text: t('admin.close'), callback_data: 'adm:close' },
       ]],
     });
   } else if (action.startsWith('bk:')) {
@@ -1662,8 +1673,8 @@ async function handleAdmCb(q, action, { tg, db, kv, settings, chatId, msgId, adm
       kb: [
         nav,
         [
-          { text: `← ${t('cb.back')}`, callback_data: 'adm:list' },
-          { text: `✖️ ${t('admin.close')}`, callback_data: 'adm:close' },
+          { text: t('cb.back'), callback_data: 'adm:list' },
+          { text: t('admin.close'), callback_data: 'adm:close' },
         ],
       ],
     });
@@ -1686,8 +1697,8 @@ async function handleAdmCb(q, action, { tg, db, kv, settings, chatId, msgId, adm
       kb: [
         nav,
         [
-          { text: `← ${t('cb.back')}`, callback_data: 'adm:list' },
-          { text: `✖️ ${t('admin.close')}`, callback_data: 'adm:close' },
+          { text: t('cb.back'), callback_data: 'adm:list' },
+          { text: t('admin.close'), callback_data: 'adm:close' },
         ],
       ],
     });

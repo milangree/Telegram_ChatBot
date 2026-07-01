@@ -21,3 +21,7 @@ pnpm-debug.log*
 
 # Docker 数据文件
 data/
+
+# 本地开发文件
+CLAUDE.md
+.mailmap

@@ -42,7 +42,7 @@
           <v-img
             :src="`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(qrUrl)}`"
             width="160" height="160" rounded="lg"
-            style="border:3px solid rgb(var(--v-theme-surface-variant))"
+            style="border:3px solid var(--v-theme-surface-variant)"
           />
         </div>
         <v-text-field v-model="totpToken" :label="t('profile.2fa.verifyLabel')" placeholder="123456" maxlength="6" inputmode="numeric" :prepend-inner-icon="mdiKeyVariant" @keydown.enter="verify2FA">

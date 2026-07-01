@@ -1,8 +1,8 @@
 <template>
-  <div style="width:100%;max-width:420px;padding:16px">
-    <v-card elevation="8" rounded="xl" class="overflow-hidden">
+  <div style="width:420px;max-width:calc(100vw - 32px);padding:16px;margin:0 auto">
+    <v-card elevation="8" rounded="xl" class="overflow-hidden" style="width:100%">
       <!-- 顶部装饰条 -->
-      <div style="height:4px;background:linear-gradient(90deg, rgb(var(--v-theme-primary)), rgb(var(--v-theme-secondary)))" />
+      <div style="height:4px;background:linear-gradient(90deg, var(--v-theme-primary), var(--v-theme-secondary))" />
 
       <div class="pa-7 pb-6">
         <!-- 语言 + 主题切换 -->

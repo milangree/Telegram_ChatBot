@@ -14,7 +14,7 @@ services:
     container_name: telegram-chatbot
     restart: unless-stopped
     ports:
-      - "4000:3000"
+      - "3000:3000"
     environment:
       - PORT=3000
       - NODE_ENV=production

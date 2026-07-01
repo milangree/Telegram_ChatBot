@@ -162,7 +162,7 @@
           </v-menu>
         </template>
       </v-app-bar>
-      <v-main class="d-flex align-center justify-center" style="min-height:100vh">
+      <v-main style="display:flex;align-items:center;justify-content:center;min-height:100vh">
         <RouterView />
       </v-main>
     </template>

@@ -19,14 +19,14 @@ code { font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace; font-siz
 
 /* 消息气泡 */
 .msg-incoming {
-  background: rgb(var(--v-theme-surface-variant));
+  background: var(--v-theme-surface-variant);
   border-radius: 18px 18px 18px 4px;
   padding: 10px 14px;
   max-width: 75%;
   align-self: flex-start;
 }
 .msg-outgoing {
-  background: rgb(var(--v-theme-primary));
+  background: var(--v-theme-primary);
   color: white;
   border-radius: 18px 18px 4px 18px;
   padding: 10px 14px;
@@ -45,7 +45,7 @@ code { font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace; font-siz
   align-items: center;
   justify-content: center;
   padding: 48px 24px;
-  color: rgb(var(--v-theme-on-surface-variant));
+  color: var(--v-theme-on-surface-variant);
   text-align: center;
   gap: 12px;
 }
