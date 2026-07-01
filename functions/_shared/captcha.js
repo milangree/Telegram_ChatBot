@@ -1,8 +1,8 @@
 // functions/_shared/captcha.js
-// Pure-JS PNG captcha generator — no Canvas, works in Cloudflare Workers.
+// 纯 JS PNG 验证码生成器 — 无需 Canvas，兼容 Cloudflare Workers
 
-// ── 5×7 pixel font ──────────────────────────────────────────────────────────
-// Each entry = 7 rows; each row = 5 bits, bit-4 is leftmost pixel.
+// ── 5×7 像素字体 ────────────────────────────────────────────────────────────
+// 每项 = 7 行；每行 = 5 位，bit-4 为最左侧像素
 const FONT = {
   '0':[14,17,19,21,25,17,14], '1':[4,12,4,4,4,4,14],
   '2':[14,17,1,6,8,16,31],   '3':[30,1,1,14,1,1,30],
@@ -23,11 +23,11 @@ const FONT = {
   'Y':[17,17,10,4,4,4,4],   'Z':[31,1,2,4,8,16,31],
 };
 
-// Safe char pools (no O/I/0/1 confusion)
+// 安全字符池（排除易混淆的 O/I/0/1）
 const NUMERIC_CHARS = '23456789';
 const ALPHA_CHARS   = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
 
-// ── Code generation ──────────────────────────────────────────────────────────
+// ── 验证码生成 ──────────────────────────────────────────────────────────────
 
 export function generateCode(type) {
   const pool = type === 'image_alphanumeric' ? ALPHA_CHARS : NUMERIC_CHARS;
@@ -100,21 +100,21 @@ export function generateWrongOptions(correct, type, count = 3) {
   return [...wrongs];
 }
 
-// ── PNG rendering ────────────────────────────────────────────────────────────
+// ── PNG 渲染 ────────────────────────────────────────────────────────────────
 
-const SCALE   = 4;   // font-pixels → screen-pixels
-const PADDING = 14;  // border padding
-const SPACING = 4;   // gap between chars
+const SCALE   = 4;   // 字体像素 → 屏幕像素
+const PADDING = 14;  // 边距
+const SPACING = 4;   // 字符间距
 const CW = 5, CH = 7;
 
 export async function renderCaptchaPNG(text, seed = text) {
   const W = PADDING * 2 + text.length * (CW + SPACING) * SCALE - SPACING * SCALE;
-  const H = PADDING * 2 + CH * SCALE + 10; // extra room for jitter/distortion
+  const H = PADDING * 2 + CH * SCALE + 10;
 
   const rgb = new Uint8Array(W * H * 3);
   const rng = lcg(seed);
 
-  // Background: gradient + subtle texture
+  // 背景：渐变 + 微纹理
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < W; x++) {
       const i = (y * W + x) * 3;
@@ -125,7 +125,7 @@ export async function renderCaptchaPNG(text, seed = text) {
     }
   }
 
-  // Pre-text interference curves
+  // 文字前干扰曲线
   for (let n = 0; n < 5; n++) {
     const x1 = Math.floor(rng() * W), y1 = Math.floor(rng() * H);
     const x2 = Math.floor(rng() * W), y2 = Math.floor(rng() * H);
@@ -133,15 +133,15 @@ export async function renderCaptchaPNG(text, seed = text) {
     drawWavyLine(rgb, W, H, x1, y1, x2, y2, c, 1 + Math.floor(rng() * 3), 1 + Math.floor(rng() * 2), rng() * Math.PI * 2);
   }
 
-  // Characters: jitter + skew + noisy strokes
+  // 字符：抖动 + 倾斜 + 噪声笔画
   for (let ci = 0; ci < text.length; ci++) {
     const glyph = FONT[text[ci]];
     if (!glyph) continue;
 
     const baseX = PADDING + ci * (CW + SPACING) * SCALE;
-    const xOff = Math.floor(rng() * 5) - 2;      // -2..2
-    const yOff = Math.floor(rng() * 7) - 2;      // -2..4
-    const skew = (rng() - 0.5) * 0.9;            // shear
+    const xOff = Math.floor(rng() * 5) - 2;
+    const yOff = Math.floor(rng() * 7) - 2;
+    const skew = (rng() - 0.5) * 0.9;
     const color = [20 + Math.floor(rng() * 120), 25 + Math.floor(rng() * 95), 30 + Math.floor(rng() * 120)];
 
     for (let gy = 0; gy < CH; gy++) {
@@ -149,7 +149,7 @@ export async function renderCaptchaPNG(text, seed = text) {
       const rowShift = Math.round((gy - CH / 2) * skew);
       for (let gx = 0; gx < CW; gx++) {
         if (!(row & (1 << (CW - 1 - gx)))) continue;
-        if (rng() < 0.05) continue; // tiny dropout to hinder OCR templates
+        if (rng() < 0.05) continue;
 
         for (let sy = 0; sy < SCALE; sy++) {
           for (let sx = 0; sx < SCALE; sx++) {
@@ -162,7 +162,6 @@ export async function renderCaptchaPNG(text, seed = text) {
             rgb[idx+1] = clamp8(color[1] + jitter);
             rgb[idx+2] = clamp8(color[2] + jitter);
 
-            // occasional neighboring blur pixel
             if (rng() < 0.07 && px + 1 < W) {
               const nb = idx + 3;
               rgb[nb]   = clamp8(rgb[nb] + 18);
@@ -175,7 +174,7 @@ export async function renderCaptchaPNG(text, seed = text) {
     }
   }
 
-  // Post-text crossing lines
+  // 文字后交叉线
   for (let n = 0; n < 4; n++) {
     const x1 = Math.floor(rng() * W), y1 = Math.floor(rng() * H);
     const x2 = Math.floor(rng() * W), y2 = Math.floor(rng() * H);
@@ -183,10 +182,10 @@ export async function renderCaptchaPNG(text, seed = text) {
     drawLine(rgb, W, H, x1, y1, x2, y2, c);
   }
 
-  // Global wave distortion
+  // 全局波形畸变
   const distorted = waveDistort(rgb, W, H, rng, 2, 1);
 
-  // Dense salt-pepper noise
+  // 密集椒盐噪点
   const dots = Math.floor(W * H * 0.02);
   for (let n = 0; n < dots; n++) {
     const nx = Math.floor(rng() * W);
@@ -204,10 +203,9 @@ export async function renderCaptchaPNG(text, seed = text) {
   return encodePNG(W, H, distorted);
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// ── 辅助函数 ────────────────────────────────────────────────────────────────
 
 function lcg(seed) {
-  // Linear-congruential PRNG seeded from string
   let s = 0xdeadbeef;
   for (let i = 0; i < seed.length; i++) s = (Math.imul(s, 31) + seed.charCodeAt(i)) | 0;
   return () => {
@@ -284,7 +282,7 @@ function clamp8(v) {
   return v < 0 ? 0 : (v > 255 ? 255 : v | 0);
 }
 
-// ── PNG encoder ──────────────────────────────────────────────────────────────
+// ── PNG 编码器 ──────────────────────────────────────────────────────────────
 
 const CRC_TABLE = (() => {
   const t = new Uint32Array(256);
@@ -320,12 +318,10 @@ function pngChunk(type, data) {
 }
 
 async function compress(raw) {
-  // CompressionStream('deflate') = zlib format (RFC 1950) — exactly what PNG needs
   const cs     = new CompressionStream('deflate');
   const writer = cs.writable.getWriter();
   const reader = cs.readable.getReader();
 
-  // Write and read concurrently (streams require it)
   const writeP = writer.write(raw).then(() => writer.close());
   const chunks = [];
   while (true) {
@@ -343,11 +339,10 @@ async function compress(raw) {
 }
 
 async function encodePNG(W, H, rgb) {
-  // Filter-0 (None) scanlines: 1 filter byte + W*3 rgb bytes per row
   const rowStride = 1 + W * 3;
   const scanlines = new Uint8Array(H * rowStride);
   for (let y = 0; y < H; y++) {
-    scanlines[y * rowStride] = 0; // None filter
+    scanlines[y * rowStride] = 0;
     for (let x = 0; x < W; x++) {
       const src = (y * W + x) * 3;
       const dst = y * rowStride + 1 + x * 3;
@@ -359,10 +354,9 @@ async function encodePNG(W, H, rgb) {
 
   const idat = await compress(scanlines);
 
-  // IHDR: width(4) height(4) bitDepth(1) colorType(1=RGB=2) compress(1) filter(1) interlace(1)
   const ihdr = new Uint8Array(13);
   ihdr.set(be32(W)); ihdr.set(be32(H), 4);
-  ihdr[8] = 8; ihdr[9] = 2; // 8-bit RGB
+  ihdr[8] = 8; ihdr[9] = 2;
 
   const sig   = new Uint8Array([137,80,78,71,13,10,26,10]);
   const parts = [sig, pngChunk('IHDR', ihdr), pngChunk('IDAT', idat), pngChunk('IEND', new Uint8Array(0))];
@@ -371,164 +365,4 @@ async function encodePNG(W, H, rgb) {
   let off = 0;
   for (const p of parts) { png.set(p, off); off += p.length; }
   return png.buffer;
-}
-
-// ── RGBA PNG 编码器（支持透明通道，用于拼图块）──────────────────────────────
-
-async function encodePNG_RGBA(W, H, rgba) {
-  const rowStride = 1 + W * 4;
-  const scanlines = new Uint8Array(H * rowStride);
-  for (let y = 0; y < H; y++) {
-    scanlines[y * rowStride] = 0;
-    for (let x = 0; x < W; x++) {
-      const src = (y * W + x) * 4;
-      const dst = y * rowStride + 1 + x * 4;
-      scanlines[dst]   = rgba[src];
-      scanlines[dst+1] = rgba[src+1];
-      scanlines[dst+2] = rgba[src+2];
-      scanlines[dst+3] = rgba[src+3];
-    }
-  }
-  const idat = await compress(scanlines);
-  const ihdr = new Uint8Array(13);
-  ihdr.set(be32(W)); ihdr.set(be32(H), 4);
-  ihdr[8] = 8; ihdr[9] = 6; // 8-bit RGBA
-  const sig   = new Uint8Array([137,80,78,71,13,10,26,10]);
-  const parts = [sig, pngChunk('IHDR', ihdr), pngChunk('IDAT', idat), pngChunk('IEND', new Uint8Array(0))];
-  const total = parts.reduce((n, p) => n + p.length, 0);
-  const out   = new Uint8Array(total);
-  let off = 0;
-  for (const p of parts) { out.set(p, off); off += p.length; }
-  return out.buffer;
-}
-
-// ── 拼图验证码生成器 ─────────────────────────────────────────────────────────
-
-const PUZZLE_W = 280;
-const PUZZLE_H = 150;
-const PIECE_SIZE = 42;
-const BUMP_R = 12;
-
-/** 判断点 (px, py) 是否在拼图块形状内（方块 + 右侧圆形凸起） */
-function isInsidePiece(px, py, cx, cy) {
-  // 方块主体
-  if (px >= cx && px < cx + PIECE_SIZE && py >= cy && py < cy + PIECE_SIZE) return true;
-  // 右侧圆形凸起（圆心在方块右边缘中点）
-  const bumpCx = cx + PIECE_SIZE;
-  const bumpCy = cy + PIECE_SIZE / 2;
-  const dx = px - bumpCx, dy = py - bumpCy;
-  return dx * dx + dy * dy <= BUMP_R * BUMP_R;
-}
-
-/**
- * 生成拼图验证码
- * @param {string} seed — 随机种子
- * @returns {{ bg: ArrayBuffer, piece: ArrayBuffer, targetX: number }}
- *   bg: 带暗色缺口的背景图 (RGB PNG)
- *   piece: 拼图块 (RGBA PNG，透明背景)
- *   targetX: 拼图块的正确 X 坐标（百分比 0-100）
- */
-export async function renderSliderPuzzle(seed) {
-  const rng = lcg(seed);
-
-  // 随机目标位置（留边距）
-  const minX = 60, maxX = PUZZLE_W - PIECE_SIZE - 60;
-  const pieceX = Math.floor(rng() * (maxX - minX)) + minX;
-  const pieceY = Math.floor(rng() * (PUZZLE_H - PIECE_SIZE - 20)) + 10;
-  const targetX = Math.round((pieceX / PUZZLE_W) * 100);
-
-  // ── 生成渐变背景 ──
-  const bgRgb = new Uint8Array(PUZZLE_W * PUZZLE_H * 3);
-  const hue = Math.floor(rng() * 360);
-  for (let y = 0; y < PUZZLE_H; y++) {
-    for (let x = 0; x < PUZZLE_W; x++) {
-      const i = (y * PUZZLE_W + x) * 3;
-      const t = x / PUZZLE_W;
-      // HSL 简化：渐变色带微扰
-      const r0 = 80 + Math.floor(t * 100) + Math.floor(rng() * 15);
-      const g0 = 120 + Math.floor(t * 60) + Math.floor(rng() * 15);
-      const b0 = 180 + Math.floor(t * 50) + Math.floor(rng() * 15);
-      bgRgb[i]   = clamp8(r0);
-      bgRgb[i+1] = clamp8(g0);
-      bgRgb[i+2] = clamp8(b0);
-    }
-  }
-
-  // 添加干扰线
-  for (let n = 0; n < 6; n++) {
-    const x1 = Math.floor(rng() * PUZZLE_W), y1 = Math.floor(rng() * PUZZLE_H);
-    const x2 = Math.floor(rng() * PUZZLE_W), y2 = Math.floor(rng() * PUZZLE_H);
-    const c = [100 + Math.floor(rng() * 100), 120 + Math.floor(rng() * 100), 140 + Math.floor(rng() * 100)];
-    drawWavyLine(bgRgb, PUZZLE_W, PUZZLE_H, x1, y1, x2, y2, c, 1 + Math.floor(rng() * 2), 1, rng() * Math.PI * 2);
-  }
-
-  // 添加噪点
-  const dots = Math.floor(PUZZLE_W * PUZZLE_H * 0.01);
-  for (let n = 0; n < dots; n++) {
-    const nx = Math.floor(rng() * PUZZLE_W);
-    const ny = Math.floor(rng() * PUZZLE_H);
-    const idx = (ny * PUZZLE_W + nx) * 3;
-    const d = 30 + Math.floor(rng() * 60);
-    bgRgb[idx] = clamp8(bgRgb[idx] + d);
-    bgRgb[idx+1] = clamp8(bgRgb[idx+1] + d);
-    bgRgb[idx+2] = clamp8(bgRgb[idx+2] + d);
-  }
-
-  // ── 生成拼图块（RGBA）和在背景上绘制缺口 ──
-  const pieceRgba = new Uint8Array(PUZZLE_W * PUZZLE_H * 4);
-
-  for (let y = 0; y < PUZZLE_H; y++) {
-    for (let x = 0; x < PUZZLE_W; x++) {
-      const bgIdx = (y * PUZZLE_W + x) * 3;
-      const pcIdx = (y * PUZZLE_W + x) * 4;
-
-      if (isInsidePiece(x, y, pieceX, pieceY)) {
-        // 拼图块：从背景取色，半透明边缘
-        pieceRgba[pcIdx]   = bgRgb[bgIdx];
-        pieceRgba[pcIdx+1] = bgRgb[bgIdx+1];
-        pieceRgba[pcIdx+2] = bgRgb[bgIdx+2];
-        pieceRgba[pcIdx+3] = 255;
-
-        // 背景上绘制暗色缺口（调暗 60%）
-        bgRgb[bgIdx]   = Math.floor(bgRgb[bgIdx] * 0.35);
-        bgRgb[bgIdx+1] = Math.floor(bgRgb[bgIdx+1] * 0.35);
-        bgRgb[bgIdx+2] = Math.floor(bgRgb[bgIdx+2] * 0.35);
-      } else {
-        // 拼图块之外：完全透明
-        pieceRgba[pcIdx]   = 0;
-        pieceRgba[pcIdx+1] = 0;
-        pieceRgba[pcIdx+2] = 0;
-        pieceRgba[pcIdx+3] = 0;
-      }
-    }
-  }
-
-  // 拼图块描边（白色半透明）
-  for (let y = 0; y < PUZZLE_H; y++) {
-    for (let x = 0; x < PUZZLE_W; x++) {
-      if (!isInsidePiece(x, y, pieceX, pieceY)) continue;
-      // 检查是否为边缘像素（邻居不在形状内）
-      const isEdge = !isInsidePiece(x - 1, y, pieceX, pieceY)
-                  || !isInsidePiece(x + 1, y, pieceX, pieceY)
-                  || !isInsidePiece(x, y - 1, pieceX, pieceY)
-                  || !isInsidePiece(x, y + 1, pieceX, pieceY);
-      if (isEdge) {
-        const pcIdx = (y * PUZZLE_W + x) * 4;
-        pieceRgba[pcIdx]   = 255;
-        pieceRgba[pcIdx+1] = 255;
-        pieceRgba[pcIdx+2] = 255;
-        pieceRgba[pcIdx+3] = 180;
-        // 背景上也画白色描边
-        const bgIdx = (y * PUZZLE_W + x) * 3;
-        bgRgb[bgIdx]   = 255;
-        bgRgb[bgIdx+1] = 255;
-        bgRgb[bgIdx+2] = 255;
-      }
-    }
-  }
-
-  const bgPng   = await encodePNG(PUZZLE_W, PUZZLE_H, bgRgb);
-  const piecePng = await encodePNG_RGBA(PUZZLE_W, PUZZLE_H, pieceRgba);
-
-  return { bg: bgPng, piece: piecePng, targetX };
 }

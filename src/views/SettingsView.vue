@@ -75,6 +75,7 @@
                   <button class="btn-primary btn-sm utility-btn" @click="form.FORUM_GROUP_ID = String(groupInfo.id)">{{ t('settings.use') }}</button>
                 </div>
                 <div v-if="groupErr" class="form-hint text-danger">{{ groupErr }}</div>
+                <div class="form-hint">{{ t('settings.topicGroupHint') }}</div>
               </div>
 
               <div class="form-group">
@@ -127,6 +128,16 @@
                   <button class="btn-ghost btn-sm utility-btn" @click="addAdmin(newAdminId)">{{ t('settings.add') }}</button>
                 </div>
                 <div class="form-hint">{{ t('settings.adminHint') }}</div>
+              </div>
+              <div class="divider"></div>
+              <div class="form-group">
+                <label>{{ t('settings.botLocale') }}</label>
+                <select v-model="form.BOT_LOCALE">
+                  <option value="zh-hans">{{ t('settings.botLocaleZhHans') }}</option>
+                  <option value="zh-hant">{{ t('settings.botLocaleZhHant') }}</option>
+                  <option value="en">{{ t('settings.botLocaleEn') }}</option>
+                </select>
+                <div class="form-hint">{{ t('settings.botLocaleHint') }}</div>
               </div>
             </div>
           </div>
@@ -182,7 +193,6 @@
                     <option value="recaptcha">{{ t('settings.verify.recaptcha') }}</option>
                     <option value="recaptcha_v3">{{ t('settings.verify.recaptchaV3') }}</option>
                     <option value="hcaptcha">{{ t('settings.verify.hcaptcha') }}</option>
-                    <option value="slider">{{ t('settings.verify.slider') }}</option>
                   </select>
                 </div>
                 <template v-if="form.CAPTCHA_TYPE === 'turnstile'">
@@ -235,11 +245,17 @@
                   <div class="form-hint">{{ t('settings.verify.siteUrlHint') }}</div>
                 </div>
                 <div class="toggle-row">
-                  <div class="toggle-label">{{ t('settings.verify.timeout') }}</div>
+                  <div>
+                    <div class="toggle-label">{{ t('settings.verify.timeout') }}</div>
+                    <div class="form-hint">{{ t('settings.verify.timeoutHint') }}</div>
+                  </div>
                   <input v-model.number="form.VERIFICATION_TIMEOUT" type="number" min="60" max="3600" style="width:90px" @change="clampTimeout" />
                 </div>
                 <div class="toggle-row">
-                  <div class="toggle-label">{{ t('settings.verify.maxAttempts') }}</div>
+                  <div>
+                    <div class="toggle-label">{{ t('settings.verify.maxAttempts') }}</div>
+                    <div class="form-hint">{{ t('settings.verify.maxAttemptsHint') }}</div>
+                  </div>
                   <input v-model="form.MAX_VERIFICATION_ATTEMPTS" type="number" min="1" max="10" style="width:90px" />
                 </div>
               </template>
@@ -296,7 +312,10 @@
               </div>
               <div class="divider"></div>
               <div class="toggle-row">
-                <div class="toggle-label">{{ t('settings.feature.maxPerMin') }}</div>
+                <div>
+                  <div class="toggle-label">{{ t('settings.feature.maxPerMin') }}</div>
+                  <div class="form-hint">{{ t('settings.feature.maxPerMinHint') }}</div>
+                </div>
                 <input v-model="form.MAX_MESSAGES_PER_MINUTE" type="number" min="1" max="300" style="width:90px" />
               </div>
               <div class="divider"></div>
@@ -306,6 +325,14 @@
                   <div class="form-hint">{{ t('settings.feature.loginSessionTtlHint') }}</div>
                 </div>
                 <input v-model.number="form.LOGIN_SESSION_TTL" type="number" min="300" max="2592000" style="width:110px" @change="clampLoginSessionTtl" />
+              </div>
+              <div class="divider"></div>
+              <div class="toggle-row">
+                <div>
+                  <div class="toggle-label">{{ t('settings.feature.userMsgDelete') }}</div>
+                  <div class="form-hint">{{ t('settings.feature.userMsgDeleteHint') }}</div>
+                </div>
+                <input v-model.number="form.USER_MSG_DELETE_SECONDS" type="number" min="0" max="600" style="width:90px" />
               </div>
               <div class="divider"></div>
               <div class="toggle-row">
