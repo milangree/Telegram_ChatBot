@@ -48,23 +48,28 @@ function randId() {
 
 // ── Verification timeout notification ────────────────────────────────────────
 function scheduleVerifyTimeout({ waitUntil, tg, db, kv, userId, timeout, verifyMsgId }) {
-  if (!waitUntil) return;
-  const task = (async () => {
-    await new Promise(r => setTimeout(r, timeout * 1000 + 2000));
+  const cleanup = async () => {
     const v = await db.getVerify(userId).catch(() => null);
-    if (!v) return; // already verified or expired & cleaned up
+    if (!v) return; // already verified or cleaned up
     if (v.expires_at > Date.now()) return; // not yet expired
-    // Clean up all verification state
     if (v.web_verify_id) await kv.delete(`webverify:${v.web_verify_id}`).catch(() => {});
     await kv.delete(`pending:${userId}`).catch(() => {});
     await db.delVerify(userId).catch(() => {});
-    // Edit verification message to show timeout
     const msgId = verifyMsgId || v.verify_msg_id;
     if (msgId) {
       await tg.editText({ chatId: userId, msgId, text: '⏳ 验证已超时，请重新发送消息以发起新的验证。', kb: [] }).catch(() => {});
     }
-  })();
-  waitUntil(task);
+  };
+  // Primary: setTimeout (works in both Docker and CF Workers)
+  setTimeout(cleanup, timeout * 1000 + 2000);
+  // Backup: waitUntil (CF Workers keeps context alive for this)
+  if (waitUntil) {
+    const task = (async () => {
+      await new Promise(r => setTimeout(r, timeout * 1000 + 2000));
+      await cleanup();
+    })();
+    waitUntil(task);
+  }
 }
 
 // ── 频率限制 ─────────────────────────────────────────────────────────────────
