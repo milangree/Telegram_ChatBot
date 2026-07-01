@@ -180,6 +180,7 @@
                     <option value="image_alphanumeric">{{ t('settings.verify.imgAlpha') }}</option>
                     <option value="turnstile">{{ t('settings.verify.turnstile') }}</option>
                     <option value="recaptcha">{{ t('settings.verify.recaptcha') }}</option>
+                    <option value="recaptcha_v3">{{ t('settings.verify.recaptchaV3') }}</option>
                   </select>
                 </div>
                 <template v-if="form.CAPTCHA_TYPE === 'turnstile'">
@@ -200,6 +201,20 @@
                   <div class="form-group">
                     <label>{{ t('settings.verify.recaptchaSecretKey') }}</label>
                     <input v-model="form.RECAPTCHA_SECRET_KEY" type="password" :placeholder="t('settings.verify.secretKeyPh')" />
+                  </div>
+                </template>
+                <template v-if="form.CAPTCHA_TYPE === 'recaptcha_v3'">
+                  <div class="form-group">
+                    <label>{{ t('settings.verify.recaptchaV3SiteKey') }}</label>
+                    <input v-model="form.RECAPTCHA_V3_SITE_KEY" placeholder="6Ld..." />
+                  </div>
+                  <div class="form-group">
+                    <label>{{ t('settings.verify.recaptchaV3SecretKey') }}</label>
+                    <input v-model="form.RECAPTCHA_V3_SECRET_KEY" type="password" :placeholder="t('settings.verify.secretKeyPh')" />
+                  </div>
+                  <div class="toggle-row">
+                    <div class="toggle-label">{{ t('settings.verify.recaptchaV3Threshold') }}</div>
+                    <input v-model="form.RECAPTCHA_V3_SCORE_THRESHOLD" type="number" min="0" max="1" step="0.1" style="width:90px" />
                   </div>
                 </template>
                 <div class="form-group">

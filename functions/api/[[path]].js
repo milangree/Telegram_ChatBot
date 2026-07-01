@@ -172,8 +172,10 @@ export async function onRequest({ request, env }) {
           const result = await resp.json();
           verifyResult = result.success === true;
         } catch { verifyResult = false; }
-      } else if (captchaType === 'recaptcha') {
-        const secretKey = await db.getSetting('RECAPTCHA_SECRET_KEY');
+      } else if (captchaType === 'recaptcha' || captchaType === 'recaptcha_v3') {
+        const secretKey = captchaType === 'recaptcha_v3'
+          ? await db.getSetting('RECAPTCHA_V3_SECRET_KEY')
+          : await db.getSetting('RECAPTCHA_SECRET_KEY');
         if (!secretKey) return j({ ok: false, error: 'not_configured' }, 500);
         const formData = new URLSearchParams({ secret: secretKey, response: captchaResponse });
         const remoteIp = request.headers.get('CF-Connecting-IP') || request.headers.get('X-Forwarded-For');
@@ -181,7 +183,12 @@ export async function onRequest({ request, env }) {
         try {
           const resp = await fetch('https://www.google.com/recaptcha/api/siteverify', { method: 'POST', body: formData });
           const result = await resp.json();
-          verifyResult = result.success === true;
+          if (captchaType === 'recaptcha_v3') {
+            const threshold = parseFloat(await db.getSetting('RECAPTCHA_V3_SCORE_THRESHOLD') || '0.5');
+            verifyResult = result.success === true && (result.score || 0) >= threshold;
+          } else {
+            verifyResult = result.success === true;
+          }
         } catch { verifyResult = false; }
       }
 
@@ -200,9 +207,10 @@ export async function onRequest({ request, env }) {
         });
       }
       const { captchaType } = JSON.parse(webVerifyRaw);
-      const siteKey = captchaType === 'turnstile'
-        ? await db.getSetting('TURNSTILE_SITE_KEY')
-        : await db.getSetting('RECAPTCHA_SITE_KEY');
+      const siteKeySetting = captchaType === 'turnstile' ? 'TURNSTILE_SITE_KEY'
+        : captchaType === 'recaptcha_v3' ? 'RECAPTCHA_V3_SITE_KEY'
+        : 'RECAPTCHA_SITE_KEY';
+      const siteKey = await db.getSetting(siteKeySetting);
       return new Response(buildVerifyPage(captchaType, siteKey, null, url.origin), {
         headers: { 'Content-Type': 'text/html; charset=utf-8' },
       });
@@ -291,6 +299,7 @@ export async function onRequest({ request, env }) {
         'CAPTCHA_TYPE', 'CAPTCHA_SITE_URL',
         'TURNSTILE_SITE_KEY', 'TURNSTILE_SECRET_KEY',
         'RECAPTCHA_SITE_KEY', 'RECAPTCHA_SECRET_KEY',
+        'RECAPTCHA_V3_SITE_KEY', 'RECAPTCHA_V3_SECRET_KEY', 'RECAPTCHA_V3_SCORE_THRESHOLD',
         'WELCOME_ENABLED', 'WELCOME_MESSAGE', 'BOT_COMMAND_FILTER', 'WHITELIST_ENABLED',
         'ADMIN_NOTIFY_ENABLED',
         'LOGIN_SESSION_TTL',
@@ -708,18 +717,23 @@ function cookie(token, maxAge = 86400) {
 function buildVerifyPage(captchaType, siteKey, error, origin) {
   const isTurnstile = captchaType === 'turnstile';
   const isRecaptcha = captchaType === 'recaptcha';
+  const isRecaptchaV3 = captchaType === 'recaptcha_v3';
 
   const scriptSrc = isTurnstile
     ? 'https://challenges.cloudflare.com/turnstile/v0/api.js'
     : isRecaptcha
       ? 'https://www.google.com/recaptcha/api.js'
-      : '';
+      : isRecaptchaV3
+        ? 'https://www.google.com/recaptcha/api.js?render=explicit'
+        : '';
 
   const widgetHtml = isTurnstile
     ? `<div class="cf-turnstile" data-sitekey="${siteKey}" data-callback="onVerify"></div>`
     : isRecaptcha
       ? `<div class="g-recaptcha" data-sitekey="${siteKey}" data-callback="onVerify"></div>`
-      : '';
+      : isRecaptchaV3
+        ? '<div id="v3-status" class="desc">正在自动验证…</div>'
+        : '';
 
   const expiredMsg = error === 'expired'
     ? '<div class="status expired">⏳ 验证链接已过期，请重新发送消息获取新链接。</div>'
@@ -834,7 +848,25 @@ ${error === 'expired' ? '' : `
     var btn = document.getElementById('submitBtn');
     if (btn && !_token) btn.textContent = '请完成上方验证';
   }, 2000);
-`}
+` : ''}${isRecaptchaV3 && !error ? `
+  // reCAPTCHA v3: auto-execute on page load
+  function v3Execute() {
+    if (!window.grecaptcha || !grecaptcha.execute) {
+      setTimeout(v3Execute, 200);
+      return;
+    }
+    grecaptcha.execute('${siteKey}', { action: 'verify' }).then(function(token) {
+      _token = token;
+      submitVerify();
+    }).catch(function() {
+      var s = document.getElementById('v3-status');
+      if (s) s.textContent = '验证失败，点击重试';
+      s.style.cursor = 'pointer';
+      s.onclick = v3Execute;
+    });
+  }
+  v3Execute();
+` : ''}
 })();
 </script>
 </body>
