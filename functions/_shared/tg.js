@@ -8,12 +8,20 @@ export class TG {
   }
 
   async call(method, body = {}) {
-    const r = await fetch(`${this.base}/${method}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    return r.json();
+    try {
+      const r = await fetch(`${this.base}/${method}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!r.ok) {
+        const text = await r.text().catch(() => '');
+        return { ok: false, error_code: r.status, description: text };
+      }
+      return r.json();
+    } catch (e) {
+      return { ok: false, error_code: 0, description: e?.message || 'network error' };
+    }
   }
 
   sendMsg({ chatId, text, threadId, kb, parseMode = 'HTML', replyToMsgId }) {

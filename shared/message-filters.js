@@ -53,6 +53,14 @@ function parseRegexSource(raw) {
   }
 }
 
+const MAX_TARGET_LENGTH = 4096
+
+/** 检查正则是否有嵌套量词（ReDoS 风险） */
+function hasNestedQuantifiers(source) {
+  // 匹配 ( ... + ) + 或 ( ... * ) * 等嵌套量词模式
+  return /(\([^)]*[+*][^)]*\))[+*?]/.test(source) || /(\[[^\]]*[+*][^\]]*\])[+*?]/.test(source)
+}
+
 export function normalizeMessageFilterRule(input) {
   const type = MESSAGE_FILTER_RULE_TYPES.includes(input?.type) ? input.type : 'text'
   const value = String(input?.value || '').trim()
@@ -61,6 +69,7 @@ export function normalizeMessageFilterRule(input) {
   if (type === 'regex') {
     const { source, flags } = parseRegexSource(value)
     if (!source) throw new Error('Regex source is required')
+    if (hasNestedQuantifiers(source)) throw new Error('Regex contains nested quantifiers (ReDoS risk)')
     // 校验正则表达式是否合法
     // eslint-disable-next-line no-new
     new RegExp(source, flags)
@@ -113,10 +122,14 @@ export function matchMessageFilterRule(rule, message) {
   }
 
   if (normalized.type === 'regex') {
-    const { source, flags } = parseRegexSource(normalized.value)
-    const regex = new RegExp(source, flags)
-    const target = buildPlainSearchTarget(message)
-    return regex.test(target)
+    try {
+      const { source, flags } = parseRegexSource(normalized.value)
+      const regex = new RegExp(source, flags)
+      const target = buildPlainSearchTarget(message).slice(0, MAX_TARGET_LENGTH)
+      return regex.test(target)
+    } catch {
+      return false
+    }
   }
 
   return false

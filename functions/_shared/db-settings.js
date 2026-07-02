@@ -28,6 +28,8 @@ export const DEFAULT_SETTINGS = {
   WHITELIST_ENABLED: 'false',
   ADMIN_NOTIFY_ENABLED: 'false',
   LOGIN_SESSION_TTL: '86400',
+  LOGIN_MAX_ATTEMPTS: '5',
+  LOGIN_LOCKOUT_SECONDS: '900',
   BOT_LOCALE: 'zh-hans', // 机器人语言：简中 / 繁中 / 英文
   ZALGO_FILTER_ENABLED: 'true',
   MESSAGE_FILTER_RULES: '[]',
