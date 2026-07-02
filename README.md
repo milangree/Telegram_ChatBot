@@ -12,6 +12,10 @@
   <img src="https://img.shields.io/badge/License-MIT-green?style=flat" alt="MIT License">
 </p>
 
+<p align="center">
+  <a href="./README_EN.md">English</a>
+</p>
+
 ---
 
 用户私聊 Bot → 自动创建话题 → 管理员回复 → 实时转发回用户。
