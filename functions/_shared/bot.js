@@ -121,13 +121,16 @@ function scheduleVerifyTimeout({ waitUntil, tg, db, kv, userId, timeout, verifyM
   }
 }
 
-// ── 频率限制 ─────────────────────────────────────────────────────────────────
-const rateMap = new Map();
-function rateCheck(uid, max) {
+// ── 频率限制（基于 KV，兼容 CF Workers 多隔离环境）──────────────────────────
+async function rateCheck(kv, uid, max) {
+  const key = `rate:${uid}`;
   const now = Date.now();
-  const ts  = (rateMap.get(uid) || []).filter(t => now - t < 60000);
-  ts.push(now); rateMap.set(uid, ts);
-  return ts.length > max;
+  const raw = await kv.get(key).catch(() => null);
+  const ts = raw ? JSON.parse(raw).filter(t => now - t < 60000) : [];
+  if (ts.length >= max) return true;
+  ts.push(now);
+  await kv.put(key, JSON.stringify(ts), { expirationTtl: 70 }).catch(() => {});
+  return false;
 }
 
 function parseBoundedInt(raw, fallback, min, max) {
@@ -237,7 +240,6 @@ function getMessageFilterTypeLabel(type, t) {
   return {
     text: t('filter.type.text'),
     regex: t('filter.type.regex'),
-    json: 'JSON',
   }[type] || type;
 }
 
@@ -896,7 +898,7 @@ async function handleMsg(msg, { tg, db, kv, settings, baseUrl, t, waitUntil }) {
 
   if (!whitelisted) {
     const maxRate = parseInt(settings.MAX_MESSAGES_PER_MINUTE || '30', 10);
-    if (rateCheck(user.id, maxRate)) {
+    if (await rateCheck(kv, user.id, maxRate)) {
       await tg.sendMsg({ chatId: user.id, text: t('rateLimit') });
       return;
     }
@@ -1541,6 +1543,7 @@ async function handleVerifyAnswer(q, tg, db, kv, user, chatId, msgId, settings, 
     async () => {
       const v = await db.getVerify(user.id);
       if (!v || v.expires_at < Date.now()) {
+        if (v?.web_verify_id) await kv.delete(`webverify:${v.web_verify_id}`).catch(() => {});
         await db.delVerify(user.id);
         await kv.delete(`pending:${user.id}`).catch(() => {});
         await tg.answerCb({ id: q.id, text: t('verify.expired'), alert: true });
@@ -1618,7 +1621,9 @@ async function handleWebAppVerify(msg, user, { tg, db, kv, settings, t, waitUnti
 
   console.log('[web_app_verify] processing user', user.id);
 
-  // 幂等守卫 — 已验证且无待处理记录则跳过
+  // 使用 withUserLock 保证幂等，防止与 POST handler 并发执行
+  const locked = await withUserLock(kv, `verify-answer:${user.id}`, async () => {
+  // 幂等守卫 - 已验证且无待处理记录则跳过
   const dbUser = await db.getUser(user.id).catch(() => null);
   const v = await db.getVerify(user.id).catch(() => null);
   if (!v && dbUser?.is_verified) {
@@ -1695,6 +1700,11 @@ async function handleWebAppVerify(msg, user, { tg, db, kv, settings, t, waitUnti
     } catch (e) {
       console.error('[web_app_verify] forward pending failed:', e);
     }
+  }
+  }, { ttlSeconds: 60, retries: 4, waitMs: 80 });
+
+  if (!locked.acquired) {
+    console.warn('[web_app_verify] lock not acquired for user', user.id);
   }
 
   console.log('[web_app_verify] done for user', user.id);
@@ -1809,7 +1819,7 @@ async function handleAdmCb(q, action, { tg, db, kv, settings, chatId, msgId, adm
   }
 
   if (action.startsWith('ct:set:')) {
-    const type = action.split(':')[2];
+    const type = action.slice('ct:set:'.length);
     const all = ['math', 'image_numeric', 'image_alphanumeric', 'turnstile', 'recaptcha', 'recaptcha_v3', 'hcaptcha'];
     if (all.includes(type)) {
       await db.setSetting('CAPTCHA_TYPE', type);

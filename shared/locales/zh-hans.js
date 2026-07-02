@@ -556,6 +556,7 @@ const messages = {
   "api.auth.totpNotEnabled": "该账号未启用两步验证",
   "api.auth.missingTotp": "缺少验证码",
   "api.auth.invalidTotp": "验证码错误",
+  "api.auth.tooManyAttempts": "登录尝试次数过多，请 {seconds} 秒后重试",
   "api.auth.missingPassword": "缺少密码",
   "api.auth.totpRequired": "需要两步验证码",
   "api.auth.loginFailed": "登录失败: {error}",
