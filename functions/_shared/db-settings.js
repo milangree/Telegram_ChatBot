@@ -11,7 +11,7 @@ export const DEFAULT_SETTINGS = {
   INLINE_KB_MSG_DELETE_ENABLED: 'true',
   INLINE_KB_MSG_DELETE_SECONDS: '30',
   WEBHOOK_SECRET: '',
-  CAPTCHA_TYPE: 'math', // 验证类型：数学题 / 数字图片 / 字母数字图片 / Turnstile / reCAPTCHA / hCaptcha / 滑块
+  CAPTCHA_TYPE: 'math', // 验证类型：数学题 / 数字图片 / 字母数字图片 / Turnstile / reCAPTCHA / hCaptcha
   CAPTCHA_SITE_URL: '',
   TURNSTILE_SITE_KEY: '',
   TURNSTILE_SECRET_KEY: '',

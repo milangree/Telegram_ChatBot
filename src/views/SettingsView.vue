@@ -226,7 +226,7 @@
                   </div>
                   <div class="toggle-row">
                     <div class="toggle-label">{{ t('settings.verify.recaptchaV3Threshold') }}</div>
-                    <input v-model="form.RECAPTCHA_V3_SCORE_THRESHOLD" type="number" min="0" max="1" step="0.1" style="width:90px" />
+                    <input v-model.number="form.RECAPTCHA_V3_SCORE_THRESHOLD" type="number" min="0" max="1" step="0.1" style="width:90px" />
                   </div>
                 </template>
                 <template v-if="form.CAPTCHA_TYPE === 'hcaptcha'">
@@ -256,7 +256,7 @@
                     <div class="toggle-label">{{ t('settings.verify.maxAttempts') }}</div>
                     <div class="form-hint">{{ t('settings.verify.maxAttemptsHint') }}</div>
                   </div>
-                  <input v-model="form.MAX_VERIFICATION_ATTEMPTS" type="number" min="1" max="10" style="width:90px" />
+                  <input v-model.number="form.MAX_VERIFICATION_ATTEMPTS" type="number" min="1" max="10" style="width:90px" />
                 </div>
               </template>
             </div>
@@ -316,7 +316,7 @@
                   <div class="toggle-label">{{ t('settings.feature.maxPerMin') }}</div>
                   <div class="form-hint">{{ t('settings.feature.maxPerMinHint') }}</div>
                 </div>
-                <input v-model="form.MAX_MESSAGES_PER_MINUTE" type="number" min="1" max="300" style="width:90px" />
+                <input v-model.number="form.MAX_MESSAGES_PER_MINUTE" type="number" min="1" max="300" style="width:90px" />
               </div>
               <div class="divider"></div>
               <div class="toggle-row">

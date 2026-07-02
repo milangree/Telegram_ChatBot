@@ -1,7 +1,7 @@
 // functions/api/[[path]].js
 import { DB } from '../_shared/db.js';
 import { TG } from '../_shared/tg.js';
-import { CORS, j, err, hashPw, verifyPw, createSession, getSession, delSession, extractToken, genToken } from '../_shared/auth.js';
+import { CORS, j, err, hashPw, verifyPw, createSession, getSession, delSession, extractToken, genToken, checkLoginRateLimit, recordLoginFailure, clearLoginFailures } from '../_shared/auth.js';
 import { verifyTOTP, generateTOTPSecret } from '../_shared/totp.js';
 import { renderCaptchaPNG } from '../_shared/captcha.js';
 import { setupCommands, getOrCreateThread } from '../_shared/bot.js';
@@ -61,8 +61,17 @@ export async function onRequest({ request, env, waitUntil }) {
       const { username, password, totp, loginMode } = await request.json();
       if (!username) return err(t('auth.missingUsername'));
 
+      // 速率限制检查
+      const rateLimit = await checkLoginRateLimit(kv, username);
+      if (rateLimit.locked) {
+        return err(t('auth.tooManyAttempts', { seconds: rateLimit.retryAfter }), 429);
+      }
+
       const user = await db.getWebUser(username);
-      if (!user) return err(t('auth.invalidCredentials'), 401);
+      if (!user) {
+        await recordLoginFailure(kv, username);
+        return err(t('auth.invalidCredentials'), 401);
+      }
 
       // 若默认管理员已被禁用，永久阻止 admin/admins 登录
       if (String(user.username).toLowerCase() === 'admin') {
@@ -74,12 +83,21 @@ export async function onRequest({ request, env, waitUntil }) {
       if (loginMode === 'totp_only') {
         if (!user.totp_enabled) return err(t('auth.totpNotEnabled'), 401);
         if (!totp) return err(t('auth.missingTotp'), 401);
-        if (!await verifyTOTP(totp, user.totp_secret)) return err(t('auth.invalidTotp'), 401);
+        if (!await verifyTOTP(totp, user.totp_secret)) {
+          await recordLoginFailure(kv, username);
+          return err(t('auth.invalidTotp'), 401);
+        }
       } else {
         // 普通模式：用户名 + 密码
         if (!password) return err(t('auth.missingPassword'));
-        if (!await verifyPw(password, user.password_hash)) return err(t('auth.invalidCredentials'), 401);
+        if (!await verifyPw(password, user.password_hash)) {
+          await recordLoginFailure(kv, username);
+          return err(t('auth.invalidCredentials'), 401);
+        }
       }
+
+      // 登录成功，清除失败计数
+      await clearLoginFailures(kv, username);
 
       const sessionTtl = await getLoginSessionTtl(db);
       const token = await createSession(kv, user.id, sessionTtl);
@@ -253,8 +271,9 @@ export async function onRequest({ request, env, waitUntil }) {
               const p = JSON.parse(pendingRaw);
               const groupId = parseInt(await db.getSetting('FORUM_GROUP_ID').catch(() => '0'), 10);
               if (groupId && p.msgId) {
-                const fakeUser = { id: userId, first_name: '' };
-                const tid = await getOrCreateThread(tg, db, fakeUser, groupId, kv, botT);
+                const realUser = await db.getUser(userId).catch(() => null);
+                const threadUser = realUser || { id: userId, first_name: '' };
+                const tid = await getOrCreateThread(tg, db, threadUser, groupId, kv, botT);
                 if (tid) {
                   await tg.copyMsg({ chatId: groupId, fromChatId: userId, msgId: p.msgId, threadId: tid });
                   await db.addMsg({ userId, direction: 'incoming', content: 'verified-forwarded' });
@@ -287,6 +306,7 @@ export async function onRequest({ request, env, waitUntil }) {
       // 检查验证是否已过期
       const verifyRecord = await db.getVerify(wvUserId).catch(() => null);
       if (!verifyRecord || verifyRecord.expires_at < Date.now()) {
+        await kv.delete(`webverify:${webVerifyId}`).catch(() => {});
         return new Response(buildVerifyPage(null, null, 'expired', url.origin, null), {
           headers: { 'Content-Type': 'text/html; charset=utf-8' },
         });

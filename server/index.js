@@ -218,6 +218,7 @@ process.on('SIGTERM', () => {
   console.log('[server] 收到 SIGTERM，正在关闭...')
   kv.close()
   if (d1) d1.close()
+  if (hyperdrive?.close) hyperdrive.close().catch(() => {})
   process.exit(0)
 })
 
@@ -225,5 +226,6 @@ process.on('SIGINT', () => {
   console.log('[server] 收到 SIGINT，正在关闭...')
   kv.close()
   if (d1) d1.close()
+  if (hyperdrive?.close) hyperdrive.close().catch(() => {})
   process.exit(0)
 })

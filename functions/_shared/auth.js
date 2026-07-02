@@ -1,5 +1,6 @@
 // functions/_shared/auth.js
 const DEFAULT_TTL = 86400;
+const PBKDF2_ITERATIONS = 600000;
 
 export function genToken(len = 48) {
   const c = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
@@ -8,19 +9,45 @@ export function genToken(len = 48) {
   return Array.from(a, b => c[b % c.length]).join('');
 }
 
-async function sha256(m) {
-  const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(m));
-  return Array.from(new Uint8Array(b)).map(x => x.toString(16).padStart(2, '0')).join('');
+function toHex(buf) {
+  return Array.from(new Uint8Array(buf)).map(x => x.toString(16).padStart(2, '0')).join('');
 }
 
+function fromHex(hex) {
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < hex.length; i += 2) bytes[i / 2] = parseInt(hex.substr(i, 2), 16);
+  return bytes;
+}
+
+async function pbkdf2Hash(password, salt) {
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits']
+  );
+  const bits = await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', salt: new TextEncoder().encode(salt), iterations: PBKDF2_ITERATIONS, hash: 'SHA-256' },
+    keyMaterial, 256
+  );
+  return toHex(bits);
+}
+
+/** 哈希密码：pbkdf2:iterations:salt:hash（兼容旧格式 salt:sha256hash） */
 export async function hashPw(pw) {
   const s = genToken(16);
-  return `${s}:${await sha256(`${s}:${pw}`)}`;
+  const h = await pbkdf2Hash(pw, s);
+  return `pbkdf2:${PBKDF2_ITERATIONS}:${s}:${h}`;
 }
 
+/** 验证密码：支持新格式 pbkdf2 和旧格式 sha256 */
 export async function verifyPw(pw, stored) {
+  if (stored.startsWith('pbkdf2:')) {
+    const [, iter, salt, hash] = stored.split(':');
+    const h = await pbkdf2Hash(pw, salt);
+    return h === hash;
+  }
+  // 兼容旧格式 salt:sha256hash
   const [s, h] = stored.split(':');
-  return await sha256(`${s}:${pw}`) === h;
+  const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${s}:${pw}`));
+  return toHex(b) === h;
 }
 
 export async function createSession(kv, userId, ttlSeconds = DEFAULT_TTL) {
@@ -75,3 +102,34 @@ export const j = (d, s = 200) => new Response(JSON.stringify(d), {
 });
 
 export const err = (m, s = 400) => j({ error: m }, s);
+
+// ── 登录速率限制 ────────────────────────────────────────────────────────────
+const LOGIN_MAX_ATTEMPTS = 5;
+const LOGIN_LOCKOUT_SECONDS = 900; // 15 分钟
+
+/** 检查登录是否被锁定，返回 { locked: bool, remaining: number } */
+export async function checkLoginRateLimit(kv, username) {
+  const key = `login_fail:${(username || '').toLowerCase()}`;
+  const raw = await kv.get(key);
+  if (!raw) return { locked: false, remaining: LOGIN_MAX_ATTEMPTS };
+  const data = JSON.parse(raw);
+  if (data.count >= LOGIN_MAX_ATTEMPTS && data.exp > Date.now()) {
+    return { locked: true, remaining: 0, retryAfter: Math.ceil((data.exp - Date.now()) / 1000) };
+  }
+  return { locked: false, remaining: LOGIN_MAX_ATTEMPTS - data.count };
+}
+
+/** 记录一次登录失败 */
+export async function recordLoginFailure(kv, username) {
+  const key = `login_fail:${(username || '').toLowerCase()}`;
+  const raw = await kv.get(key);
+  let data = raw ? JSON.parse(raw) : { count: 0, exp: 0 };
+  data.count++;
+  data.exp = Date.now() + LOGIN_LOCKOUT_SECONDS * 1000;
+  await kv.put(key, JSON.stringify(data), { expirationTtl: LOGIN_LOCKOUT_SECONDS + 10 });
+}
+
+/** 清除登录失败计数（登录成功时调用） */
+export async function clearLoginFailures(kv, username) {
+  await kv.delete(`login_fail:${(username || '').toLowerCase()}`).catch(() => {});
+}
