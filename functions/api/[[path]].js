@@ -62,14 +62,16 @@ export async function onRequest({ request, env, waitUntil }) {
       if (!username) return err(t('auth.missingUsername'));
 
       // 速率限制检查
-      const rateLimit = await checkLoginRateLimit(kv, username);
+      const maxAttempts = parseInt(await db.getSetting('LOGIN_MAX_ATTEMPTS') || '5', 10);
+      const lockoutSec = parseInt(await db.getSetting('LOGIN_LOCKOUT_SECONDS') || '900', 10);
+      const rateLimit = await checkLoginRateLimit(kv, username, maxAttempts, lockoutSec);
       if (rateLimit.locked) {
         return err(t('auth.tooManyAttempts', { seconds: rateLimit.retryAfter }), 429);
       }
 
       const user = await db.getWebUser(username);
       if (!user) {
-        await recordLoginFailure(kv, username);
+        await recordLoginFailure(kv, username, lockoutSec);
         return err(t('auth.invalidCredentials'), 401);
       }
 
@@ -84,14 +86,14 @@ export async function onRequest({ request, env, waitUntil }) {
         if (!user.totp_enabled) return err(t('auth.totpNotEnabled'), 401);
         if (!totp) return err(t('auth.missingTotp'), 401);
         if (!await verifyTOTP(totp, user.totp_secret)) {
-          await recordLoginFailure(kv, username);
+          await recordLoginFailure(kv, username, lockoutSec);
           return err(t('auth.invalidTotp'), 401);
         }
       } else {
         // 普通模式：用户名 + 密码
         if (!password) return err(t('auth.missingPassword'));
         if (!await verifyPw(password, user.password_hash)) {
-          await recordLoginFailure(kv, username);
+          await recordLoginFailure(kv, username, lockoutSec);
           return err(t('auth.invalidCredentials'), 401);
         }
       }
@@ -410,6 +412,7 @@ export async function onRequest({ request, env, waitUntil }) {
         'WELCOME_ENABLED', 'WELCOME_MESSAGE', 'BOT_COMMAND_FILTER', 'WHITELIST_ENABLED',
         'ADMIN_NOTIFY_ENABLED',
         'LOGIN_SESSION_TTL',
+        'LOGIN_MAX_ATTEMPTS', 'LOGIN_LOCKOUT_SECONDS',
         'BOT_LOCALE',
         'ZALGO_FILTER_ENABLED',
         'MESSAGE_FILTER_RULES',

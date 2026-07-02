@@ -75,14 +75,21 @@ export class LocalD1 {
    */
   async batch(statements) {
     const results = []
-    for (const s of statements) {
-      if (typeof s === 'string') {
-        this._db.exec(s)
-        results.push({ success: true })
-      } else {
-        const result = await s.run()
-        results.push(result)
+    this._db.exec('BEGIN')
+    try {
+      for (const s of statements) {
+        if (typeof s === 'string') {
+          this._db.exec(s)
+          results.push({ success: true })
+        } else {
+          const result = await s.run()
+          results.push(result)
+        }
       }
+      this._db.exec('COMMIT')
+    } catch (e) {
+      this._db.exec('ROLLBACK')
+      throw e
     }
     return results
   }

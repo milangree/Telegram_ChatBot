@@ -117,7 +117,7 @@ export class LocalKV {
 
     return {
       keys,
-      list_complete: keys.length < this._mem.size,
+      list_complete: true,
       cursor: null,
     }
   }

@@ -104,29 +104,31 @@ export const j = (d, s = 200) => new Response(JSON.stringify(d), {
 export const err = (m, s = 400) => j({ error: m }, s);
 
 // ── 登录速率限制 ────────────────────────────────────────────────────────────
-const LOGIN_MAX_ATTEMPTS = 5;
-const LOGIN_LOCKOUT_SECONDS = 900; // 15 分钟
+const DEFAULT_LOGIN_MAX_ATTEMPTS = 5;
+const DEFAULT_LOGIN_LOCKOUT_SECONDS = 900;
 
-/** 检查登录是否被锁定，返回 { locked: bool, remaining: number } */
-export async function checkLoginRateLimit(kv, username) {
+/** 检查登录是否被锁定 */
+export async function checkLoginRateLimit(kv, username, maxAttempts, lockoutSeconds) {
+  const maxAtt = maxAttempts || DEFAULT_LOGIN_MAX_ATTEMPTS;
   const key = `login_fail:${(username || '').toLowerCase()}`;
   const raw = await kv.get(key);
-  if (!raw) return { locked: false, remaining: LOGIN_MAX_ATTEMPTS };
+  if (!raw) return { locked: false, remaining: maxAtt };
   const data = JSON.parse(raw);
-  if (data.count >= LOGIN_MAX_ATTEMPTS && data.exp > Date.now()) {
+  if (data.count >= maxAtt && data.exp > Date.now()) {
     return { locked: true, remaining: 0, retryAfter: Math.ceil((data.exp - Date.now()) / 1000) };
   }
-  return { locked: false, remaining: LOGIN_MAX_ATTEMPTS - data.count };
+  return { locked: false, remaining: maxAtt - data.count };
 }
 
 /** 记录一次登录失败 */
-export async function recordLoginFailure(kv, username) {
+export async function recordLoginFailure(kv, username, lockoutSeconds) {
+  const lockout = lockoutSeconds || DEFAULT_LOGIN_LOCKOUT_SECONDS;
   const key = `login_fail:${(username || '').toLowerCase()}`;
   const raw = await kv.get(key);
   let data = raw ? JSON.parse(raw) : { count: 0, exp: 0 };
   data.count++;
-  data.exp = Date.now() + LOGIN_LOCKOUT_SECONDS * 1000;
-  await kv.put(key, JSON.stringify(data), { expirationTtl: LOGIN_LOCKOUT_SECONDS + 10 });
+  data.exp = Date.now() + lockout * 1000;
+  await kv.put(key, JSON.stringify(data), { expirationTtl: lockout + 10 });
 }
 
 /** 清除登录失败计数（登录成功时调用） */
