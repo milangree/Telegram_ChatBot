@@ -24,6 +24,10 @@ Deploy via **Cloudflare Pages** or **Docker**. Storage supports **KV / D1 / Hype
 
 ---
 
+<p align="center">
+  <a href="#features">Features</a> · <a href="#quick-start">Quick Start</a> · <a href="#deployment-guide">Deployment</a> · <a href="#configuration">Configuration</a> · <a href="#verification-system">Verification</a> · <a href="#message-filtering-regex">Message Filtering</a> · <a href="#storage-system">Storage</a> · <a href="#security">Security</a> · <a href="#local-development">Local Dev</a> · <a href="#troubleshooting">Troubleshooting</a>
+</p>
+
 ---
 
 ## ✨ Features
