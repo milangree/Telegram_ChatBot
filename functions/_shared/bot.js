@@ -1660,15 +1660,32 @@ async function handleWebAppVerify(msg, user, { tg, db, kv, settings, t, waitUnti
     return;
   }
 
+  // 安全：不信任客户端 web_verify_ok 作为验证成功依据。
+  // 仅当服务端 /api/verify POST 已完成人机验证并写入标记后，才继续清理/转发。
+  // 若用户尚未通过服务端验证，则只确认收到回调并提示继续完成验证页。
+  if (!dbUser?.is_verified) {
+    console.warn('[web_app_verify] user not server-verified yet, ignoring client ok signal', user.id);
+    await tg.sendMsg({
+      chatId: user.id,
+      text: t('verify.needCompleteWeb') || t('verify.expired'),
+    }).catch(() => {});
+    return;
+  }
+
   let verifyMsgId = v.verify_msg_id;
 
   // 从 webverify KV 读取 verifyMsgId
-  const webVerifyId = v?.web_verify_id;
+  const webVerifyId = v?.web_verify_id || payload?.webVerifyId;
   if (webVerifyId) {
+    // 校验 webVerifyId 归属当前用户，防止串号
     const wvRaw = await kv.get(`webverify:${webVerifyId}`).catch(() => null);
     if (wvRaw) {
       try {
         const wv = JSON.parse(wvRaw);
+        if (wv.userId && String(wv.userId) !== String(user.id)) {
+          console.warn('[web_app_verify] webVerifyId user mismatch', { webVerifyId, userId: user.id, owner: wv.userId });
+          return;
+        }
         if (wv.verifyMsgId) verifyMsgId = wv.verifyMsgId;
       } catch {}
     }
@@ -1677,12 +1694,7 @@ async function handleWebAppVerify(msg, user, { tg, db, kv, settings, t, waitUnti
 
   console.log('[web_app_verify] verifyMsgId:', verifyMsgId);
 
-  // 标记已验证
-  if (!dbUser?.is_verified) {
-    await db.setUserVerified(user.id, true);
-  }
-
-  // 清理验证和待处理记录
+  // 清理验证和待处理记录（用户已在服务端标记 verified）
   await db.delVerify(user.id).catch(() => {});
   const pendingRaw = await kv.get(`pending:${user.id}`).catch(() => null);
   await kv.delete(`pending:${user.id}`).catch(() => {});

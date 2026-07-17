@@ -261,10 +261,14 @@ async function blockUser() {
     defaultValue: '',
   })
   if (r === null) return
-  await api.put(`/api/users/${selUser.value.user_id}/block`, { reason: r, permanent: true })
-  selUser.value.is_blocked = 1
-  updateConv(selUser.value.user_id, { is_blocked: 1 })
-  toast.success(t('users.flash.blocked'))
+  try {
+    await api.put(`/api/users/${selUser.value.user_id}/block`, { reason: r, permanent: true })
+    selUser.value.is_blocked = 1
+    updateConv(selUser.value.user_id, { is_blocked: 1 })
+    toast.success(t('users.flash.blocked'))
+  } catch (e) {
+    toast.error(e.message || t('users.operationFailed'))
+  }
 }
 async function unblockUser() {
   const ok = await dialog.confirm({
@@ -273,10 +277,14 @@ async function unblockUser() {
     confirmText: t('users.unblock'),
   })
   if (!ok) return
-  await api.put(`/api/users/${selUser.value.user_id}/unblock`, {})
-  selUser.value.is_blocked = 0
-  updateConv(selUser.value.user_id, { is_blocked: 0 })
-  toast.success(t('users.flash.unblocked'))
+  try {
+    await api.put(`/api/users/${selUser.value.user_id}/unblock`, {})
+    selUser.value.is_blocked = 0
+    updateConv(selUser.value.user_id, { is_blocked: 0 })
+    toast.success(t('users.flash.unblocked'))
+  } catch (e) {
+    toast.error(e.message || t('users.operationFailed'))
+  }
 }
 
 function formatConfirmName(u) {

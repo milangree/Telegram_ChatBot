@@ -24,8 +24,11 @@ function finish(result) {
 
 function openDialog(mode, options = {}) {
   return new Promise((resolve) => {
-    // 若已有弹窗，先以取消结果关闭
-    if (state.open && state.resolve) state.resolve(mode === 'prompt' ? null : false)
+    // 若已有弹窗，先以「当前旧弹窗」的取消语义关闭，避免用新 mode 错判返回值
+    if (state.open && state.resolve) {
+      const prevMode = state.mode
+      state.resolve(prevMode === 'prompt' ? null : false)
+    }
 
     state.mode = mode
     state.title = options.title || ''

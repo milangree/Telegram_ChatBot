@@ -121,7 +121,7 @@ cd Telegram_ChatBot
 docker compose up -d
 ```
 
-Visit `http://localhost:3000`, login with default credentials `admin` / `admins`.
+Visit `http://localhost:3000`. On first boot a temporary admin `admin` is created; **the random password is printed in the server logs** (log in immediately and complete first-time registration to disable the default account).
 
 ### Setup Order
 
@@ -537,7 +537,7 @@ Three modes supported:
 | Bot Rate Limiting | KV-based sliding window (compatible with CF Workers multi-isolate) |
 | Webhook Verification | Secret Token header validation |
 | SQL Injection Prevention | All queries use parameterized bindings |
-| Default Admin | Auto-disabled after first real account registration |
+| Default Admin | Random password on first boot (printed in logs); auto-disabled after real registration |
 | ReDoS Protection | Regex creation-time detection, match-time protection |
 | Regex Error Handling | Match exceptions handled silently, no message flow disruption |
 

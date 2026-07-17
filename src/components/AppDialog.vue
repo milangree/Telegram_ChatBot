@@ -1,6 +1,12 @@
 <template>
   <Teleport to="body">
-    <div v-if="state.open" class="modal-overlay app-dialog-overlay" @click.self="onCancel" @keydown.esc.prevent="onCancel">
+    <div
+      v-if="state.open"
+      ref="overlayRef"
+      class="modal-overlay app-dialog-overlay"
+      tabindex="-1"
+      @click.self="onCancel"
+    >
       <div class="modal-card card app-dialog" role="dialog" aria-modal="true" :aria-label="state.title || 'dialog'">
         <div class="app-dialog-header">
           <h3 class="app-dialog-title">{{ state.title || defaultTitle }}</h3>
@@ -44,7 +50,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import AppIcon from './AppIcon.vue'
 import { useDialog } from '../stores/dialog.js'
 import { useI18nStore } from '../stores/i18n'
@@ -54,6 +60,7 @@ const t = i18n.t
 const dialog = useDialog()
 const state = dialog.state
 const inputRef = ref(null)
+const overlayRef = ref(null)
 
 const defaultTitle = computed(() => {
   if (state.mode === 'confirm') return t('common.confirm')
@@ -69,18 +76,36 @@ function onSubmit() {
   dialog.submit()
 }
 
+function onDocKeydown(e) {
+  if (!state.open) return
+  if (e.key === 'Escape') {
+    e.preventDefault()
+    onCancel()
+  }
+}
+
 watch(() => state.open, async (open) => {
-  if (!open) return
+  if (!open) {
+    document.removeEventListener('keydown', onDocKeydown)
+    return
+  }
+  document.addEventListener('keydown', onDocKeydown)
   await nextTick()
   if (state.mode === 'prompt' && inputRef.value) {
     inputRef.value.focus()
     inputRef.value.select?.()
+  } else if (overlayRef.value) {
+    overlayRef.value.focus()
   }
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('keydown', onDocKeydown)
 })
 </script>
 
 <style scoped>
-.app-dialog-overlay{z-index:2000}
+.app-dialog-overlay{z-index:2000;outline:none}
 .app-dialog{
   width:min(440px,100%);
   padding:0;

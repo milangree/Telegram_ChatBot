@@ -68,6 +68,18 @@
           />
         </div>
 
+        <div v-if="needTotp" class="form-group">
+          <label>{{ t('auth.login.totp') }} <span class="text-muted">({{ t('auth.login.sixDigits') }})</span></label>
+          <input
+            v-model="totp"
+            :placeholder="t('auth.login.totp')"
+            maxlength="6"
+            inputmode="numeric"
+            autocomplete="one-time-code"
+            @keydown.enter="handleLogin"
+          />
+        </div>
+
         <button class="btn-primary w-full" :disabled="loading" @click="handleLogin">
           <span v-if="loading" class="spinner"></span>{{ loading ? t('auth.login.loggingIn') : t('auth.login.login') }}
         </button>
@@ -129,6 +141,7 @@ const loading = ref(false)
 const error = ref('')
 const needsRegistration = ref(false)
 const totpAvailable = ref(false)
+const needTotp = ref(false)
 const isDark = ref(true)
 const themeMode = ref('system')
 const themeMenuOpen = ref(false)
@@ -265,14 +278,29 @@ async function handleLogin() {
     error.value = t('auth.login.err.needPassword')
     return
   }
+  if (needTotp.value && !totp.value) {
+    error.value = t('auth.login.err.needTotp')
+    return
+  }
 
   loading.value = true
   error.value = ''
   try {
-    await auth.login(username.value, password.value)
+    await auth.login(username.value, password.value, totp.value || undefined)
     await router.replace('/')
   } catch (e) {
-    error.value = e.message
+    const msg = String(e.message || '')
+    // 后端在密码正确但缺 TOTP 时返回 totpRequired（中/英/繁）
+    if (/需要两步|需要驗證|兩步驗證|totpRequired|Two-Factor|two-factor|2FA code required|验证码|驗證碼/i.test(msg)) {
+      needTotp.value = true
+      // 若消息本身已说明需要验证码，直接展示；否则用统一文案
+      error.value = /需要|required|驗證|验证/i.test(msg) ? msg : t('auth.login.err.needTotp')
+    } else if (/验证码错误|驗證碼錯誤|invalidTotp|Invalid.*code|验证码/i.test(msg)) {
+      needTotp.value = true
+      error.value = msg
+    } else {
+      error.value = msg
+    }
   } finally {
     loading.value = false
   }

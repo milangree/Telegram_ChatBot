@@ -1,7 +1,7 @@
 // functions/api/[[path]].js
 import { DB } from '../_shared/db.js';
 import { TG } from '../_shared/tg.js';
-import { CORS, j, err, hashPw, verifyPw, createSession, getSession, delSession, extractToken, genToken, checkLoginRateLimit, recordLoginFailure, clearLoginFailures } from '../_shared/auth.js';
+import { CORS, j, err, hashPw, verifyPw, createSession, getSession, delSession, delSessionsForUser, extractToken, genToken, checkLoginRateLimit, recordLoginFailure, clearLoginFailures } from '../_shared/auth.js';
 import { verifyTOTP, generateTOTPSecret } from '../_shared/totp.js';
 import { renderCaptchaPNG } from '../_shared/captcha.js';
 import { setupCommands, getOrCreateThread } from '../_shared/bot.js';
@@ -49,7 +49,7 @@ export async function onRequest({ request, env, waitUntil }) {
       const token = await createSession(kv, user.id, sessionTtl);
       return new Response(JSON.stringify({ token, username: user.username, isAdmin: true }), {
         status: 200,
-        headers: { ...CORS, 'Content-Type': 'application/json', 'Set-Cookie': cookie(token, sessionTtl) },
+        headers: { ...CORS, 'Content-Type': 'application/json', 'Set-Cookie': cookie(token, sessionTtl, { secure: isSecureRequest(request) }) },
       });
     } catch (e) {
       return err(t('auth.registerFailed', { error: e.message }), 500);
@@ -81,7 +81,7 @@ export async function onRequest({ request, env, waitUntil }) {
         if (!hasDefaultAdmin) return err(t('auth.invalidCredentials'), 401);
       }
 
-      // loginMode: 'totp_only' — login with just username + TOTP (no password)
+      // loginMode: 'totp_only' — 仅用户名 + TOTP（无密码）
       if (loginMode === 'totp_only') {
         if (!user.totp_enabled) return err(t('auth.totpNotEnabled'), 401);
         if (!totp) return err(t('auth.missingTotp'), 401);
@@ -90,11 +90,21 @@ export async function onRequest({ request, env, waitUntil }) {
           return err(t('auth.invalidTotp'), 401);
         }
       } else {
-        // 普通模式：用户名 + 密码
+        // 普通模式：用户名 + 密码；若已启用 2FA 必须同时校验 TOTP
         if (!password) return err(t('auth.missingPassword'));
         if (!await verifyPw(password, user.password_hash)) {
           await recordLoginFailure(kv, username, lockoutSec);
           return err(t('auth.invalidCredentials'), 401);
+        }
+        if (user.totp_enabled) {
+          if (!totp) {
+            // 密码正确但缺第二因子：不记失败次数，提示前端补充 TOTP
+            return err(t('auth.totpRequired'), 401);
+          }
+          if (!await verifyTOTP(totp, user.totp_secret)) {
+            await recordLoginFailure(kv, username, lockoutSec);
+            return err(t('auth.invalidTotp'), 401);
+          }
         }
       }
 
@@ -105,7 +115,7 @@ export async function onRequest({ request, env, waitUntil }) {
       const token = await createSession(kv, user.id, sessionTtl);
       return new Response(JSON.stringify({ token, username: user.username, isAdmin: Boolean(user.is_admin), totpEnabled: Boolean(user.totp_enabled) }), {
         status: 200,
-        headers: { ...CORS, 'Content-Type': 'application/json', 'Set-Cookie': cookie(token, sessionTtl) },
+        headers: { ...CORS, 'Content-Type': 'application/json', 'Set-Cookie': cookie(token, sessionTtl, { secure: isSecureRequest(request) }) },
       });
     } catch (e) {
       return err(t('auth.loginFailed', { error: e.message }), 500);
@@ -117,7 +127,7 @@ export async function onRequest({ request, env, waitUntil }) {
     if (token) await delSession(kv, token);
     return new Response(JSON.stringify({ ok: true }), {
       status: 200,
-      headers: { ...CORS, 'Content-Type': 'application/json', 'Set-Cookie': cookie('', 0) },
+      headers: { ...CORS, 'Content-Type': 'application/json', 'Set-Cookie': cookie('', 0, { secure: isSecureRequest(request) }) },
     });
   }
 
@@ -146,11 +156,29 @@ export async function onRequest({ request, env, waitUntil }) {
     try {
       const { username, totp, newPassword } = await request.json();
       if (!username || !totp || !newPassword) return err(t('common.missingParams'));
+
+      // 与登录共用速率限制，防止 TOTP 盲猜重置密码
+      const maxAttempts = parseInt(await db.getSetting('LOGIN_MAX_ATTEMPTS') || '5', 10);
+      const lockoutSec = parseInt(await db.getSetting('LOGIN_LOCKOUT_SECONDS') || '900', 10);
+      const rateLimit = await checkLoginRateLimit(kv, `recover:${username}`, maxAttempts, lockoutSec);
+      if (rateLimit.locked) {
+        return err(t('auth.tooManyAttempts', { seconds: rateLimit.retryAfter }), 429);
+      }
+
       const user = await db.getWebUser(username);
-      if (!user || !user.totp_enabled) return err(t('auth.totpNotEnabled'), 400);
-      if (!await verifyTOTP(totp, user.totp_secret)) return err(t('auth.invalidTotp'), 401);
+      if (!user || !user.totp_enabled) {
+        await recordLoginFailure(kv, `recover:${username}`, lockoutSec);
+        return err(t('auth.totpNotEnabled'), 400);
+      }
+      if (!await verifyTOTP(totp, user.totp_secret)) {
+        await recordLoginFailure(kv, `recover:${username}`, lockoutSec);
+        return err(t('auth.invalidTotp'), 401);
+      }
       if (newPassword.length < 6) return err(t('auth.passwordMin'));
       await db.updateWebUserPassword(user.id, await hashPw(newPassword));
+      // 改密后吊销全部既有会话
+      await delSessionsForUser(kv, user.id).catch(() => {});
+      await clearLoginFailures(kv, `recover:${username}`);
       return j({ ok: true });
     } catch {
       return err(t('auth.recoverFailed'), 500);
@@ -357,7 +385,9 @@ export async function onRequest({ request, env, waitUntil }) {
       if (!await verifyPw(oldPassword, webUser.password_hash)) return err(t('profile.oldPasswordWrong'), 401);
       if (newPassword.length < 6) return err(t('auth.passwordMin'));
       await db.updateWebUserPassword(webUser.id, await hashPw(newPassword));
-      return j({ ok: true });
+      // 改密后吊销其他会话，当前 token 也会失效（需重新登录）
+      await delSessionsForUser(kv, webUser.id).catch(() => {});
+      return j({ ok: true, reLogin: true });
     } catch {
       return err(t('profile.updateFailed'), 500);
     }
@@ -820,8 +850,27 @@ function parseAdminIds(str) {
   return (str || '').split(',').map(s => parseInt(s.trim(), 10)).filter(Boolean);
 }
 
-function cookie(token, maxAge = 86400) {
-  return `session=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}`;
+function cookie(token, maxAge = 86400, { secure = false } = {}) {
+  // Secure 仅在明确要求或 HTTPS 部署时附加（Workers 无 process.env 时由调用方传入）
+  const securePart = secure ? '; Secure' : '';
+  return `session=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${securePart}`;
+}
+
+function isSecureRequest(request) {
+  try {
+    const url = new URL(request.url);
+    if (url.protocol === 'https:') return true;
+  } catch { /* noop */ }
+  // Cloudflare / 反向代理常见头
+  const proto = request.headers.get('x-forwarded-proto') || request.headers.get('cf-visitor') || '';
+  if (String(proto).toLowerCase().includes('https')) return true;
+  // Node 生产环境
+  try {
+    if (typeof process !== 'undefined' && process?.env && (process.env.NODE_ENV === 'production' || process.env.COOKIE_SECURE === '1')) {
+      return true;
+    }
+  } catch { /* noop */ }
+  return false;
 }
 
 function buildVerifyPage(captchaType, siteKey, error, origin, webVerifyId) {

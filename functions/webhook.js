@@ -16,9 +16,14 @@ export async function onRequestPost(context) {
     const botLocale = normalizeLocale(await db.getSetting('BOT_LOCALE'));
     const t = createT(botLocale);
 
-    const secret = await db.getSetting('WEBHOOK_SECRET');
-    const received = request.headers.get('X-Telegram-Bot-Api-Secret-Token');
-    if (secret && received !== secret) {
+    const secret = String(await db.getSetting('WEBHOOK_SECRET') || '').trim();
+    const received = request.headers.get('X-Telegram-Bot-Api-Secret-Token') || '';
+    // 未配置 secret 时拒绝所有 webhook，避免公网伪造 update
+    if (!secret) {
+      console.error('Webhook secret not configured — rejecting request');
+      return new Response(t('webhook.unauthorized'), { status: 503 });
+    }
+    if (received !== secret) {
       console.error('Webhook secret mismatch');
       return new Response(t('webhook.unauthorized'), { status: 401 });
     }

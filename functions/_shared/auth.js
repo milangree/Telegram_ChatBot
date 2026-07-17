@@ -3,10 +3,19 @@ const DEFAULT_TTL = 86400;
 const PBKDF2_ITERATIONS = 600000;
 
 export function genToken(len = 48) {
+  // 使用无偏差随机：rejection sampling，避免 b % 62 模偏差
   const c = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  const a = new Uint8Array(len);
-  crypto.getRandomValues(a);
-  return Array.from(a, b => c[b % c.length]).join('');
+  const out = [];
+  while (out.length < len) {
+    const a = new Uint8Array(len - out.length + 8);
+    crypto.getRandomValues(a);
+    for (const b of a) {
+      if (b >= 248) continue; // 248 = 62 * 4，拒绝偏差区间
+      out.push(c[b % 62]);
+      if (out.length >= len) break;
+    }
+  }
+  return out.join('');
 }
 
 function toHex(buf) {
@@ -19,12 +28,24 @@ function fromHex(hex) {
   return bytes;
 }
 
-async function pbkdf2Hash(password, salt) {
+/** 恒定时间比较，降低时序侧信道风险 */
+function timingSafeEqualStr(a, b) {
+  const sa = String(a || '');
+  const sb = String(b || '');
+  const len = Math.max(sa.length, sb.length);
+  let diff = sa.length ^ sb.length;
+  for (let i = 0; i < len; i++) {
+    diff |= (sa.charCodeAt(i) || 0) ^ (sb.charCodeAt(i) || 0);
+  }
+  return diff === 0;
+}
+
+async function pbkdf2Hash(password, salt, iterations = PBKDF2_ITERATIONS) {
   const keyMaterial = await crypto.subtle.importKey(
     'raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits']
   );
   const bits = await crypto.subtle.deriveBits(
-    { name: 'PBKDF2', salt: new TextEncoder().encode(salt), iterations: PBKDF2_ITERATIONS, hash: 'SHA-256' },
+    { name: 'PBKDF2', salt: new TextEncoder().encode(salt), iterations, hash: 'SHA-256' },
     keyMaterial, 256
   );
   return toHex(bits);
@@ -39,15 +60,22 @@ export async function hashPw(pw) {
 
 /** 验证密码：支持新格式 pbkdf2 和旧格式 sha256 */
 export async function verifyPw(pw, stored) {
+  if (!stored || typeof stored !== 'string') return false;
+  if (stored.startsWith('!!disabled:')) return false;
   if (stored.startsWith('pbkdf2:')) {
-    const [, iter, salt, hash] = stored.split(':');
-    const h = await pbkdf2Hash(pw, salt);
-    return h === hash;
+    const parts = stored.split(':');
+    if (parts.length !== 4) return false;
+    const iter = parseInt(parts[1], 10) || PBKDF2_ITERATIONS;
+    const salt = parts[2];
+    const hash = parts[3];
+    const h = await pbkdf2Hash(pw, salt, iter);
+    return timingSafeEqualStr(h, hash);
   }
   // 兼容旧格式 salt:sha256hash
   const [s, h] = stored.split(':');
+  if (!s || !h) return false;
   const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${s}:${pw}`));
-  return toHex(b) === h;
+  return timingSafeEqualStr(toHex(b), h);
 }
 
 export async function createSession(kv, userId, ttlSeconds = DEFAULT_TTL) {
@@ -55,6 +83,8 @@ export async function createSession(kv, userId, ttlSeconds = DEFAULT_TTL) {
   const token = genToken();
   const sessionData = { userId, exp: Date.now() + ttl * 1000 };
   await kv.put(`sess:${token}`, JSON.stringify(sessionData), { expirationTtl: ttl });
+  // 用户维度索引，便于改密后吊销全部会话
+  await kv.put(`sess_user:${userId}:${token}`, '1', { expirationTtl: ttl }).catch(() => {});
   return token;
 }
 
@@ -62,16 +92,73 @@ export async function getSession(kv, token) {
   if (!token) return null;
   const raw = await kv.get(`sess:${token}`);
   if (!raw) return null;
-  const s = JSON.parse(raw);
+  let s;
+  try { s = JSON.parse(raw); } catch { return null; }
   if (Date.now() > s.exp) {
     await kv.delete(`sess:${token}`);
+    if (s.userId) await kv.delete(`sess_user:${s.userId}:${token}`).catch(() => {});
     return null;
   }
   return s;
 }
 
 export async function delSession(kv, token) {
-  if (token) await kv.delete(`sess:${token}`);
+  if (!token) return;
+  const raw = await kv.get(`sess:${token}`).catch(() => null);
+  await kv.delete(`sess:${token}`);
+  if (raw) {
+    try {
+      const s = JSON.parse(raw);
+      if (s?.userId) await kv.delete(`sess_user:${s.userId}:${token}`).catch(() => {});
+    } catch { /* noop */ }
+  }
+}
+
+/** 吊销某用户的全部会话（改密 / 找回密码后调用） */
+export async function delSessionsForUser(kv, userId) {
+  if (!kv || userId == null) return 0;
+  const prefix = `sess_user:${userId}:`;
+  let deleted = 0;
+  let cursor;
+  do {
+    const page = await kv.list({ prefix, limit: 200, ...(cursor ? { cursor } : {}) });
+    const keys = page?.keys || [];
+    for (const item of keys) {
+      const name = item?.name || item;
+      if (!name || !String(name).startsWith(prefix)) continue;
+      const token = String(name).slice(prefix.length);
+      if (token) {
+        await kv.delete(`sess:${token}`).catch(() => {});
+        await kv.delete(name).catch(() => {});
+        deleted++;
+      }
+    }
+    cursor = page?.list_complete === false ? page.cursor : null;
+  } while (cursor);
+
+  // 兼容旧会话（无 sess_user 索引）：扫描 sess: 前缀
+  if (deleted === 0 && typeof kv.list === 'function') {
+    cursor = undefined;
+    do {
+      const page = await kv.list({ prefix: 'sess:', limit: 200, ...(cursor ? { cursor } : {}) });
+      const keys = page?.keys || [];
+      for (const item of keys) {
+        const name = item?.name || item;
+        if (!name || !String(name).startsWith('sess:')) continue;
+        const raw = await kv.get(name).catch(() => null);
+        if (!raw) continue;
+        try {
+          const s = JSON.parse(raw);
+          if (s?.userId === userId) {
+            await kv.delete(name).catch(() => {});
+            deleted++;
+          }
+        } catch { /* noop */ }
+      }
+      cursor = page?.list_complete === false ? page.cursor : null;
+    } while (cursor);
+  }
+  return deleted;
 }
 
 export function extractToken(req) {
@@ -112,12 +199,18 @@ export async function checkLoginRateLimit(kv, username, maxAttempts, lockoutSeco
   const maxAtt = maxAttempts || DEFAULT_LOGIN_MAX_ATTEMPTS;
   const key = `login_fail:${(username || '').toLowerCase()}`;
   const raw = await kv.get(key);
-  if (!raw) return { locked: false, remaining: maxAtt };
-  const data = JSON.parse(raw);
-  if (data.count >= maxAtt && data.exp > Date.now()) {
-    return { locked: true, remaining: 0, retryAfter: Math.ceil((data.exp - Date.now()) / 1000) };
+  if (!raw) return { locked: false, remaining: maxAtt, count: 0 };
+  let data;
+  try { data = JSON.parse(raw); } catch { return { locked: false, remaining: maxAtt, count: 0 }; }
+  // 锁定期已过：清零计数，避免过期后一次失败立刻再锁
+  if (data.exp && data.exp <= Date.now()) {
+    await kv.delete(key).catch(() => {});
+    return { locked: false, remaining: maxAtt, count: 0 };
   }
-  return { locked: false, remaining: maxAtt - data.count };
+  if (data.count >= maxAtt && data.exp > Date.now()) {
+    return { locked: true, remaining: 0, retryAfter: Math.ceil((data.exp - Date.now()) / 1000), count: data.count };
+  }
+  return { locked: false, remaining: Math.max(0, maxAtt - (data.count || 0)), count: data.count || 0 };
 }
 
 /** 记录一次登录失败 */
@@ -125,8 +218,17 @@ export async function recordLoginFailure(kv, username, lockoutSeconds) {
   const lockout = lockoutSeconds || DEFAULT_LOGIN_LOCKOUT_SECONDS;
   const key = `login_fail:${(username || '').toLowerCase()}`;
   const raw = await kv.get(key);
-  let data = raw ? JSON.parse(raw) : { count: 0, exp: 0 };
-  data.count++;
+  let data = { count: 0, exp: 0 };
+  if (raw) {
+    try {
+      data = JSON.parse(raw);
+      // 过期后重新计数
+      if (data.exp && data.exp <= Date.now()) data = { count: 0, exp: 0 };
+    } catch {
+      data = { count: 0, exp: 0 };
+    }
+  }
+  data.count = (data.count || 0) + 1;
   data.exp = Date.now() + lockout * 1000;
   await kv.put(key, JSON.stringify(data), { expirationTtl: lockout + 10 });
 }

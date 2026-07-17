@@ -90,7 +90,12 @@ export const useAuthStore = defineStore('auth', () => {
   async function logout({ skipRequest = false, keepNotice = false } = {}) {
     if (!skipRequest) {
       try {
-        await fetch('/api/auth/logout', { method: 'POST' })
+        const storedToken = localStorage.getItem('token') || token.value
+        await fetch('/api/auth/logout', {
+          method: 'POST',
+          credentials: 'include',
+          headers: storedToken ? { Authorization: `Bearer ${storedToken}` } : {},
+        })
       } catch {
         /* noop */
       }
@@ -100,40 +105,69 @@ export const useAuthStore = defineStore('auth', () => {
     if (!keepNotice) setAuthNotice('')
   }
 
-  async function checkAuth() {
+  // 短缓存 + single-flight，避免每次路由导航都打 /auth/me
+  let _checkAuthInflight = null
+  let _checkAuthCachedAt = 0
+  let _checkAuthCachedOk = false
+  const CHECK_AUTH_TTL_MS = 15000
+
+  async function checkAuth({ force = false } = {}) {
     const storedToken = localStorage.getItem('token')
     if (!storedToken) return false
-    setAuthNotice('')
-    try {
-      const res = await fetch('/api/auth/me', {
-        headers: { Authorization: `Bearer ${storedToken}` },
-      })
-      if (!res.ok) {
-        const data = await readJsonSafe(res, {})
-        const error = new Error(data?.error || t('store.auth.loginFailed'))
-        error.status = res.status
-        throw error
-      }
 
-      const data = await readJsonSafe(res, {})
-      if (!data?.username) {
-        const error = new Error(t('store.auth.loginFailed'))
-        error.status = res.status
-        throw error
-      }
-      token.value = storedToken
-      username.value = data.username
-      isAdmin.value = data.isAdmin
+    const now = Date.now()
+    if (!force && _checkAuthCachedOk && now - _checkAuthCachedAt < CHECK_AUTH_TTL_MS && token.value) {
       return true
-    } catch (error) {
-      resetState()
-      if (error?.status === 401) {
-        markSessionExpired()
-      } else {
-        clearAuthStorage()
-      }
-      return false
     }
+    if (!force && _checkAuthInflight) return _checkAuthInflight
+
+    setAuthNotice('')
+    _checkAuthInflight = (async () => {
+      try {
+        const res = await fetch('/api/auth/me', {
+          headers: { Authorization: `Bearer ${storedToken}` },
+          credentials: 'include',
+        })
+        if (!res.ok) {
+          const data = await readJsonSafe(res, {})
+          const error = new Error(data?.error || t('store.auth.loginFailed'))
+          error.status = res.status
+          throw error
+        }
+
+        const data = await readJsonSafe(res, {})
+        if (!data?.username) {
+          const error = new Error(t('store.auth.loginFailed'))
+          error.status = res.status
+          throw error
+        }
+        token.value = storedToken
+        username.value = data.username
+        isAdmin.value = data.isAdmin
+        _checkAuthCachedOk = true
+        _checkAuthCachedAt = Date.now()
+        return true
+      } catch (error) {
+        // 仅 401 判定会话失效；网络错误等保留本地会话，避免弱网误踢
+        if (error?.status === 401) {
+          resetState()
+          _checkAuthCachedOk = false
+          _checkAuthCachedAt = 0
+          markSessionExpired()
+          return false
+        }
+        // 非 401：若内存里已有登录态，暂视为仍登录
+        if (token.value || storedToken) {
+          token.value = storedToken
+          return true
+        }
+        return false
+      } finally {
+        _checkAuthInflight = null
+      }
+    })()
+
+    return _checkAuthInflight
   }
 
   return { token, username, isAdmin, isLoggedIn, login, loginTotp, logout, checkAuth, resetState }

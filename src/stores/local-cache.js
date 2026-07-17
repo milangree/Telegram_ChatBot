@@ -39,14 +39,37 @@ export function readLocalCache(key, { ttlMs = 0 } = {}) {
   }
 }
 
+/** 禁止写入本地缓存的敏感字段（Bot Token / Captcha Secret 等） */
+const SENSITIVE_CACHE_KEYS = new Set([
+  'BOT_TOKEN',
+  'WEBHOOK_SECRET',
+  'TURNSTILE_SECRET_KEY',
+  'RECAPTCHA_SECRET_KEY',
+  'RECAPTCHA_V3_SECRET_KEY',
+  'HCAPTCHA_SECRET_KEY',
+])
+
+export function stripSensitiveSettings(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value
+  const next = { ...value }
+  for (const key of SENSITIVE_CACHE_KEYS) {
+    if (key in next) delete next[key]
+  }
+  return next
+}
+
 export function writeLocalCache(key, value) {
   const storage = getStorage()
   if (!storage) return value
 
   try {
+    // 设置相关缓存自动剥离密钥字段，避免 BOT_TOKEN 等落盘
+    const safeValue = (typeof key === 'string' && key.includes('settings'))
+      ? stripSensitiveSettings(value)
+      : value
     storage.setItem(getFullKey(key), JSON.stringify({
       createdAt: Date.now(),
-      value,
+      value: safeValue,
     }))
   } catch {
     // noop

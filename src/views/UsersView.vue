@@ -376,10 +376,18 @@ async function batchBlock() {
     defaultValue: '',
   })
   if (reason === null) return
-  await Promise.all(selected.value.map(uid => api.put(`/api/users/${uid}/block`, { reason, permanent: true })))
-  flash(t('users.flash.blocked'))
-  selected.value = []
-  await load()
+  try {
+    const results = await Promise.allSettled(
+      selected.value.map(uid => api.put(`/api/users/${uid}/block`, { reason, permanent: true })),
+    )
+    const failed = results.filter(r => r.status === 'rejected').length
+    if (failed) flash(t('users.flash.partialFailed', { n: failed }), false)
+    else flash(t('users.flash.blocked'))
+    selected.value = []
+    await load()
+  } catch (e) {
+    flash(e.message || t('users.operationFailed'), false)
+  }
 }
 
 async function batchUnblock() {
@@ -389,10 +397,18 @@ async function batchUnblock() {
     confirmText: t('users.batchUnblock'),
   })
   if (!ok) return
-  await Promise.all(selected.value.map(uid => api.put(`/api/users/${uid}/unblock`, {})))
-  flash(t('users.flash.unblocked'))
-  selected.value = []
-  await load()
+  try {
+    const results = await Promise.allSettled(
+      selected.value.map(uid => api.put(`/api/users/${uid}/unblock`, {})),
+    )
+    const failed = results.filter(r => r.status === 'rejected').length
+    if (failed) flash(t('users.flash.partialFailed', { n: failed }), false)
+    else flash(t('users.flash.unblocked'))
+    selected.value = []
+    await load()
+  } catch (e) {
+    flash(e.message || t('users.operationFailed'), false)
+  }
 }
 
 async function batchWhitelist() {
@@ -402,13 +418,23 @@ async function batchWhitelist() {
     confirmText: t('users.batchWhitelist'),
   })
   if (!ok) return
-  await Promise.all(selected.value.map(uid => api.post(`/api/whitelist/${uid}`, { reason: 'batch' })))
-  // 同步本地白名单状态
-  const next = { ...wlMap.value }
-  for (const uid of selected.value) next[uid] = true
-  wlMap.value = next
-  flash(t('users.flash.addedWhitelist'))
-  selected.value = []
+  try {
+    const results = await Promise.allSettled(
+      selected.value.map(uid => api.post(`/api/whitelist/${uid}`, { reason: 'batch' })),
+    )
+    const failed = results.filter(r => r.status === 'rejected').length
+    // 同步本地白名单状态（仅成功项）
+    const next = { ...wlMap.value }
+    results.forEach((r, i) => {
+      if (r.status === 'fulfilled') next[selected.value[i]] = true
+    })
+    wlMap.value = next
+    if (failed) flash(t('users.flash.partialFailed', { n: failed }), false)
+    else flash(t('users.flash.addedWhitelist'))
+    selected.value = []
+  } catch (e) {
+    flash(e.message || t('users.operationFailed'), false)
+  }
 }
 
 async function quickBlock() {
@@ -467,11 +493,15 @@ async function blockOne(u) {
     defaultValue: '',
   })
   if (r === null) return
-  await api.put(`/api/users/${u.user_id}/block`, { reason: r, permanent: true })
-  u.is_blocked = 1
-  u.is_permanent_block = 1
-  u.block_reason = r
-  flash(t('users.flash.blocked'))
+  try {
+    await api.put(`/api/users/${u.user_id}/block`, { reason: r, permanent: true })
+    u.is_blocked = 1
+    u.is_permanent_block = 1
+    u.block_reason = r
+    flash(t('users.flash.blocked'))
+  } catch (e) {
+    flash(e.message || t('users.operationFailed'), false)
+  }
 }
 
 async function unblockOne(u) {
@@ -481,10 +511,14 @@ async function unblockOne(u) {
     confirmText: t('users.unblock'),
   })
   if (!ok) return
-  await api.put(`/api/users/${u.user_id}/unblock`, {})
-  u.is_blocked = 0
-  u.is_permanent_block = 0
-  flash(t('users.flash.unblocked'))
+  try {
+    await api.put(`/api/users/${u.user_id}/unblock`, {})
+    u.is_blocked = 0
+    u.is_permanent_block = 0
+    flash(t('users.flash.unblocked'))
+  } catch (e) {
+    flash(e.message || t('users.operationFailed'), false)
+  }
 }
 
 async function toggleWhitelistOne(u) {
@@ -533,10 +567,14 @@ async function blockDetail() {
     defaultValue: '',
   })
   if (r === null) return
-  await api.put(`/api/users/${detailUser.value.user_id}/block`, { reason: r, permanent: true })
-  detailUser.value.is_blocked = 1
-  flash(t('users.flash.blocked'))
-  await load()
+  try {
+    await api.put(`/api/users/${detailUser.value.user_id}/block`, { reason: r, permanent: true })
+    detailUser.value.is_blocked = 1
+    flash(t('users.flash.blocked'))
+    await load()
+  } catch (e) {
+    flash(e.message || t('users.operationFailed'), false)
+  }
 }
 
 async function unblockDetail() {
@@ -546,10 +584,14 @@ async function unblockDetail() {
     confirmText: t('users.unblock'),
   })
   if (!ok) return
-  await api.put(`/api/users/${detailUser.value.user_id}/unblock`, {})
-  detailUser.value.is_blocked = 0
-  flash(t('users.flash.unblocked'))
-  await load()
+  try {
+    await api.put(`/api/users/${detailUser.value.user_id}/unblock`, {})
+    detailUser.value.is_blocked = 0
+    flash(t('users.flash.unblocked'))
+    await load()
+  } catch (e) {
+    flash(e.message || t('users.operationFailed'), false)
+  }
 }
 
 async function toggleWlDetail() {

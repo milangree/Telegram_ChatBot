@@ -59,10 +59,9 @@
         <div class="alert alert-info">
           <p>{{ t('profile.2fa.step1') }}</p>
           <p>{{ t('profile.2fa.step2') }} <code style="user-select:all">{{ totpSecret }}</code></p>
+          <p class="text-sm text-muted" style="margin-top:8px">{{ t('profile.2fa.manualOnly') }}</p>
         </div>
-        <div class="qr-wrap mb-2">
-          <img :src="`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(qrUrl)}`" alt="QR Code" />
-        </div>
+        <!-- 仅本地展示密钥，不请求第三方二维码服务，避免 TOTP 种子外泄 -->
         <div class="form-group">
           <label>{{ t('profile.2fa.verifyLabel') }}</label>
           <div class="row-g">
@@ -101,7 +100,7 @@ const toast = useToast()
 
 const newUsername = ref(''), unameLoading = ref(false)
 const oldPw = ref(''), newPw = ref(''), pwLoading = ref(false)
-const totpEnabled = ref(false), totpSecret = ref(''), qrUrl = ref(''), totpToken = ref('')
+const totpEnabled = ref(false), totpSecret = ref(''), totpToken = ref('')
 const totpLoading = ref(false)
 
 function flash(msg, ok = true) {
@@ -129,10 +128,15 @@ async function changePassword() {
   if (!oldPw.value || !newPw.value) return
   pwLoading.value = true
   try {
-    await api.put('/api/profile/password', { oldPassword: oldPw.value, newPassword: newPw.value })
+    const r = await api.put('/api/profile/password', { oldPassword: oldPw.value, newPassword: newPw.value })
     flash(t('profile.flash.passwordUpdated'))
     oldPw.value = ''
     newPw.value = ''
+    // 服务端已吊销全部会话，需要重新登录
+    if (r?.reLogin) {
+      await auth.logout({ skipRequest: true })
+      window.location.href = '/login'
+    }
   } catch (e) {
     flash(e.message, false)
   } finally {
@@ -145,7 +149,6 @@ async function setup2FA() {
   try {
     const d = await api.post('/api/profile/2fa/setup', { enable: true })
     totpSecret.value = d.secret
-    qrUrl.value = d.qrcode
   } catch (e) {
     flash(e.message, false)
   } finally {
@@ -198,15 +201,3 @@ onMounted(async () => {
   } catch {}
 })
 </script>
-
-<style scoped>
-.page{max-width:540px;margin:0 auto}
-.qr-wrap{display:flex;justify-content:center}
-.qr-wrap img{
-  border-radius:12px;
-  border:4px solid var(--bg2);
-  background:#fff;
-  box-shadow:0 8px 24px rgba(0,0,0,.12);
-}
-:global(:root.glass) .qr-wrap img{border-color:rgba(255,255,255,.12)}
-</style>

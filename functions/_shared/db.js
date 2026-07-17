@@ -137,10 +137,18 @@ export class DB {
       // Only create default if no real admin exists yet
       const count = await this.webUserCount()
       if (count === 0) {
-        await this.createWebUser('admin', await hashPw('admins'))
+        const { genToken } = await import('./auth.js')
+        // 使用随机口令，避免固定弱口令 admin/admins 被公网扫描直接接管
+        const tempPassword = genToken(20)
+        await this.createWebUser('admin', await hashPw(tempPassword))
         // Mark as "default" so we can disable it after real registration
         await this.kv.put('auth:has_default_admin', '1')
-        console.log('Default admin created: admin / admins')
+        console.warn('='.repeat(60))
+        console.warn('[SECURITY] 已创建临时默认管理员（首次启动）')
+        console.warn(`[SECURITY] 用户名: admin`)
+        console.warn(`[SECURITY] 临时密码: ${tempPassword}`)
+        console.warn('[SECURITY] 请立即登录后台完成首次注册，或修改密码。该账号会在真实注册后禁用。')
+        console.warn('='.repeat(60))
       }
     } catch (e) { console.error('ensureDefaultAdmin:', e) }
   }
