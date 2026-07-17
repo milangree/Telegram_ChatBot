@@ -302,9 +302,22 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.conv-page{display:flex;height:calc(100vh - 48px);margin:-24px;overflow:hidden}
-@media(max-width:768px){.conv-page{margin:-16px;height:calc(100vh - 50px)}.mobile-hidden{display:none!important}}
-.conv-left{width:280px;min-width:280px;border-right:1px solid var(--border);display:flex;flex-direction:column;background:var(--bg2)}
+.conv-page{
+  display:flex;
+  height:calc(100vh - 60px - 32px);
+  min-height:520px;
+  overflow:hidden;
+  margin:0;
+  background:var(--bg2);
+  border:1px solid var(--border);
+  border-radius:16px;
+  box-shadow:var(--shadow);
+}
+@media(max-width:768px){
+  .conv-page{height:calc(100vh - 56px - 16px);min-height:0;border-radius:12px}
+  .mobile-hidden{display:none!important}
+}
+.conv-left{width:300px;min-width:300px;border-right:1px solid var(--border);display:flex;flex-direction:column;background:color-mix(in srgb,var(--bg2) 96%, var(--bg3))}
 @media(max-width:768px){.conv-left{width:100%;min-width:0}}
 .left-search{padding:10px;border-bottom:1px solid var(--border)}
 .left-search input{font-size:13px}
@@ -320,7 +333,7 @@ onMounted(async () => {
 .item-preview{min-width:0;font-size:12px;color:var(--text3);overflow:hidden;text-overflow:ellipsis}
 .item-sep{color:var(--text3);flex-shrink:0}
 .item-time{font-size:11px;color:var(--text3);flex-shrink:0}
-.conv-right{flex:1;display:flex;flex-direction:column;min-width:0}
+.conv-right{flex:1;display:flex;flex-direction:column;min-width:0;background:var(--bg)}
 @media(max-width:768px){.conv-right{width:100%}}
 .right-header{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;background:var(--bg2);flex-shrink:0}
 .hdr-ava{width:38px;height:38px;border-radius:50%;background:var(--accent-dim);color:var(--accent);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;flex-shrink:0;overflow:hidden}

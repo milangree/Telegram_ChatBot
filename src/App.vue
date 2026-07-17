@@ -1,111 +1,103 @@
 <template>
-  <div class="app-container" v-if="auth.isLoggedIn">
-    <!-- Mobile overlay -->
-    <div v-if="sidebarOpen" class="sidebar-overlay" @click="sidebarOpen = false"></div>
+  <div class="app-root" v-if="auth.isLoggedIn">
+    <!-- Top Navigation -->
+    <header class="topbar">
+      <div class="topbar-inner">
+        <div class="topbar-left">
+          <button class="btn-icon mobile-only" @click="navOpen = !navOpen" :title="t('app.menu')">
+            <AppIcon name="menu" :size="18" />
+          </button>
+          <RouterLink to="/" class="brand" @click="navOpen = false">
+            <span class="brand-mark"><AppIcon name="logo" :size="20" /></span>
+            <span class="brand-text">{{ t('app.title') }}</span>
+          </RouterLink>
 
-    <!-- Sidebar -->
-    <nav class="sidebar" :class="{ open: sidebarOpen }">
-      <div class="sidebar-header">
-        <RouterLink to="/" class="logo-link" @click="closeSidebar">
-          <AppIcon name="logo" :size="22" class="logo" />
-          <span class="logo-text">{{ t('app.title') }}</span>
-        </RouterLink>
-        <button class="btn-icon mobile-only" @click="sidebarOpen = false" :title="t('app.close')">
-          <AppIcon name="close" :size="16" />
-        </button>
+          <nav class="top-links hide-mobile">
+            <RouterLink
+              v-for="item in navItems"
+              :key="item.to"
+              :to="item.to"
+              class="top-link"
+              :class="{ active: isActive(item.to) }"
+            >
+              <AppIcon :name="item.icon" :size="16" />
+              <span>{{ item.label }}</span>
+            </RouterLink>
+          </nav>
+        </div>
+
+        <div class="topbar-right">
+          <select class="lang-select" v-model="selectedLocale" :title="t('app.language')">
+            <option v-for="opt in localeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+          </select>
+
+          <div class="theme-menu-wrap">
+            <button class="btn-icon theme-trigger" @click.stop="toggleThemeMenu" :title="t('app.toggleTheme')">
+              <AppIcon :name="currentThemeOption.icon" :size="18" />
+            </button>
+            <div v-if="themeMenuOpen" class="theme-menu theme-menu-down">
+              <button
+                v-for="option in themeOptions"
+                :key="option.value"
+                class="theme-menu-item"
+                :class="{ active: themeMode === option.value }"
+                @click.stop="applyTheme(option.value)"
+              >
+                <AppIcon :name="option.icon" :size="16" class="theme-menu-icon" />
+                <span class="theme-menu-label">{{ option.label }}</span>
+                <span class="theme-menu-check">{{ themeMode === option.value ? '●' : '' }}</span>
+              </button>
+            </div>
+          </div>
+
+          <button
+            class="btn-icon glass-toggle-btn"
+            :class="{ active: glassEnabled }"
+            @click="toggleGlass"
+            :title="glassEnabled ? t('app.disableGlass') : t('app.enableGlass')"
+          >
+            <span class="glass-toggle-icon" :class="{ active: glassEnabled }" aria-hidden="true"></span>
+          </button>
+
+          <div class="user-chip">
+            <div class="user-ava">{{ auth.username?.[0]?.toUpperCase() || 'U' }}</div>
+            <span class="user-name hide-mobile">{{ auth.username }}</span>
+          </div>
+
+          <button class="btn-icon" @click="handleLogout" :title="t('app.logout')" style="color:var(--danger)">
+            <AppIcon name="logout" :size="18" />
+          </button>
+        </div>
       </div>
 
-      <div class="nav-links">
-        <span class="nav-section">{{ t('app.mainMenu') }}</span>
-        <RouterLink v-for="item in navItems" :key="item.to" :to="item.to" class="nav-item" @click="closeSidebar">
-          <AppIcon :name="item.icon" :size="18" />
+      <!-- Mobile dropdown nav -->
+      <nav v-if="navOpen" class="mobile-nav mobile-only">
+        <RouterLink
+          v-for="item in navItems"
+          :key="item.to"
+          :to="item.to"
+          class="mobile-nav-link"
+          :class="{ active: isActive(item.to) }"
+          @click="navOpen = false"
+        >
+          <AppIcon :name="item.icon" :size="16" />
           <span>{{ item.label }}</span>
         </RouterLink>
-      </div>
-
-      <div class="sidebar-footer">
-        <div class="user-info">
-          <div class="user-ava">{{ auth.username?.[0]?.toUpperCase() || 'U' }}</div>
-          <span class="user-name">{{ auth.username }}</span>
-        </div>
-        <select class="lang-select" v-model="selectedLocale" :title="t('app.language')">
-          <option v-for="opt in localeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
-        </select>
-        <div class="theme-menu-wrap">
-          <button class="btn-icon theme-trigger" @click.stop="toggleThemeMenu" :title="t('app.toggleTheme')">
-            <AppIcon :name="currentThemeOption.icon" :size="18" />
-          </button>
-          <div v-if="themeMenuOpen" class="theme-menu">
-            <button
-              v-for="option in themeOptions"
-              :key="option.value"
-              class="theme-menu-item"
-              :class="{ active: themeMode === option.value }"
-              @click.stop="applyTheme(option.value)"
-            >
-              <AppIcon :name="option.icon" :size="16" class="theme-menu-icon" />
-              <span class="theme-menu-label">{{ option.label }}</span>
-              <span class="theme-menu-check">{{ themeMode === option.value ? '●' : '' }}</span>
-            </button>
-          </div>
-        </div>
-        <button class="btn-icon glass-toggle-btn" @click="toggleGlass" :title="glassEnabled ? t('app.disableGlass') : t('app.enableGlass')">
-          <span class="glass-toggle-icon" :class="{ active: glassEnabled }" aria-hidden="true"></span>
-        </button>
-        <button class="btn-icon" @click="handleLogout" :title="t('app.logout')" style="color:var(--danger)">
-          <AppIcon name="logout" :size="18" />
-        </button>
-      </div>
-    </nav>
-
-    <!-- Mobile top bar -->
-    <div class="mobile-header mobile-only">
-      <button class="btn-icon" @click="sidebarOpen = true" :title="t('app.menu')">
-        <AppIcon name="menu" :size="18" />
-      </button>
-      <span class="mobile-title">
-        <AppIcon name="logo" :size="18" class="logo" />
-        {{ t('app.title') }}
-      </span>
-      <select class="lang-select" v-model="selectedLocale" :title="t('app.language')" style="margin-left:auto">
-        <option v-for="opt in localeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
-      </select>
-      <div class="theme-menu-wrap">
-        <button class="btn-icon theme-trigger" @click.stop="toggleThemeMenu" :title="t('app.toggleTheme')">
-          <AppIcon :name="currentThemeOption.icon" :size="18" />
-        </button>
-        <div v-if="themeMenuOpen" class="theme-menu">
-          <button
-            v-for="option in themeOptions"
-            :key="option.value"
-            class="theme-menu-item"
-            :class="{ active: themeMode === option.value }"
-            @click.stop="applyTheme(option.value)"
-            >
-              <AppIcon :name="option.icon" :size="16" class="theme-menu-icon" />
-              <span class="theme-menu-label">{{ option.label }}</span>
-              <span class="theme-menu-check">{{ themeMode === option.value ? '●' : '' }}</span>
-            </button>
-        </div>
-      </div>
-      <button class="btn-icon glass-toggle-btn" @click="toggleGlass" :title="glassEnabled ? t('app.disableGlass') : t('app.enableGlass')">
-        <span class="glass-toggle-icon" :class="{ active: glassEnabled }" aria-hidden="true"></span>
-      </button>
-      <button class="btn-icon" @click="handleLogout" :title="t('app.logoutLogin')" style="color:var(--danger)">
-        <AppIcon name="logout" :size="18" />
-      </button>
-    </div>
+      </nav>
+    </header>
 
     <main class="main-content">
-      <RouterView v-slot="{ Component, route }">
-        <Transition name="fade-slide" mode="out-in">
-          <component :is="Component" :key="route.path" />
-        </Transition>
-      </RouterView>
+      <div class="page-shell" :class="{ 'page-shell-wide': isWidePage }">
+        <RouterView v-slot="{ Component, route: r }">
+          <Transition name="fade-slide" mode="out-in">
+            <component :is="Component" :key="r.path" />
+          </Transition>
+        </RouterView>
+      </div>
     </main>
   </div>
 
-  <!-- Auth pages (login/register etc.) -->
+  <!-- Auth pages -->
   <div v-else class="main-content no-sidebar">
     <div v-if="routeReady && showAuthControls" class="auth-topbar">
       <select class="lang-select auth-lang-select" v-model="selectedLocale" :title="t('app.language')">
@@ -115,21 +107,26 @@
         <button class="btn-icon theme-trigger" @click.stop="toggleThemeMenu" :title="t('app.toggleTheme')">
           <AppIcon :name="currentThemeOption.icon" :size="18" />
         </button>
-        <div v-if="themeMenuOpen" class="theme-menu">
+        <div v-if="themeMenuOpen" class="theme-menu theme-menu-down">
           <button
             v-for="option in themeOptions"
             :key="option.value"
             class="theme-menu-item"
             :class="{ active: themeMode === option.value }"
             @click.stop="applyTheme(option.value)"
-            >
-              <AppIcon :name="option.icon" :size="16" class="theme-menu-icon" />
-              <span class="theme-menu-label">{{ option.label }}</span>
-              <span class="theme-menu-check">{{ themeMode === option.value ? '●' : '' }}</span>
-            </button>
+          >
+            <AppIcon :name="option.icon" :size="16" class="theme-menu-icon" />
+            <span class="theme-menu-label">{{ option.label }}</span>
+            <span class="theme-menu-check">{{ themeMode === option.value ? '●' : '' }}</span>
+          </button>
         </div>
       </div>
-      <button class="btn-icon glass-toggle-btn" @click="toggleGlass" :title="glassEnabled ? t('app.disableGlass') : t('app.enableGlass')">
+      <button
+        class="btn-icon glass-toggle-btn"
+        :class="{ active: glassEnabled }"
+        @click="toggleGlass"
+        :title="glassEnabled ? t('app.disableGlass') : t('app.enableGlass')"
+      >
         <span class="glass-toggle-icon" :class="{ active: glassEnabled }" aria-hidden="true"></span>
       </button>
     </div>
@@ -149,7 +146,7 @@ const auth = useAuthStore()
 const i18n = useI18nStore()
 const router = useRouter()
 const route = useRoute()
-const sidebarOpen = ref(false)
+const navOpen = ref(false)
 const isDark = ref(true)
 const glassEnabled = ref(false)
 const routeReady = ref(false)
@@ -193,8 +190,11 @@ const navItems = computed(() => [
   { to: '/profile', icon: 'profile', label: t('nav.profile') },
 ])
 
-function closeSidebar() {
-  sidebarOpen.value = false
+const isWidePage = computed(() => route.path.startsWith('/conversations'))
+
+function isActive(path) {
+  if (path === '/') return route.path === '/'
+  return route.path === path || route.path.startsWith(path + '/')
 }
 
 function toggleThemeMenu() {
@@ -302,9 +302,8 @@ onUnmounted(() => {
   else if (systemThemeQuery?.removeListener) systemThemeQuery.removeListener(handleSystemThemeChange)
 })
 
-// Close sidebar on route change
 watch(() => route.path, () => {
-  sidebarOpen.value = false
+  navOpen.value = false
   closeThemeMenu()
 })
 

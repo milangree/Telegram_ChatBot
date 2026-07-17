@@ -87,13 +87,23 @@
               <tr v-for="u in users" :key="u.user_id" :class="{ 'row-sel': selected.includes(u.user_id) }">
                 <td><input type="checkbox" :checked="selected.includes(u.user_id)" @change="toggleSelect(u.user_id)" class="cb" /></td>
                 <td>
-                  <div class="user-cell" @click="openDetail(u)">
-                    <div class="u-ava" :class="{ blocked: u.is_blocked }">
+                  <div class="user-cell" :class="{ 'is-blocked': !!u.is_blocked, 'is-wl': !!wlMap[u.user_id] && !u.is_blocked }" @click="openDetail(u)">
+                    <div class="u-ava" :class="{ blocked: u.is_blocked, wl: !!wlMap[u.user_id] && !u.is_blocked }">
                       <img v-if="avatars[u.user_id]" :src="avatars[u.user_id]" class="ava-img" @error="avatars[u.user_id] = ''" />
                       <span v-else>{{ (u.first_name || u.username || '?')[0].toUpperCase() }}</span>
+                      <span
+                        v-if="wlMap[u.user_id] && !u.is_blocked"
+                        class="wl-hover-badge"
+                        :title="t('users.detail.whitelist')"
+                      >
+                        <AppIcon name="whitelist" :size="11" />
+                      </span>
                     </div>
                     <div class="user-summary">
-                      <div class="u-name">{{ formatDisplayName(u) }}</div>
+                      <div class="u-name">
+                        {{ formatDisplayName(u) }}
+                        <span v-if="wlMap[u.user_id] && !u.is_blocked" class="wl-inline-tag">{{ t('users.detail.whitelist') }}</span>
+                      </div>
                       <div class="u-username">{{ u.username ? '@' + u.username : t('users.detail.noUsername') }}</div>
                     </div>
                   </div>
@@ -244,6 +254,7 @@ const avatars = ref({})
 const selected = ref([])
 const detailUser = ref(null)
 const detailIsWl = ref(false)
+const wlMap = ref({})
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
 const allSelected = computed(() =>
@@ -279,6 +290,7 @@ async function load() {
     total.value = Number(d?.total || 0)
     selected.value = []
     for (const u of users.value) loadAvatar(u.user_id)
+    loadWhitelistFlags(users.value)
 
     if (page.value > totalPages.value) {
       page.value = totalPages.value
@@ -294,6 +306,24 @@ function loadAvatar(uid) {
   img.onload = () => { avatars.value[uid] = `/api/users/${uid}/avatar` }
   img.onerror = () => {}
   img.src = `/api/users/${uid}/avatar`
+}
+
+async function loadWhitelistFlags(list) {
+  const next = { ...wlMap.value }
+  await Promise.all((Array.isArray(list) ? list : []).map(async (u) => {
+    // 封禁用户不显示白名单标识
+    if (u.is_blocked) {
+      next[u.user_id] = false
+      return
+    }
+    try {
+      const r = await api.get(`/api/whitelist/check/${u.user_id}`)
+      next[u.user_id] = !!r.whitelisted
+    } catch {
+      next[u.user_id] = false
+    }
+  }))
+  wlMap.value = next
 }
 
 async function openDetail(u) {
@@ -383,9 +413,11 @@ async function toggleWhitelistOne(u) {
     const r = await api.get(`/api/whitelist/check/${u.user_id}`)
     if (r.whitelisted) {
       await api.delete(`/api/whitelist/${u.user_id}`)
+      wlMap.value = { ...wlMap.value, [u.user_id]: false }
       flash(t('users.flash.removedWhitelist'))
     } else {
       await api.post(`/api/whitelist/${u.user_id}`, { reason: 'manual' })
+      wlMap.value = { ...wlMap.value, [u.user_id]: true }
       flash(t('users.flash.addedWhitelist'))
     }
   } catch (e) {
@@ -411,9 +443,11 @@ async function toggleWlDetail() {
   if (detailIsWl.value) {
     await api.delete(`/api/whitelist/${detailUser.value.user_id}`)
     detailIsWl.value = false
+    wlMap.value = { ...wlMap.value, [detailUser.value.user_id]: false }
   } else {
     await api.post(`/api/whitelist/${detailUser.value.user_id}`, { reason: 'manual' })
     detailIsWl.value = true
+    wlMap.value = { ...wlMap.value, [detailUser.value.user_id]: true }
   }
 }
 
@@ -518,8 +552,23 @@ onMounted(() => {
 .user-summary{min-width:0;display:flex;flex-direction:column;gap:2px}
 .u-name{font-weight:600;font-size:13px;line-height:1.35;word-break:break-word}
 .u-username{font-size:12px;color:var(--text2);line-height:1.35;word-break:break-word}
-.u-ava{width:34px;height:34px;border-radius:50%;flex-shrink:0;background:var(--accent-dim);color:var(--accent);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;overflow:hidden}
+.u-ava{width:34px;height:34px;border-radius:50%;flex-shrink:0;background:var(--accent-dim);color:var(--accent);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;overflow:hidden;position:relative}
 .u-ava.blocked{background:rgba(247,79,79,.15);color:var(--danger)}
+.u-ava.wl{box-shadow:0 0 0 1px rgba(79,142,247,.25)}
+.wl-hover-badge{
+  position:absolute;right:-2px;bottom:-2px;width:16px;height:16px;border-radius:50%;
+  background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;
+  opacity:0;transform:scale(.8);transition:var(--tr);box-shadow:0 0 0 2px var(--bg2);
+  pointer-events:none;
+}
+.user-cell:hover .wl-hover-badge{opacity:1;transform:scale(1)}
+.user-cell.is-blocked .wl-hover-badge,
+.user-cell.is-blocked .wl-inline-tag{display:none!important}
+.wl-inline-tag{
+  display:none;margin-left:6px;font-size:10px;font-weight:600;color:var(--accent);
+  background:var(--accent-dim);padding:1px 6px;border-radius:999px;vertical-align:middle;
+}
+.user-cell.is-wl:hover .wl-inline-tag{display:inline-flex}
 .ava-img{width:100%;height:100%;object-fit:cover}
 .user-id{font-size:12px;display:inline-block;max-width:130px;overflow:auto}
 .cb{width:14px;height:14px;cursor:pointer;accent-color:var(--accent)}
