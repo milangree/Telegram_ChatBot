@@ -473,9 +473,13 @@ async function withUserLock(kv, userLockId, fn, { ttlSeconds = 60, retries = 8, 
 
 // ── 话题管理 ─────────────────────────────────────────────────────────────────
 export async function getOrCreateThread(tg, db, user, groupId, kv, t) {
+  // 归一化：DB 行用 user_id，Telegram API 对象用 id
+  if (user && user.user_id != null && user.id == null) {
+    user = { ...user, id: user.user_id };
+  }
   // 防止传入无效用户
   if (!user || user.id == null) {
-    console.error('getOrCreateThread: invalid user', user?.id);
+    console.error('getOrCreateThread: invalid user', user?.id, user?.user_id);
     return null;
   }
 
