@@ -17,6 +17,10 @@ const HOST = process.env.HOST || '0.0.0.0'
 const DISPLAY_HOST = process.env.DISPLAY_HOST
   || (HOST === '0.0.0.0' || HOST === '::' ? 'localhost' : HOST)
 const PID_FILE = path.join(ROOT, '.server.pid')
+// Docker / 生产环境不提示本地停止命令；仅本地开发显示
+const IS_LOCAL_DEV = process.env.NODE_ENV !== 'production'
+  && !process.env.DOCKER
+  && !fs.existsSync('/.dockerenv')
 
 // ── 全局 polyfill ─────────────────────────────────────────────────────────
 // Cloudflare Workers 全局可用，Node.js 也需要
@@ -243,7 +247,9 @@ const httpServer = app.listen(PORT, HOST, () => {
   console.log(`[server] 📡 Webhook 地址: http://${DISPLAY_HOST}:${PORT}/webhook`)
   console.log(`[server] 🔧 API 地址: http://${DISPLAY_HOST}:${PORT}/api`)
   console.log(`[server] 💾 存储后端: KV${d1 ? ' + D1' : ''}${hyperdrive ? ' + Hyperdrive' : ''}`)
-  console.log(`[server] 🛑 停止服务: Ctrl+C 或 npm run stop`)
+  if (IS_LOCAL_DEV) {
+    console.log(`[server] 🛑 停止服务: Ctrl+C 或 npm run stop`)
+  }
 })
 
 function shutdown(signal) {
