@@ -2,6 +2,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { createT, normalizeLocale } from '../../shared/i18n.js'
+import { readJsonSafe } from '../utils/http.js'
 import { clearLocalCache } from './local-cache.js'
 
 export const AUTH_NOTICE_KEY = 'auth_notice'
@@ -59,8 +60,9 @@ export const useAuthStore = defineStore('auth', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     })
-    const data = await res.json()
+    const data = await readJsonSafe(res, {})
     if (!res.ok) throw new Error(data.error || t('store.auth.loginFailed'))
+    if (!data.token) throw new Error(t('store.auth.loginFailed'))
     token.value = data.token
     username.value = data.username
     isAdmin.value = data.isAdmin || false
@@ -107,19 +109,18 @@ export const useAuthStore = defineStore('auth', () => {
         headers: { Authorization: `Bearer ${storedToken}` },
       })
       if (!res.ok) {
-        let message = ''
-        try {
-          const data = await res.json()
-          message = data?.error || ''
-        } catch {
-          /* noop */
-        }
-        const error = new Error(message || t('store.auth.loginFailed'))
+        const data = await readJsonSafe(res, {})
+        const error = new Error(data?.error || t('store.auth.loginFailed'))
         error.status = res.status
         throw error
       }
 
-      const data = await res.json()
+      const data = await readJsonSafe(res, {})
+      if (!data?.username) {
+        const error = new Error(t('store.auth.loginFailed'))
+        error.status = res.status
+        throw error
+      }
       token.value = storedToken
       username.value = data.username
       isAdmin.value = data.isAdmin

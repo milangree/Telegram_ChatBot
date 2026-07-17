@@ -117,10 +117,10 @@
                 <td class="text-muted text-sm">{{ fmtDate(u.created_at) }}</td>
                 <td>
                   <div class="row-actions">
-                    <button v-if="!u.is_blocked" class="btn-danger btn-sm" @click.stop="blockOne(u)">
+                    <button v-if="!u.is_blocked" class="btn-danger btn-sm" @click.stop="blockOne(u)" :title="t('users.blockUser')">
                       <AppIcon name="block" :size="14" />
                     </button>
-                    <button v-else class="btn-success btn-sm" @click.stop="unblockOne(u)">
+                    <button v-else class="btn-success btn-sm" @click.stop="unblockOne(u)" :title="t('users.unblockUser')">
                       <AppIcon name="unblock" :size="14" />
                     </button>
                     <button class="btn-ghost btn-sm" @click.stop="toggleWhitelistOne(u)" :title="t('users.addWhitelist')">

@@ -8,10 +8,10 @@
     "dev": "node --watch index.js"
   },
   "dependencies": {
-    "better-sqlite3": "^11.8.0",
     "express": "^5.1.0"
   },
   "optionalDependencies": {
+    "better-sqlite3": "^11.8.0",
     "pg": "^8.14.0",
     "mysql2": "^3.14.0"
   }

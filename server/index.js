@@ -8,11 +8,14 @@ import path from 'path'
 import fs from 'fs'
 import { fileURLToPath } from 'url'
 import { LocalKV } from './bindings/kv.js'
-import { LocalD1 } from './bindings/d1.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.resolve(__dirname, '..')
 const PORT = parseInt(process.env.PORT || '3000', 10)
+// Docker / 容器部署默认监听所有网卡；本地日志展示用 localhost，避免浏览器打不开 0.0.0.0
+const HOST = process.env.HOST || '0.0.0.0'
+const DISPLAY_HOST = process.env.DISPLAY_HOST
+  || (HOST === '0.0.0.0' || HOST === '::' ? 'localhost' : HOST)
 
 // ── 全局 polyfill ─────────────────────────────────────────────────────────
 // Cloudflare Workers 全局可用，Node.js 也需要
@@ -28,10 +31,16 @@ const kv = new LocalKV()
 const d1File = process.env.D1_FILE
 const hyperdriveConnStr = process.env.DATABASE_URL
 
-// D1 绑定（如果配置了 D1_FILE 环境变量，默认启用）
+// D1 绑定（需要 better-sqlite3；不可用时自动跳过）
 let d1 = null
 if (d1File || process.env.ACTIVE_DB === 'd1') {
-  d1 = new LocalD1()
+  try {
+    const { LocalD1 } = await import('./bindings/d1.js')
+    d1 = new LocalD1()
+  } catch (e) {
+    console.warn('[server] D1 初始化失败，已跳过:', e.message)
+    d1 = null
+  }
 }
 
 // Hyperdrive 绑定（如果配置了 DATABASE_URL）
@@ -206,10 +215,10 @@ if (fs.existsSync(distDir)) {
 
 // ── 启动服务器 ────────────────────────────────────────────────────────────
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`[server] 🚀 服务器已启动: http://0.0.0.0:${PORT}`)
-  console.log(`[server] 📡 Webhook 地址: http://0.0.0.0:${PORT}/webhook`)
-  console.log(`[server] 🔧 API 地址: http://0.0.0.0:${PORT}/api`)
+app.listen(PORT, HOST, () => {
+  console.log(`[server] 🚀 服务器已启动: http://${DISPLAY_HOST}:${PORT}`)
+  console.log(`[server] 📡 Webhook 地址: http://${DISPLAY_HOST}:${PORT}/webhook`)
+  console.log(`[server] 🔧 API 地址: http://${DISPLAY_HOST}:${PORT}/api`)
   console.log(`[server] 💾 存储后端: KV${d1 ? ' + D1' : ''}${hyperdrive ? ' + Hyperdrive' : ''}`)
 })
 

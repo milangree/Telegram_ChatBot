@@ -546,21 +546,25 @@ Three modes supported:
 ## 🛠️ Local Development
 
 ```bash
-# Install dependencies
+# Install dependencies (frontend + backend)
 npm install
+cd server && npm install && cd ..
 
 # Build frontend
 npm run build
 
-# Preview build
+# Start full stack (static UI + API + Webhook)
 npm run preview
+# equivalent to: node server/index.js
+# open http://localhost:3000
 
-# Docker local development
-cd server && npm install && cd ..
-node server/index.js
+# Static-only preview (no API — not for local integration)
+npm run preview:static
 ```
 
-> Full backend requires Cloudflare environment. Local is for frontend preview and build verification. Docker mode supports full backend testing.
+> `npm run preview` starts `server/index.js`, serving the UI together with `/api` and `/webhook`.  
+> Running plain `vite preview` (`preview:static`) alone will make `/api/*` requests fail with empty/non-JSON responses.  
+> If `better-sqlite3` cannot be installed (missing Python / build tools), the server falls back to in-memory KV (data is lost on restart), which is fine for local integration.
 
 ---
 

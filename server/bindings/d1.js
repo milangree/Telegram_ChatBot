@@ -1,15 +1,26 @@
 // server/bindings/d1.js
 // Cloudflare D1 兼容层 — 使用 better-sqlite3 实现 D1 的 prepare/first/all/run API
 // 让现有 CF Functions 代码（KVStore/D1Store）无需修改即可运行
+// better-sqlite3 不可用时在构造函数中抛出明确错误，由调用方捕获
 
-import Database from 'better-sqlite3'
 import path from 'path'
 import fs from 'fs'
+import { createRequire } from 'module'
 
+const require = createRequire(import.meta.url)
 const DB_PATH = path.resolve(process.env.D1_FILE || './data/d1-store.db')
+
+function loadDatabase() {
+  try {
+    return require('better-sqlite3')
+  } catch (err) {
+    throw new Error(`better-sqlite3 不可用: ${err.message}`)
+  }
+}
 
 export class LocalD1 {
   constructor() {
+    const Database = loadDatabase()
     const dir = path.dirname(DB_PATH)
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
     this._db = new Database(DB_PATH)

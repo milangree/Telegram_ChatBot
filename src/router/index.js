@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
+import { readJsonSafe } from '../utils/http.js'
 import LoginView from '../views/LoginView.vue'
 import RegisterView from '../views/RegisterView.vue'
 import RecoverView from '../views/RecoverView.vue'
@@ -29,7 +30,7 @@ const router = createRouter({
 async function fetchAuthStatus() {
   try {
     const res = await fetch('/api/auth/status')
-    const data = await res.json()
+    const data = await readJsonSafe(res, {})
     return !!data.needsRegistration
   } catch {
     return false

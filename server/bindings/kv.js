@@ -1,48 +1,80 @@
 // server/bindings/kv.js
-// Cloudflare KV 兼容层 — 内存存储 + SQLite 持久化
+// Cloudflare KV 兼容层 — 内存存储 + 可选 SQLite 持久化
 // 实现了 CF Workers KV 的 get/put/delete/list API
+// better-sqlite3 不可用或 KV_PERSIST=false 时自动降级为纯内存模式
 
-import Database from 'better-sqlite3'
 import path from 'path'
 import fs from 'fs'
+import { createRequire } from 'module'
 
+const require = createRequire(import.meta.url)
 const DB_PATH = path.resolve(process.env.KV_FILE || './data/kv-store.db')
+
+function tryLoadBetterSqlite3() {
+  try {
+    return require('better-sqlite3')
+  } catch (err) {
+    return { error: err }
+  }
+}
 
 export class LocalKV {
   constructor() {
     this._db = null
     this._mem = new Map()
     this._persist = process.env.KV_PERSIST !== 'false'
+    this._cleanupInterval = null
     this._init()
   }
 
+  _fallbackMemory(reason) {
+    this._persist = false
+    this._db = null
+    console.warn(`[KV] 已降级为纯内存模式: ${reason}`)
+  }
+
   _init() {
-    if (!this._persist) return
-    const dir = path.dirname(DB_PATH)
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
-    this._db = new Database(DB_PATH)
-    this._db.pragma('journal_mode = WAL')
-    this._db.exec(`
-      CREATE TABLE IF NOT EXISTS kv_store (
-        key   TEXT PRIMARY KEY,
-        value TEXT NOT NULL,
-        exp   INTEGER DEFAULT NULL
-      )
-    `)
-    // 清理过期条目
-    this._db.prepare('DELETE FROM kv_store WHERE exp IS NOT NULL AND exp <= ?').run(Date.now())
-
-    // 加载已有数据到内存
-    const rows = this._db.prepare('SELECT key, value, exp FROM kv_store').all()
-    for (const row of rows) {
-      if (row.exp && row.exp <= Date.now()) continue
-      this._mem.set(row.key, { value: row.value, exp: row.exp || null })
+    if (!this._persist) {
+      console.log('[KV] 纯内存模式（KV_PERSIST=false）')
+      return
     }
-    console.log(`[KV] 已加载 ${this._mem.size} 个键值对`)
 
-    // 定期清理过期键（每 5 分钟）
-    this._cleanupInterval = setInterval(() => this._cleanupExpired(), 5 * 60 * 1000)
-    if (this._cleanupInterval.unref) this._cleanupInterval.unref() // 不阻止进程退出
+    const loaded = tryLoadBetterSqlite3()
+    if (loaded?.error || typeof loaded !== 'function') {
+      this._fallbackMemory(loaded?.error?.message || 'better-sqlite3 未安装')
+      return
+    }
+
+    try {
+      const Database = loaded
+      const dir = path.dirname(DB_PATH)
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+      this._db = new Database(DB_PATH)
+      this._db.pragma('journal_mode = WAL')
+      this._db.exec(`
+        CREATE TABLE IF NOT EXISTS kv_store (
+          key   TEXT PRIMARY KEY,
+          value TEXT NOT NULL,
+          exp   INTEGER DEFAULT NULL
+        )
+      `)
+      // 清理过期条目
+      this._db.prepare('DELETE FROM kv_store WHERE exp IS NOT NULL AND exp <= ?').run(Date.now())
+
+      // 加载已有数据到内存
+      const rows = this._db.prepare('SELECT key, value, exp FROM kv_store').all()
+      for (const row of rows) {
+        if (row.exp && row.exp <= Date.now()) continue
+        this._mem.set(row.key, { value: row.value, exp: row.exp || null })
+      }
+      console.log(`[KV] 已加载 ${this._mem.size} 个键值对`)
+
+      // 定期清理过期键（每 5 分钟）
+      this._cleanupInterval = setInterval(() => this._cleanupExpired(), 5 * 60 * 1000)
+      if (this._cleanupInterval.unref) this._cleanupInterval.unref() // 不阻止进程退出
+    } catch (err) {
+      this._fallbackMemory(err.message || String(err))
+    }
   }
 
   _cleanupExpired() {

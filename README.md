@@ -546,21 +546,25 @@ Bot 标记用户已验证 → 转发之前的消息给管理员
 ## 🛠️ 本地开发
 
 ```bash
-# 安装依赖
+# 安装依赖（前端 + 后端）
 npm install
+cd server && npm install && cd ..
 
 # 构建前端
 npm run build
 
-# 预览构建结果
+# 启动完整服务（静态前端 + API + Webhook）
 npm run preview
+# 等价于：node server/index.js
+# 访问 http://localhost:3000
 
-# Docker 本地开发
-cd server && npm install && cd ..
-node server/index.js
+# 仅预览静态构建产物（不含 API，不适合联调）
+npm run preview:static
 ```
 
-> 完整后端能力依赖 Cloudflare 环境，本地适合前端预览和构建验证。Docker 模式下可完整测试后端功能。
+> `npm run preview` 会启动 `server/index.js`，同时提供前端页面与 `/api`、`/webhook`。  
+> 若只运行 `vite preview`（`preview:static`），页面请求 `/api/*` 会拿不到后端 JSON，出现登录/鉴权相关报错。  
+> 本机若缺少 Python / 编译工具导致 `better-sqlite3` 安装失败，服务会自动降级为 KV 内存模式（数据不落盘，重启清空），不影响本地联调。
 
 ---
 

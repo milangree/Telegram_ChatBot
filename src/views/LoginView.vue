@@ -114,6 +114,7 @@ import { useRouter, RouterLink } from 'vue-router'
 import AppIcon from '../components/AppIcon.vue'
 import { AUTH_NOTICE_SESSION_EXPIRED, consumeAuthNotice, useAuthStore } from '../stores/auth'
 import { useI18nStore } from '../stores/i18n'
+import { readJsonSafe } from '../utils/http.js'
 
 const auth = useAuthStore()
 const i18n = useI18nStore()
@@ -217,7 +218,7 @@ function toggleGlass() {
 async function loadAuthStatus() {
   try {
     const res = await fetch('/api/auth/status')
-    const data = await res.json()
+    const data = await readJsonSafe(res, {})
     needsRegistration.value = !!data.needsRegistration
   } catch {
     needsRegistration.value = false
@@ -240,7 +241,7 @@ async function checkTotpStatus(nextUsername = username.value) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username: currentUsername }),
     })
-    const data = await res.json()
+    const data = await readJsonSafe(res, {})
 
     if (currentSeq !== totpStatusSeq) return
 

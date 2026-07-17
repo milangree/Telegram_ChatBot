@@ -31,6 +31,7 @@ import { useRouter, RouterLink } from 'vue-router'
 import AppIcon from '../components/AppIcon.vue'
 import { useAuthStore } from '../stores/auth.js'
 import { useI18nStore } from '../stores/i18n'
+import { readJsonSafe } from '../utils/http.js'
 
 const auth     = useAuthStore()
 const i18n     = useI18nStore()
@@ -43,8 +44,9 @@ async function doRegister() {
   loading.value = true; error.value = ''
   try {
     const res  = await fetch('/api/auth/register', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ username: username.value, password: password.value }) })
-    const data = await res.json()
+    const data = await readJsonSafe(res, {})
     if (!res.ok) throw new Error(data.error || t('auth.register.err.fallback'))
+    if (!data.token) throw new Error(t('auth.register.err.fallback'))
     auth.token = data.token; auth.username = data.username; auth.isAdmin = true
     localStorage.setItem('token', data.token); localStorage.setItem('username', data.username); localStorage.setItem('isAdmin', 'true')
     router.push('/')
