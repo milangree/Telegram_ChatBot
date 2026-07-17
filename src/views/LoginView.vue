@@ -354,11 +354,32 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);padding:20px}
-.login-card{width:100%;max-width:380px;padding:20px 28px 36px}
+.login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);padding:20px;position:relative;overflow:hidden}
+.login-wrap::before{
+  content:'';position:absolute;inset:0;pointer-events:none;
+  background:
+    radial-gradient(ellipse 80% 50% at 50% 0%, rgba(79,142,247,.12), transparent),
+    radial-gradient(ellipse 50% 40% at 20% 80%, rgba(99,102,241,.08), transparent),
+    radial-gradient(ellipse 40% 30% at 85% 70%, rgba(79,142,247,.06), transparent);
+}
+:root.light .login-wrap::before{
+  background:
+    radial-gradient(ellipse 80% 50% at 50% 0%, rgba(37,99,235,.08), transparent),
+    radial-gradient(ellipse 50% 40% at 20% 80%, rgba(99,102,241,.06), transparent),
+    radial-gradient(ellipse 40% 30% at 85% 70%, rgba(14,165,233,.04), transparent);
+}
+.login-card{width:100%;max-width:380px;padding:20px 28px 36px;animation:loginIn .4s var(--ease-out);position:relative}
+@keyframes loginIn{
+  from{opacity:0;transform:translateY(20px) scale(.97)}
+  to{opacity:1;transform:translateY(0) scale(1)}
+}
 .login-topbar{display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-bottom:12px}
 .login-theme-wrap,.login-glass-btn{flex-shrink:0}
-.login-logo{display:flex;align-items:center;justify-content:center;margin-bottom:12px}
+.login-logo{display:flex;align-items:center;justify-content:center;margin-bottom:12px;animation:logoFloat 4s var(--ease-in-out) infinite}
+@keyframes logoFloat{
+  0%,100%{transform:translateY(0)}
+  50%{transform:translateY(-4px)}
+}
 .login-title{font-size:21px;font-weight:700;text-align:center;margin-bottom:22px}
 .login-links{margin-bottom:18px;display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:13px}
 .login-link-side{min-width:0}

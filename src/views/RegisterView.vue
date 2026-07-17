@@ -54,8 +54,25 @@ async function doRegister() {
 </script>
 
 <style scoped>
-.auth-page{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);padding:20px}
-.auth-card{width:100%;max-width:380px;padding:36px 28px}
+.auth-page{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);padding:20px;position:relative;overflow:hidden}
+.auth-page::before{
+  content:'';position:absolute;inset:0;pointer-events:none;
+  background:
+    radial-gradient(ellipse 80% 50% at 50% 0%, rgba(79,142,247,.12), transparent),
+    radial-gradient(ellipse 50% 40% at 20% 80%, rgba(99,102,241,.08), transparent),
+    radial-gradient(ellipse 40% 30% at 85% 70%, rgba(79,142,247,.06), transparent);
+}
+:root.light .auth-page::before{
+  background:
+    radial-gradient(ellipse 80% 50% at 50% 0%, rgba(37,99,235,.08), transparent),
+    radial-gradient(ellipse 50% 40% at 20% 80%, rgba(99,102,241,.06), transparent),
+    radial-gradient(ellipse 40% 30% at 85% 70%, rgba(14,165,233,.04), transparent);
+}
+.auth-card{width:100%;max-width:380px;padding:36px 28px;position:relative;animation:loginIn .4s var(--ease-out)}
+@keyframes loginIn{
+  from{opacity:0;transform:translateY(20px) scale(.97)}
+  to{opacity:1;transform:translateY(0) scale(1)}
+}
 .login-logo{display:flex;align-items:center;justify-content:center;margin-bottom:12px}
 .login-title{font-size:20px;font-weight:700;text-align:center;margin-bottom:20px}
 </style>

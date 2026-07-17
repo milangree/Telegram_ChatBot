@@ -1162,8 +1162,13 @@ onMounted(load)
 .settings-card{margin-bottom:18px}
 .settings-card-toggle{width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;background:none;border:none;padding:0;margin:0;color:inherit;cursor:pointer;text-align:left}
 .settings-card-toggle:focus-visible{outline:2px solid var(--accent);outline-offset:4px;border-radius:8px}
-.settings-card-toggle-indicator{width:28px;height:28px;border-radius:999px;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:18px;line-height:1;color:var(--text2);flex-shrink:0}
-.settings-card-body{padding-top:14px}
+.settings-card-toggle-indicator{width:28px;height:28px;border-radius:999px;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:18px;line-height:1;color:var(--text2);flex-shrink:0;transition:var(--tr)}
+.settings-card:hover .settings-card-toggle-indicator{border-color:var(--text3);color:var(--text)}
+.settings-card-body{padding-top:14px;animation:sectionOpen .2s var(--ease-out)}
+@keyframes sectionOpen{
+  from{opacity:0;transform:translateY(-6px)}
+  to{opacity:1;transform:translateY(0)}
+}
 .page{max-width:1100px;margin:0 auto}
 .page-title-with-icon,
 .sec-title-with-icon{display:flex;align-items:center;gap:8px}

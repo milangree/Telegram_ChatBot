@@ -97,7 +97,11 @@
     </div>
 
     <main class="main-content">
-      <RouterView />
+      <RouterView v-slot="{ Component, route }">
+        <Transition name="fade-slide" mode="out-in">
+          <component :is="Component" :key="route.path" />
+        </Transition>
+      </RouterView>
     </main>
   </div>
 

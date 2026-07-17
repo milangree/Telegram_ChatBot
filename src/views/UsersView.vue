@@ -544,8 +544,6 @@ onMounted(() => {
   .row-actions{gap:3px}
   .compact-users-table{min-width:760px}
 }
-.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px}
-.modal-card{width:100%;max-width:440px;padding:24px;max-height:90vh;overflow-y:auto}
 .modal-hdr{display:flex;align-items:center;gap:14px;margin-bottom:20px}
 .modal-ava{width:56px;height:56px;border-radius:50%;background:var(--accent-dim);color:var(--accent);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:22px;overflow:hidden;flex-shrink:0}
 .detail-grid{display:flex;flex-direction:column;gap:10px;margin-bottom:20px}
