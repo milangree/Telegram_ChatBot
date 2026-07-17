@@ -27,6 +27,9 @@ const router = createRouter({
   ],
 })
 
+// 首次注册阶段也允许访问的公开页（可用默认 admin 登录，不必强制卡在注册页）
+const AUTH_PUBLIC_PATHS = new Set(['/login', '/register', '/recover'])
+
 async function fetchAuthStatus() {
   try {
     const res = await fetch('/api/auth/status')
@@ -41,29 +44,32 @@ router.beforeEach(async (to, from, next) => {
   const auth = useAuthStore()
   const token = localStorage.getItem('token')
 
-  if (token && !to.meta.public) {
-    const ok = await auth.checkAuth()
-    if (ok) {
-      if (to.meta.public) return next('/')
+  // 已有 token：校验会话
+  if (token) {
+    // 访问公开页时，若会话仍有效则回首页；无效则清状态并继续去公开页
+    if (to.meta.public) {
+      const ok = await auth.checkAuth()
+      if (ok) return next('/')
       return next()
     }
+
+    const ok = await auth.checkAuth()
+    if (ok) return next()
+    // token 失效后落到下方未登录逻辑
   } else if (auth.isLoggedIn) {
-    if (to.meta.public) return next('/')
-    return next()
+    // 内存状态有登录但本地 token 已丢：重置后按未登录处理
+    auth.resetState()
   }
 
-  if (auth.isLoggedIn) {
-    if (to.meta.public) return next('/')
-    return next()
-  }
-
+  // 未登录访问受保护页 / 公开页
   const needFirst = await fetchAuthStatus()
   if (needFirst) {
-    if (to.path === '/register') return next()
+    // 允许 login / register / recover 互相跳转；其它路径引导去注册
+    if (AUTH_PUBLIC_PATHS.has(to.path)) return next()
     return next('/register')
   }
 
-  if (to.meta.public) return next()
+  if (to.meta.public || AUTH_PUBLIC_PATHS.has(to.path)) return next()
   return next('/login')
 })
 
