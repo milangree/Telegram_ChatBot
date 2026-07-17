@@ -473,32 +473,44 @@ async function withUserLock(kv, userLockId, fn, { ttlSeconds = 60, retries = 8, 
 
 // ── 话题管理 ─────────────────────────────────────────────────────────────────
 export async function getOrCreateThread(tg, db, user, groupId, kv, t) {
-  // 使用近似原子锁避免重复创建话题
-  const lockKey = `lock:thread:${user.id}`;
+  // 防止传入无效用户
+  if (!user || user.id == null) {
+    console.error('getOrCreateThread: invalid user', user?.id);
+    return null;
+  }
+
+  // 先检查是否已有话题
   const existing = await db.getUser(user.id);
   if (existing?.thread_id) return existing.thread_id;
 
-  const locked = await kv.get(lockKey);
-  if (locked) {
-    // 短暂等待后重试
-    await new Promise(r => setTimeout(r, 350));
-    const u2 = await db.getUser(user.id);
-    if (u2?.thread_id) return u2.thread_id;
+  // 使用原子锁（compare-and-set）避免重复创建话题
+  const result = await withUserLock(
+    kv,
+    `thread:${user.id}`,
+    async () => {
+      // 获取锁后再次检查，防止上一个持有者已创建
+      const u2 = await db.getUser(user.id);
+      if (u2?.thread_id) return u2.thread_id;
+
+      const baseTopicName = name(user) || t('thread.userTopic', { id: user.id });
+      const topicName = `${baseTopicName} [${user.id}]`.slice(0, 128);
+      const res = await tg.createTopic({ chatId: groupId, name: topicName });
+      if (!res.ok) { console.error('createTopic failed:', res); return null; }
+      const tid = res.result.message_thread_id;
+      await db.setUserThread(user.id, tid);
+      await sendCard(tg, db, user, groupId, tid, t);
+      return tid;
+    },
+    { ttlSeconds: 30, retries: 5, waitMs: 200 },
+  );
+
+  // 锁未被获取（高并发争用）时，最后再查一次
+  if (!result.acquired) {
+    const fallback = await db.getUser(user.id);
+    return fallback?.thread_id || null;
   }
 
-  await kv.put(lockKey, '1', { expirationTtl: 60 }); // Cloudflare KV 的最小 TTL 为 60 秒
-  try {
-    const baseTopicName = name(user) || t('thread.userTopic', { id: user.id });
-    const topicName = `${baseTopicName} [${user.id}]`.slice(0, 128);
-    const res = await tg.createTopic({ chatId: groupId, name: topicName });
-    if (!res.ok) { console.error('createTopic failed:', res); return null; }
-    const tid = res.result.message_thread_id;
-    await db.setUserThread(user.id, tid);
-    await sendCard(tg, db, user, groupId, tid, t);
-    return tid;
-  } finally {
-    await kv.delete(lockKey).catch(() => {});
-  }
+  return result.value;
 }
 
 async function sendCard(tg, db, user, groupId, tid, t) {
@@ -1295,6 +1307,11 @@ async function handleAdminPrivateMsg(msg, user, { tg, db, kv, settings, groupId,
   const shouldForward = await shouldProcessMessageOnce(kv, 'admin-private-notify', msg.chat.id, msg.message_id);
   if (!shouldForward) return;
 
+  // 管理员也需要 upsertUser，确保用户记录存在才能正确保存 thread_id
+  await db.upsertUser({
+    user_id: user.id, username: user.username,
+    first_name: user.first_name, last_name: user.last_name, language_code: user.language_code,
+  });
   const adminThreadId = await getOrCreateThread(tg, db, user, groupId, kv, t);
   if (!adminThreadId) {
     if (settings.ADMIN_NOTIFY_ENABLED === 'true') await sendPanel();
