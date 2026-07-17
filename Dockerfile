@@ -21,7 +21,9 @@ WORKDIR /app
 
 # 只复制 server 依赖（package.json + lock）
 COPY server/package.json ./
-RUN npm install --production && npm cache clean --force
+RUN npm install --production && \
+    npm rebuild better-sqlite3 --build-from-source && \
+    npm cache clean --force
 
 # 复制服务端代码
 COPY server/ ./server/
