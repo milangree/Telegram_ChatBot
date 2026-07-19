@@ -96,6 +96,15 @@ export const useAuthStore = defineStore('auth', () => {
     return data
   }
 
+  /**
+   * Telegram Web App 自动登录。
+   * 在 Telegram 环境中用 initData 调用 /api/auth/login，
+   * 通过 ADMIN_IDS 校验直接签发 Cookie 会话，跳过密码输入。
+   */
+  async function telegramLogin(initData) {
+    return _doLogin({ initData })
+  }
+
   async function login(u, p, totpCode) {
     return _doLogin({ username: u, password: p, totp: totpCode })
   }
@@ -212,6 +221,7 @@ export const useAuthStore = defineStore('auth', () => {
     sessionReady,
     login,
     loginTotp,
+    telegramLogin,
     logout,
     checkAuth,
     resetState,

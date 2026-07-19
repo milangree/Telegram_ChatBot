@@ -237,3 +237,56 @@ export async function recordLoginFailure(kv, username, lockoutSeconds) {
 export async function clearLoginFailures(kv, username) {
   await kv.delete(`login_fail:${(username || '').toLowerCase()}`).catch(() => {});
 }
+
+// ── Telegram Web App initData 验签 ──────────────────────────────────────
+
+/**
+ * 校验 Telegram Web App initData 签名 + auth_date 新鲜度。
+ * 算法详见 https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app
+ */
+export async function verifyInitData(initData, botToken, maxAgeSec = 3600) {
+  try {
+    if (!initData || typeof initData !== 'string') return null;
+    if (!botToken || typeof botToken !== 'string') return null;
+
+    const params = new URLSearchParams(initData);
+    const hash = params.get('hash');
+    if (!hash) return null;
+    params.delete('hash');
+
+    // data-check-string：按 key 字典序排序
+    const dataCheckString = [...params]
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+      .map(([k, v]) => `${k}=${v}`)
+      .join('\n');
+
+    const enc = new TextEncoder();
+    // 第一层：以 "WebAppData" 为密钥对 botToken 做 HMAC，得到会话密钥
+    const secretKey = await crypto.subtle.importKey(
+      'raw', enc.encode('WebAppData'),
+      { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
+    );
+    const secretBuf = await crypto.subtle.sign('HMAC', secretKey, enc.encode(botToken));
+
+    // 第二层：以会话密钥对 data-check-string 做 HMAC
+    const hmacKey = await crypto.subtle.importKey(
+      'raw', secretBuf,
+      { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
+    );
+    const calcBuf = await crypto.subtle.sign('HMAC', hmacKey, enc.encode(dataCheckString));
+    const calcHash = toHex(calcBuf);
+
+    // auth_date 新鲜度
+    const authDate = parseInt(params.get('auth_date'), 10);
+    const now = Math.floor(Date.now() / 1000);
+    const fresh = Number.isFinite(authDate) && authDate > 0 && (now - authDate) <= maxAgeSec && authDate <= now + 30;
+
+    if (!timingSafeEqualStr(hash, calcHash) || !fresh) return null;
+
+    let user = {};
+    try { user = JSON.parse(params.get('user') || '{}'); } catch { user = {}; }
+    return { user, authDate };
+  } catch {
+    return null;
+  }
+}

@@ -1,10 +1,10 @@
 // functions/api/[[path]].js
 import { DB } from '../_shared/db.js';
 import { TG } from '../_shared/tg.js';
-import { CORS, j, err, hashPw, verifyPw, createSession, getSession, delSession, delSessionsForUser, extractToken, genToken } from '../_shared/auth.js';
+import { CORS, j, err, hashPw, verifyPw, createSession, getSession, delSession, delSessionsForUser, extractToken, genToken, verifyInitData } from '../_shared/auth.js';
 import { verifyTOTP, generateTOTPSecret } from '../_shared/totp.js';
 import { renderCaptchaPNG } from '../_shared/captcha.js';
-import { setupCommands, setupMiniAppMenu, getOrCreateThread } from '../_shared/bot.js';
+import { setupMiniAppMenu, getOrCreateThread } from '../_shared/bot.js';
 import { normalizeBotLocale, createBotT } from '../_shared/bot-i18n.js';
 import { exportBusinessDataSql, importBusinessDataSql, parseBusinessSql } from '../_shared/db-sql.js';
 import { createT, normalizeLocale } from '../../shared/i18n.js';
@@ -77,6 +77,12 @@ export async function onRequest({ request, env, waitUntil }) {
   const url = new URL(request.url);
   const path = url.pathname.replace(/^\/api/, '');
 
+  // 无需等待用户操作，Webhook URL 已配置时自动设置 Mini App 菜单按钮
+  // 如果设置过程中出错（未配置 BOT_TOKEN 等），静默跳过，不阻塞后续请求
+  if (path !== '/settings/webhook' && path !== '/settings') {
+    ensureMiniAppMenu(kv, db).catch(() => {});
+  }
+
   // ═══════════════════════════════════════════════
   // 公开路由（无需认证）
   // ═══════════════════════════════════════════════
@@ -110,6 +116,12 @@ export async function onRequest({ request, env, waitUntil }) {
   }
 
   if (path === '/auth/login' && request.method === 'POST') {
+    // 检测 Telegram Web App 登录（带 initData）
+    const body = await request.json().catch(() => ({}));
+    if (body.initData && !body.username) {
+      return handleTelegramLogin(body.initData, db, kv, t);
+    }
+
     try {
       const { username, password, totp, loginMode } = await request.json();
       if (!username) return err(t('auth.missingUsername'));
@@ -499,7 +511,6 @@ export async function onRequest({ request, env, waitUntil }) {
         try {
           const latest = await db.getAllSettings();
           if (latest.BOT_TOKEN) {
-            await setupCommands(new TG(latest.BOT_TOKEN), latest.BOT_LOCALE);
             // 从 WEBHOOK_URL 提取 origin，拼接 Mini App URL
             if (latest.WEBHOOK_URL) {
               const origin = new URL(latest.WEBHOOK_URL).origin;
@@ -536,8 +547,6 @@ export async function onRequest({ request, env, waitUntil }) {
       if (!res.ok) return err(t('settings.setupFailed', { error: res.description }));
       // 持久化 Webhook URL 供前端展示
       await db.setSetting('WEBHOOK_URL', webhookUrl);
-      // 注册 Bot 命令列表
-      await setupCommands(tg, settings.BOT_LOCALE).catch(console.error);
       // 从 WEBHOOK_URL 提取 origin，拼接 Mini App URL 并设置菜单按钮
       const miniAppUrl = `${new URL(webhookUrl).origin}/miniapp/`;
       await setupMiniAppMenu(tg, miniAppUrl).catch(console.error);
@@ -918,6 +927,62 @@ function isSecureRequest(request) {
     }
   } catch { /* noop */ }
   return false;
+}
+
+/**
+ * 处理 Telegram Web App 免密登录。
+ * 验签 initData → 校验 ADMIN_IDS → 影子 web_user → Cookie 会话。
+ */
+async function handleTelegramLogin(initData, db, kv, t) {
+  try {
+    const botToken = await db.getSetting('BOT_TOKEN');
+    if (!botToken) return err(t('kvNotBound'), 500);
+
+    const verified = await verifyInitData(initData, botToken, 3600);
+    if (!verified || !verified.user || !verified.user.id) return err(t('auth.invalidCredentials'), 401);
+
+    const tgId = Number(verified.user.id);
+    const adminIds = parseAdminIds(await db.getSetting('ADMIN_IDS'));
+    if (!adminIds.includes(tgId)) return err(t('auth.forbidden'), 403);
+
+    // 影子 web_user 账户（按用户名 tg_<id> 查找或创建）
+    const shadowUser = `tg_${tgId}`;
+    let webUser = await db.getWebUser(shadowUser);
+    if (!webUser) {
+      const hash = await hashPw(genToken(32));
+      webUser = await db.createWebUser(shadowUser, hash);
+    }
+
+    const sessionTtl = await getLoginSessionTtl(db);
+    const token = await createSession(kv, webUser.id, sessionTtl);
+    return new Response(JSON.stringify({ token, username: webUser.username, isAdmin: true }), {
+      status: 200,
+      headers: { ...CORS, 'Content-Type': 'application/json', 'Set-Cookie': cookie(token, sessionTtl, { secure: isSecureRequest(request) }) },
+    });
+  } catch (e) {
+    console.error('[telegram login]', e?.message || e);
+    return err(t('auth.loginFailed'), 500);
+  }
+}
+
+/**
+ * 检查是否已设置 Mini App 菜单按钮，未设置且 WEBHOOK_URL 已填写时自动设置。
+ * 在每次非写设置接口的请求中触发（fire-and-forget）。
+ * 通过 KV 键 miniapp_menu_set 标记已设置，避免重复调用 Telegram Bot API。
+ */
+async function ensureMiniAppMenu(kv, db) {
+  const already = await kv.get('miniapp_menu_set').catch(() => null);
+  if (already) return;
+
+  const botToken = await db.getSetting('BOT_TOKEN').catch(() => '');
+  const webhookUrl = await db.getSetting('WEBHOOK_URL').catch(() => '');
+  if (!botToken || !webhookUrl) return;
+
+  const origin = new URL(webhookUrl).origin;
+  const miniAppUrl = `${origin}/miniapp/`;
+  await setupMiniAppMenu(new TG(botToken), miniAppUrl);
+  // 标记已设置（10 天后自动过期，可以重新尝试）
+  await kv.put('miniapp_menu_set', '1', { expirationTtl: 864000 }).catch(() => {});
 }
 
 function buildVerifyPage(captchaType, siteKey, error, origin, webVerifyId) {

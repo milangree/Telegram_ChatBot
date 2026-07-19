@@ -5,8 +5,6 @@
   "type": "module",
   "scripts": {
     "build": "vite build",
-    "build:miniapp": "vite build --config vite.config.miniapp.js",
-    "build:all": "npm run build && npm run build:miniapp",
     "preview": "node server/index.js",
     "preview:static": "vite preview",
     "server": "node server/index.js",

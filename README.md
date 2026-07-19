@@ -160,10 +160,8 @@ Fork 本仓库 → Workers & Pages → Create → Pages → 连接 GitHub 仓库
 | 配置项 | 值 |
 |--------|-----|
 | 框架预设 | `Vue` |
-| 构建命令 | `npm run build:all` |
+| 构建命令 | `npm run build` |
 | 输出目录 | `dist` |
-
-> `build:all` 会同时产出原 Web 后台和 `/miniapp/` Telegram Mini App。详细配置、BotFather 菜单按钮与安全说明见 [Telegram Mini App 指南](./docs/miniapp.md)。
 
 ### 3. 添加绑定
 
@@ -552,14 +550,10 @@ Bot 标记用户已验证 → 转发之前的消息给管理员
 npm install
 cd server && npm install && cd ..
 
-# 构建 Web 后台 + Telegram Mini App（生产推荐）
-npm run build:all
-
-# 也可只构建其中一端
+# 构建前端
 npm run build
-npm run build:miniapp
 
-# 启动完整服务（静态前端 + Mini App + API + Webhook）
+# 启动完整服务（静态前端 + API + Webhook）
 npm run preview
 # 等价于：node server/index.js
 # 访问 http://localhost:3000

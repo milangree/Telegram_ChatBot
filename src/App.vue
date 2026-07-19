@@ -307,6 +307,18 @@ onMounted(async () => {
   document.addEventListener('click', closeThemeMenu)
   window.addEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired)
 
+  // Telegram Web App 自动登录：检测 Telegram 环境，用 initData 免密登录
+  const shouldTelegramLogin = !auth.isLoggedIn
+    && typeof window !== 'undefined'
+    && window.Telegram?.WebApp?.initData
+  if (shouldTelegramLogin) {
+    try {
+      await auth.telegramLogin(window.Telegram.WebApp.initData)
+    } catch {
+      // 非管理员或验签失败，静默保留未登录状态，显示登录页
+    }
+  }
+
   await router.isReady()
   routeReady.value = true
 })

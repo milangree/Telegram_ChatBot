@@ -7,9 +7,9 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 
-# 复制源码并构建 Web 与 Telegram Mini App
+# 复制源码并构建前端
 COPY . .
-RUN npm run build:all
+RUN npm run build
 
 # ─── 生产运行阶段 ─────────────────────────────────────────────────────
 FROM node:20-alpine AS production

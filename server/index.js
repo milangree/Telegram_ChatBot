@@ -64,7 +64,6 @@ if (hyperdriveConnStr) {
 
 // 动态导入现有 Cloudflare Functions
 const { onRequest: apiHandler } = await import('../functions/api/[[path]].js')
-const { onRequest: miniappApiHandler } = await import('../functions/api/miniapp/[[path]].js')
 const { onRequestPost: webhookHandler } = await import('../functions/webhook.js')
 
 console.log('[server] Functions 已加载')
@@ -178,20 +177,6 @@ app.all('/webhook', async (req, res) => {
     await cfResponseToExpress(cfRes, res)
   } catch (e) {
     console.error('[webhook error]', e)
-    res.status(500).json({ error: 'Internal Server Error' })
-  }
-})
-
-// Telegram Mini App API — 必须置于通用 /api/* 之前，保持与 Cloudflare Pages 文件路由优先级一致
-app.all('/api/miniapp/{*path}', async (req, res) => {
-  try {
-    const fullUrl = `${req.protocol}://${req.get('host')}${req.originalUrl}`
-    const cfReq = expressToCfRequest(req, fullUrl)
-    const ctx = buildContext(cfReq)
-    const cfRes = await miniappApiHandler(ctx)
-    await cfResponseToExpress(cfRes, res)
-  } catch (e) {
-    console.error('[miniapp api error]', e)
     res.status(500).json({ error: 'Internal Server Error' })
   }
 })
