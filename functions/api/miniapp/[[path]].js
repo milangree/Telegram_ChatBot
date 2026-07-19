@@ -4,7 +4,7 @@
 // 严格遵循 session.tgUserId 查询当前用户数据，拒收 body/query 的 userId；管理员判定每次请求重读 ADMIN_IDS。
 import { DB } from '../../_shared/db.js';
 import { TG, name, esc } from '../../_shared/tg.js';
-import { CORS, j, err, checkLoginRateLimit, recordLoginFailure, clearLoginFailures } from '../../_shared/auth.js';
+import { CORS, j, err, checkLoginRateLimit, clearLoginFailures } from '../../_shared/auth.js';
 import {
   verifyInitData,
   createMiniAppSession,
@@ -143,21 +143,18 @@ export async function onRequest({ request, env, waitUntil }) {
       const botToken = await db.getSetting('BOT_TOKEN');
       if (!botToken) return err(t('botTokenNotConfigured'), 500);
 
-      // 速率限制：登录前无法可靠获得 tgId，按客户端 IP 限流（5 次/60s）
-      const ip = request.headers.get('CF-Connecting-IP') || request.headers.get('X-Forwarded-For') || 'unknown';
-      const rlKey = `miniapp_login_ip:${ip}`;
-      const rl = await checkLoginRateLimit(kv, rlKey, 5, 60);
-      if (rl.locked) return err(t('rateLimited'), 429);
-
       const verified = await verifyInitData(initData, botToken, 3600);
       if (!verified || !verified.user || !verified.user.id) {
-        await recordLoginFailure(kv, rlKey, 60);
         return err(t('loginFailed'), 401);
       }
-      await clearLoginFailures(kv, rlKey);
 
       const u = verified.user;
       const tgId = Number(u.id);
+      // 登录后按用户 ID 限流，防止暴力重试
+      const rlKey = `miniapp_login:${tgId}`;
+      const rl = await checkLoginRateLimit(kv, rlKey, 5, 60);
+      if (rl.locked) return err(t('rateLimited'), 429);
+      await clearLoginFailures(kv, rlKey);
       // Mini App 也作为可信 Telegram 身份来源：同步基础资料，保留既有验证/封禁/话题状态
       // 这样首次从 Mini App 进入、尚未与 Bot 私聊的用户，/me 与管理员列表也能显示完整资料。
       await db.upsertUser({
