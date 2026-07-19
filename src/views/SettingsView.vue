@@ -1259,7 +1259,7 @@ onMounted(load)
 .admin-card-avatar{width:42px;height:42px;border-radius:50%;background:var(--accent-dim);color:var(--accent);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;overflow:hidden}
 .admin-card-avatar-img{width:100%;height:100%;object-fit:cover}
 .admin-card-info{min-width:0}
-.admin-card-line{display:flex;align-items:center;gap:6px;min-width:0;white-space:nowrap}
+.admin-card-line{display:flex;align-items:baseline;gap:6px;min-width:0;white-space:nowrap}
 .admin-card-name,.admin-card-meta,.admin-card-id{min-width:0;overflow:hidden;text-overflow:ellipsis}
 .admin-card-name{font-size:13px;font-weight:600;color:var(--text)}
 .admin-card-meta{font-size:12px;color:var(--text2)}

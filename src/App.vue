@@ -66,7 +66,12 @@
             <span class="user-name hide-mobile">{{ auth.username }}</span>
           </RouterLink>
 
-          <button class="btn-icon logout-btn" @click="handleLogout" :title="t('app.logout')">
+          <button
+            v-if="!windowTelegram"
+            class="btn-icon logout-btn"
+            @click="handleLogout"
+            :title="t('app.logout')"
+          >
             <AppIcon name="logout" :size="18" />
           </button>
         </div>
@@ -163,6 +168,7 @@ const themeMode = ref('system')
 const themeMenuOpen = ref(false)
 
 const t = i18n.t
+const windowTelegram = typeof window !== 'undefined' && window.Telegram?.WebApp
 
 let syncLocaleTimer = null
 let systemThemeQuery = null

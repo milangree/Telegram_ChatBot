@@ -116,15 +116,15 @@ export async function onRequest({ request, env, waitUntil }) {
   }
 
   if (path === '/auth/login' && request.method === 'POST') {
+    // 读取 body 仅一次，避免 "Body has already been read"
+    const parsedBody = await request.json().catch(() => ({}));
     // 检测 Telegram Web App 登录（带 initData）
-    const body = await request.json().catch(() => ({}));
-    if (body.initData && !body.username) {
-      return handleTelegramLogin(body.initData, db, kv, t);
+    if (parsedBody.initData && !parsedBody.username) {
+      return handleTelegramLogin(parsedBody.initData, db, kv, t);
     }
 
     try {
-      const { username, password, totp, loginMode } = await request.json();
-      if (!username) return err(t('auth.missingUsername'));
+      const { username, password, totp, loginMode } = parsedBody;
 
       const user = await db.getWebUser(username);
       if (!user) return err(t('auth.invalidCredentials'), 401);
@@ -199,12 +199,18 @@ export async function onRequest({ request, env, waitUntil }) {
   if (path === '/auth/recover' && request.method === 'POST') {
     try {
       const { username, totp, newPassword } = await request.json();
-      if (!username || !totp || !newPassword) return err(t('common.missingParams'));
+      if (!username || !newPassword) return err(t('common.missingParams'));
+      if (newPassword.length < 6) return err(t('auth.passwordMin'));
 
       const user = await db.getWebUser(username);
-      if (!user || !user.totp_enabled) return err(t('auth.totpNotEnabled'), 400);
-      if (!await verifyTOTP(totp, user.totp_secret)) return err(t('auth.invalidTotp'), 401);
-      if (newPassword.length < 6) return err(t('auth.passwordMin'));
+      if (!user) return err(t('auth.invalidCredentials'), 401);
+
+      // 已启用 2FA 必须校验 TOTP；未启用的可直接重置密码
+      if (user.totp_enabled) {
+        if (!totp) return err(t('auth.missingTotp'), 401);
+        if (!await verifyTOTP(totp, user.totp_secret)) return err(t('auth.invalidTotp'), 401);
+      }
+
       await db.updateWebUserPassword(user.id, await hashPw(newPassword));
       // 改密后吊销全部既有会话
       await delSessionsForUser(kv, user.id).catch(() => {});

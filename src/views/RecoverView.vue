@@ -5,15 +5,14 @@
         <AppIcon name="lock" :size="40" />
       </div>
       <h1 class="login-title">{{ t('auth.recover.title') }}</h1>
-      <div class="alert alert-info mb-2">{{ t('auth.recover.tip') }}</div>
       <div v-if="error" class="alert alert-error">{{ error }}</div>
       <div v-if="success" class="alert alert-success">{{ t('auth.recover.success') }}</div>
 
       <div class="form-group">
         <label>{{ t('auth.recover.username') }}</label>
-        <input v-model="username" :placeholder="t('auth.recover.username')" autocomplete="username" />
+        <input v-model="username" :placeholder="t('auth.recover.username')" autocomplete="username" @keyup="checkUserTotp" @change="checkUserTotp" />
       </div>
-      <div class="form-group">
+      <div class="form-group" v-if="totpRequired">
         <label>{{ t('auth.recover.totp') }}</label>
         <input v-model="totp" :placeholder="t('auth.recover.totpPh')" maxlength="6" inputmode="numeric" autocomplete="one-time-code" />
       </div>
@@ -32,10 +31,11 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onUnmounted } from 'vue'
 import { useRouter, RouterLink } from 'vue-router'
 import AppIcon from '../components/AppIcon.vue'
 import api from '../stores/api.js'
+import { readJsonSafe } from '../utils/http.js'
 import { useI18nStore } from '../stores/i18n'
 
 const router      = useRouter()
@@ -43,17 +43,41 @@ const i18n        = useI18nStore()
 const t           = i18n.t
 const username    = ref(''), totp = ref(''), newPassword = ref('')
 const loading     = ref(false), error = ref(''), success = ref(false)
+const totpRequired = ref(false)
+let statusTimer   = null
+
+async function checkUserTotp() {
+  const u = String(username.value || '').trim()
+  if (!u) { totpRequired.value = false; return }
+  if (statusTimer) clearTimeout(statusTimer)
+  statusTimer = setTimeout(async () => {
+    try {
+      const res = await fetch('/api/auth/totp-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: u }),
+      })
+      const data = await readJsonSafe(res, {})
+      totpRequired.value = !!data.totpEnabled
+    } catch { totpRequired.value = false }
+  }, 400)
+}
 
 async function doRecover() {
-  if (!username.value || !totp.value || !newPassword.value) { error.value = t('auth.recover.err.required'); return }
+  if (!username.value || !newPassword.value) { error.value = t('auth.recover.err.required'); return }
+  if (totpRequired.value && !totp.value) { error.value = t('auth.recover.err.required'); return }
   loading.value = true; error.value = ''
   try {
-    await api.post('/api/auth/recover', { username: username.value, totp: totp.value, newPassword: newPassword.value })
+    const body = { username: username.value, newPassword: newPassword.value }
+    if (totpRequired.value) body.totp = totp.value
+    await api.post('/api/auth/recover', body)
     success.value = true
     setTimeout(() => router.push('/login'), 1500)
   } catch (e) { error.value = e.message }
   finally { loading.value = false }
 }
+
+onUnmounted(() => { if (statusTimer) clearTimeout(statusTimer) })
 </script>
 
 <style scoped>

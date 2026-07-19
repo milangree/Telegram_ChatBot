@@ -1,6 +1,7 @@
 // functions/_shared/auth.js
 const DEFAULT_TTL = 86400;
-const PBKDF2_ITERATIONS = 600000;
+// Cloudflare Workers 限制 PBKDF2 最多 100000 次迭代（环境差异）
+const PBKDF2_ITERATIONS = 100000;
 
 export function genToken(len = 48) {
   // 使用无偏差随机：rejection sampling，避免 b % 62 模偏差
