@@ -4,7 +4,7 @@ import { TG } from '../_shared/tg.js';
 import { CORS, j, err, hashPw, verifyPw, createSession, getSession, delSession, delSessionsForUser, extractToken, genToken } from '../_shared/auth.js';
 import { verifyTOTP, generateTOTPSecret } from '../_shared/totp.js';
 import { renderCaptchaPNG } from '../_shared/captcha.js';
-import { setupCommands, getOrCreateThread } from '../_shared/bot.js';
+import { setupCommands, setupMiniAppMenu, getOrCreateThread } from '../_shared/bot.js';
 import { normalizeBotLocale, createBotT } from '../_shared/bot-i18n.js';
 import { exportBusinessDataSql, importBusinessDataSql, parseBusinessSql } from '../_shared/db-sql.js';
 import { createT, normalizeLocale } from '../../shared/i18n.js';
@@ -500,6 +500,7 @@ export async function onRequest({ request, env, waitUntil }) {
           const latest = await db.getAllSettings();
           if (latest.BOT_TOKEN) {
             await setupCommands(new TG(latest.BOT_TOKEN), latest.BOT_LOCALE);
+            await setupMiniAppMenu(new TG(latest.BOT_TOKEN), latest.WEBHOOK_URL);
           }
         } catch (e) {
           console.error('refresh commands after settings save failed:', e);
@@ -531,8 +532,9 @@ export async function onRequest({ request, env, waitUntil }) {
       if (!res.ok) return err(t('settings.setupFailed', { error: res.description }));
       // 持久化 Webhook URL 供前端展示
       await db.setSetting('WEBHOOK_URL', webhookUrl);
-      // 注册 Bot 命令列表
+      // 注册 Bot 命令列表 + Mini App 菜单按钮
       await setupCommands(tg, settings.BOT_LOCALE).catch(console.error);
+      await setupMiniAppMenu(tg, webhookUrl).catch(console.error);
       return j({ ok: true, message: t('settings.webhookSetupSuccess') });
     } catch (e) {
       return err(t('settings.setupFailed', { error: e?.message || '' }), 500);
