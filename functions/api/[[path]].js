@@ -500,7 +500,11 @@ export async function onRequest({ request, env, waitUntil }) {
           const latest = await db.getAllSettings();
           if (latest.BOT_TOKEN) {
             await setupCommands(new TG(latest.BOT_TOKEN), latest.BOT_LOCALE);
-            await setupMiniAppMenu(new TG(latest.BOT_TOKEN), latest.WEBHOOK_URL);
+            // 从 WEBHOOK_URL 提取 origin，拼接 Mini App URL
+            if (latest.WEBHOOK_URL) {
+              const origin = new URL(latest.WEBHOOK_URL).origin;
+              await setupMiniAppMenu(new TG(latest.BOT_TOKEN), `${origin}/miniapp/`);
+            }
           }
         } catch (e) {
           console.error('refresh commands after settings save failed:', e);
@@ -532,9 +536,11 @@ export async function onRequest({ request, env, waitUntil }) {
       if (!res.ok) return err(t('settings.setupFailed', { error: res.description }));
       // 持久化 Webhook URL 供前端展示
       await db.setSetting('WEBHOOK_URL', webhookUrl);
-      // 注册 Bot 命令列表 + Mini App 菜单按钮
+      // 注册 Bot 命令列表
       await setupCommands(tg, settings.BOT_LOCALE).catch(console.error);
-      await setupMiniAppMenu(tg, webhookUrl).catch(console.error);
+      // 从 WEBHOOK_URL 提取 origin，拼接 Mini App URL 并设置菜单按钮
+      const miniAppUrl = `${new URL(webhookUrl).origin}/miniapp/`;
+      await setupMiniAppMenu(tg, miniAppUrl).catch(console.error);
       return j({ ok: true, message: t('settings.webhookSetupSuccess') });
     } catch (e) {
       return err(t('settings.setupFailed', { error: e?.message || '' }), 500);

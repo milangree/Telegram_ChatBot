@@ -705,22 +705,23 @@ export async function setupCommands(tg, locale = 'zh-hans') {
   const { userCmds, adminCmds } = getBotCommands(normalized)
   await tg.setMyCommands({ commands: userCmds })
   await tg.setMyCommands({ commands: adminCmds, scope: { type: 'all_private_chats' } })
-  await tg.setChatMenuButton({ menuButton: { type: 'commands' } })
 }
 
 /**
  * 设置 Bot 的 Mini App 菜单按钮。
- * 从 WEBHOOK_URL 提取 Origin，追加 /miniapp/ 作为 Mini App URL。
- * 不传 WEBHOOK_URL 则为空操作（选填，不影响核心功能）。
+ * @param {TG} tg  Telegram Bot 实例
+ * @param {string} miniAppUrl  Mini App 完整 URL（如 https://example.com/miniapp/）
+ * @param {string} [text='打开面板']  菜单按钮文字
+ * @returns {Promise<void>}
  */
-export async function setupMiniAppMenu(tg, webhookUrl) {
-  if (!webhookUrl || typeof webhookUrl !== 'string') return;
+export async function setupMiniAppMenu(tg, miniAppUrl, text = '打开面板') {
+  if (!miniAppUrl || typeof miniAppUrl !== 'string') return;
   try {
-    const origin = new URL(webhookUrl).origin;
-    const url = `${origin}/miniapp/`;
-    await tg.setChatMenuButton({ menuButton: { type: 'web_app', text: '打开面板', web_app: { url } } });
+    await tg.setChatMenuButton({
+      menuButton: { type: 'web_app', text, web_app: { url: miniAppUrl } },
+    });
   } catch {
-    // URL 解析失败时静默跳过，不影响核心流程
+    // 静默跳过，不影响核心流程
   }
 }
 
