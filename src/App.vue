@@ -168,7 +168,7 @@ const themeMode = ref('system')
 const themeMenuOpen = ref(false)
 
 const t = i18n.t
-const windowTelegram = typeof window !== 'undefined' && window.Telegram?.WebApp
+const windowTelegram = ref(false)
 
 let syncLocaleTimer = null
 let systemThemeQuery = null
@@ -289,6 +289,9 @@ async function handleLogout() {
 }
 
 onMounted(async () => {
+  // 在 Telegram Mini App 环境检测，确保 WebView 完全就绪后再判断
+  windowTelegram.value = typeof window !== 'undefined' && !!window.Telegram?.WebApp
+
   const savedMode = localStorage.getItem('theme_mode')
   const legacyTheme = localStorage.getItem('theme')
 
