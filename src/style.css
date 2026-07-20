@@ -624,10 +624,11 @@ button:active{transform:scale(.97)}
 }
 
 /* ── App root + Top navigation ───────────────────────────────────────────── */
-.app-root{display:flex;flex-direction:column;height:100vh;overflow:hidden;background:var(--bg)}
+.app-root{display:flex;flex-direction:column;height:100vh;overflow:hidden;position:relative;background:var(--bg)}
 :root.glass .app-root{background:transparent}
 .topbar{
   position:sticky;top:0;z-index:200;
+  backface-visibility:hidden;
   border-bottom:1px solid var(--border);
   background:
     linear-gradient(180deg, rgba(255,255,255,.04), transparent),
