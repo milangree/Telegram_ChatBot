@@ -43,9 +43,12 @@ api.interceptors.response.use(
     const status = error.response?.status
     const message = error.response?.data?.error || error.message || t('store.api.requestFailed')
 
-    // Cookie 会话下：任意已登录态 401 都视为过期（不再要求 localStorage.token）
+    // Cookie 会话下：仅在确实有过有效会话时标记过期，避免首次打开页面时误提示
     if (status === 401) {
-      markSessionExpired()
+      const hadSession = localStorage.getItem('username') || localStorage.getItem('token')
+      if (hadSession) {
+        markSessionExpired()
+      }
     }
 
     const wrapped = new Error(message)
