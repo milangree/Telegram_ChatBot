@@ -711,10 +711,10 @@ export async function setupCommands(tg, locale = 'zh-hans') {
  * 设置 Bot 的 Mini App 菜单按钮。
  * @param {TG} tg  Telegram Bot 实例
  * @param {string} miniAppUrl  Mini App 完整 URL（如 https://example.com/miniapp/）
- * @param {string} [text='打开面板']  菜单按钮文字
+ * @param {string} [text='面板']  菜单按钮文字
  * @returns {Promise<void>}
  */
-export async function setupMiniAppMenu(tg, miniAppUrl, text = '打开面板') {
+export async function setupMiniAppMenu(tg, miniAppUrl, text = '面板') {
   if (!miniAppUrl || typeof miniAppUrl !== 'string') return;
   try {
     await tg.setChatMenuButton({
