@@ -339,14 +339,6 @@
               <div class="divider"></div>
               <div class="toggle-row">
                 <div>
-                  <div class="toggle-label">{{ t('settings.feature.maxPerMin') }}</div>
-                  <div class="form-hint">{{ t('settings.feature.maxPerMinHint') }}</div>
-                </div>
-                <input v-model.number="form.MAX_MESSAGES_PER_MINUTE" type="number" min="1" max="300" style="width:90px" />
-              </div>
-              <div class="divider"></div>
-              <div class="toggle-row">
-                <div>
                   <div class="toggle-label">{{ t('settings.feature.loginSessionTtl') }}</div>
                   <div class="form-hint">{{ t('settings.feature.loginSessionTtlHint') }}</div>
                 </div>

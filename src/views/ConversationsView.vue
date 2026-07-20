@@ -176,6 +176,8 @@ async function loadConvs() {
     writeLocalCache(CONV_LIST_CACHE_KEY, convs.value)
 
     for (const c of convs.value) tryLoadAvatar(c.user_id)
+  } catch (err) {
+    console.warn('[Conversations] 列表加载失败:', err)
   } finally { loadingList.value = false }
 }
 

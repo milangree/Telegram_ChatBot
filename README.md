@@ -67,7 +67,6 @@
 <details>
 <summary><b>🛡️ 风控系统</b></summary>
 
-- 频率限制（每分钟最大消息数，基于 KV 存储）
 - 封禁 / 解封 / 永久封禁
 - 用户申诉流程（管理员审批）
 - 斜杠命令过滤（`/xxx` 不转发给管理员）
@@ -79,13 +78,12 @@
 <details>
 <summary><b>🖥️ Web 管理后台</b></summary>
 
-- 仪表盘（总用户数、消息统计）
+- 仪表盘（用户数、消息统计、机器人信息）
 - 对话记录浏览
 - 用户管理（封禁/解封/白名单/删除）
 - 白名单管理
 - 完整设置页面（Bot/Webhook/验证/功能/过滤/欢迎/存储）
 - 个人中心（修改密码/用户名/2FA）
-- 登录速率限制（可配置最大尝试次数和锁定时长）
 
 </details>
 
@@ -219,6 +217,10 @@ docker run -d -p 3000:3000 -v data:/app/data telegram-chatbot
 | `D1_FILE` | `/app/data/d1-store.db` | D1 存储 SQLite 路径 |
 | `DATABASE_URL` | — | PostgreSQL / MySQL 连接串 |
 | `ACTIVE_DB` | `kv` | 存储后端：`kv` / `d1` / `hyperdrive` |
+| `COOKIE_SECURE` | `false` | 通过 HTTPS 反向代理时设为 `true` |
+| `KV_PERSIST` | `true` | KV 持久化（Docker 模式建议开启） |
+
+> 完整环境变量列表见 `.env.example` 文件。
 
 ### 使用 PostgreSQL
 
@@ -328,9 +330,8 @@ Cloudflare Pages 部署时，`CAPTCHA_SITE_URL` 会自动从 Webhook URL 提取 
 
 | 配置项 | 默认值 | 说明 |
 |--------|--------|------|
-| `MAX_MESSAGES_PER_MINUTE` | `30` | 每分钟最大消息数（白名单用户不受限） |
 | `AUTO_UNBLOCK_ENABLED` | `true` | 允许封禁用户发起申诉 |
-| `WHITELIST_ENABLED` | `false` | 白名单功能（跳过验证和频率限制） |
+| `WHITELIST_ENABLED` | `false` | 白名单功能（跳过验证） |
 | `BOT_COMMAND_FILTER` | `true` | 过滤 `/xxx` 指令不转发给管理员 |
 | `ADMIN_NOTIFY_ENABLED` | `false` | 管理员私聊消息通知 |
 | `ZALGO_FILTER_ENABLED` | `true` | 过滤 Zalgo 异常文本 |
@@ -357,8 +358,6 @@ Cloudflare Pages 部署时，`CAPTCHA_SITE_URL` 会自动从 Webhook URL 提取 
 | 配置项 | 默认值 | 说明 |
 |--------|--------|------|
 | `LOGIN_SESSION_TTL` | `86400` | WebUI 登录过期时长（秒） |
-| `LOGIN_MAX_ATTEMPTS` | `5` | 登录最大尝试次数（锁定阈值） |
-| `LOGIN_LOCKOUT_SECONDS` | `900` | 登录锁定时长（秒，默认 15 分钟） |
 
 密码使用 PBKDF2（600,000 次迭代 SHA-256）哈希存储，支持 TOTP 两步验证。
 
@@ -390,7 +389,7 @@ Bot 标记用户已验证 → 转发之前的消息给管理员
 
 ### 白名单
 
-白名单用户跳过验证和频率限制，通过 WebUI 或 Bot 命令 `/wl <用户ID>` 添加。
+白名单用户跳过验证，通过 WebUI 或 Bot 命令 `/wl <用户ID>` 添加。
 
 ---
 
@@ -533,8 +532,6 @@ Bot 标记用户已验证 → 转发之前的消息给管理员
 |------|------|
 | 密码哈希 | PBKDF2（600,000 次迭代 SHA-256），兼容旧格式 salt:sha256 |
 | 两步验证 | TOTP（RFC 6238），支持登录页恢复 |
-| 登录速率限制 | 可配置最大尝试次数和锁定时长（默认 5 次/15 分钟） |
-| Bot 频率限制 | 基于 KV 的滑动窗口限制（兼容 CF Workers 多隔离环境） |
 | Webhook 验证 | Secret Token 校验请求来源 |
 | SQL 注入防护 | 所有查询参数化绑定 |
 | 默认管理员 | 首次启动随机密码（日志可见），真实注册后自动禁用 |

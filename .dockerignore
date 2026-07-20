@@ -23,3 +23,7 @@ pnpm-debug.log*
 
 # Docker 数据文件
 data/
+
+.claude/
+.git/
+node_modules/.cache/

@@ -91,8 +91,7 @@ export const useAuthStore = defineStore('auth', () => {
     username.value = data.username
     isAdmin.value = data.isAdmin || false
     sessionReady.value = true
-    // 登录成功后重置失败冷却与缓存，避免后续 checkAuth 被冷却期误判为未登录
-    _checkAuthFailedAt = 0
+    // 登录成功后重置缓存
     _checkAuthCachedOk = true
     _checkAuthCachedAt = Date.now()
     applySession(data, { keepLegacyToken: false })
@@ -142,22 +141,15 @@ export const useAuthStore = defineStore('auth', () => {
     if (!keepNotice) setAuthNotice('')
   }
 
-  // 短缓存 + single-flight + 失败冷却（防 /api/auth/me 401 刷屏）
+  // 短缓存 + single-flight（防 /api/auth/me 401 刷屏）
   let _checkAuthInflight = null
   let _checkAuthCachedAt = 0
   let _checkAuthCachedOk = false
-  let _checkAuthFailedAt = 0
   const CHECK_AUTH_TTL_MS = 15000
-  const CHECK_AUTH_FAIL_COOLDOWN_MS = 20000
-
   async function checkAuth({ force = false } = {}) {
     const now = Date.now()
     if (!force && _checkAuthCachedOk && now - _checkAuthCachedAt < CHECK_AUTH_TTL_MS && sessionReady.value && username.value) {
       return true
-    }
-    // 已确认登录（如刚 _doLogin 成功）则跳过冷却做一次真实校验；仅在未登录态下冷却，避免 401 刷屏
-    if (!force && !sessionReady.value && _checkAuthFailedAt && now - _checkAuthFailedAt < CHECK_AUTH_FAIL_COOLDOWN_MS) {
-      return false
     }
     if (!force && _checkAuthInflight) return _checkAuthInflight
 
@@ -180,7 +172,6 @@ export const useAuthStore = defineStore('auth', () => {
           resetState()
           _checkAuthCachedOk = false
           _checkAuthCachedAt = 0
-          _checkAuthFailedAt = Date.now()
           // 仅在确实有过有效会话时才设"登录已过期"通知；
           // 首次打开页面或刚退出登录时不应提示过期，避免误导用户。
           if (hadSession) {
@@ -213,7 +204,6 @@ export const useAuthStore = defineStore('auth', () => {
         localStorage.setItem('isAdmin', String(!!data.isAdmin))
         _checkAuthCachedOk = true
         _checkAuthCachedAt = Date.now()
-        _checkAuthFailedAt = 0
         return true
       } catch (error) {
         // 非 401 错误：弱网时若已有用户名则暂视为登录

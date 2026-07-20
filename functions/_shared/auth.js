@@ -191,53 +191,7 @@ export const j = (d, s = 200) => new Response(JSON.stringify(d), {
 
 export const err = (m, s = 400) => j({ error: m }, s);
 
-// ── 登录速率限制 ────────────────────────────────────────────────────────────
-const DEFAULT_LOGIN_MAX_ATTEMPTS = 5;
-const DEFAULT_LOGIN_LOCKOUT_SECONDS = 900;
-
-/** 检查登录是否被锁定 */
-export async function checkLoginRateLimit(kv, username, maxAttempts, lockoutSeconds) {
-  const maxAtt = maxAttempts || DEFAULT_LOGIN_MAX_ATTEMPTS;
-  const key = `login_fail:${(username || '').toLowerCase()}`;
-  const raw = await kv.get(key);
-  if (!raw) return { locked: false, remaining: maxAtt, count: 0 };
-  let data;
-  try { data = JSON.parse(raw); } catch { return { locked: false, remaining: maxAtt, count: 0 }; }
-  // 锁定期已过：清零计数，避免过期后一次失败立刻再锁
-  if (data.exp && data.exp <= Date.now()) {
-    await kv.delete(key).catch(() => {});
-    return { locked: false, remaining: maxAtt, count: 0 };
-  }
-  if (data.count >= maxAtt && data.exp > Date.now()) {
-    return { locked: true, remaining: 0, retryAfter: Math.ceil((data.exp - Date.now()) / 1000), count: data.count };
-  }
-  return { locked: false, remaining: Math.max(0, maxAtt - (data.count || 0)), count: data.count || 0 };
-}
-
-/** 记录一次登录失败 */
-export async function recordLoginFailure(kv, username, lockoutSeconds) {
-  const lockout = lockoutSeconds || DEFAULT_LOGIN_LOCKOUT_SECONDS;
-  const key = `login_fail:${(username || '').toLowerCase()}`;
-  const raw = await kv.get(key);
-  let data = { count: 0, exp: 0 };
-  if (raw) {
-    try {
-      data = JSON.parse(raw);
-      // 过期后重新计数
-      if (data.exp && data.exp <= Date.now()) data = { count: 0, exp: 0 };
-    } catch {
-      data = { count: 0, exp: 0 };
-    }
-  }
-  data.count = (data.count || 0) + 1;
-  data.exp = Date.now() + lockout * 1000;
-  await kv.put(key, JSON.stringify(data), { expirationTtl: lockout + 10 });
-}
-
-/** 清除登录失败计数（登录成功时调用） */
-export async function clearLoginFailures(kv, username) {
-  await kv.delete(`login_fail:${(username || '').toLowerCase()}`).catch(() => {});
-}
+// ── 登录速率限制已移除 ─────────────────────────────────────────────────────
 
 // ── Telegram Web App initData 验签 ──────────────────────────────────────
 

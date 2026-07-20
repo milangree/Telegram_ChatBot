@@ -111,7 +111,8 @@ export async function onRequest({ request, env, waitUntil }) {
         headers: { ...CORS, 'Content-Type': 'application/json', 'Set-Cookie': cookie(token, sessionTtl, { secure: isSecureRequest(request) }) },
       });
     } catch (e) {
-      return err(t('auth.registerFailed', { error: e.message }), 500);
+      console.error('[API Error] auth.registerFailed:', e.message);
+      return err(t('auth.registerFailed'), 500);
     }
   }
 
@@ -162,7 +163,8 @@ export async function onRequest({ request, env, waitUntil }) {
         headers: { ...CORS, 'Content-Type': 'application/json', 'Set-Cookie': cookie(token, sessionTtl, { secure: isSecureRequest(request) }) },
       });
     } catch (e) {
-      return err(t('auth.loginFailed', { error: e.message }), 500);
+      console.error('[API Error] auth.loginFailed:', e.message);
+      return err(t('auth.loginFailed'), 500);
     }
   }
 
@@ -469,7 +471,7 @@ export async function onRequest({ request, env, waitUntil }) {
       const allowed = [
         'BOT_TOKEN', 'FORUM_GROUP_ID', 'ADMIN_IDS',
         'VERIFICATION_ENABLED', 'VERIFICATION_TIMEOUT', 'MAX_VERIFICATION_ATTEMPTS',
-        'AUTO_UNBLOCK_ENABLED', 'MAX_MESSAGES_PER_MINUTE',
+        'AUTO_UNBLOCK_ENABLED',
         'INLINE_KB_MSG_DELETE_ENABLED', 'INLINE_KB_MSG_DELETE_SECONDS',
         'USER_MSG_DELETE_SECONDS',
         'CAPTCHA_TYPE', 'CAPTCHA_SITE_URL',
@@ -507,7 +509,10 @@ export async function onRequest({ request, env, waitUntil }) {
         : previousBotToken;
       if (botTokenChanged && previousBotToken && previousBotToken !== nextBotToken) {
         try {
-          await new TG(previousBotToken).deleteWebhook({ dropPendingUpdates: false });
+          const webhookResult = await new TG(previousBotToken).deleteWebhook({ dropPendingUpdates: false });
+          if (!webhookResult?.ok) {
+            console.error('delete old webhook after bot token change failed:', webhookResult);
+          }
         } catch (e) {
           console.error('delete old webhook after bot token change failed:', e);
         }
@@ -558,7 +563,8 @@ export async function onRequest({ request, env, waitUntil }) {
       await setupMiniAppMenu(tg, miniAppUrl).catch(console.error);
       return j({ ok: true, message: t('settings.webhookSetupSuccess') });
     } catch (e) {
-      return err(t('settings.setupFailed', { error: e?.message || '' }), 500);
+      console.error('[API Error] settings.setupFailed:', e?.message || '');
+      return err(t('settings.setupFailed'), 500);
     }
   }
 
@@ -595,7 +601,8 @@ export async function onRequest({ request, env, waitUntil }) {
       await db.switchDb(target);
       return j({ ok: true, active: target });
     } catch (e) {
-      return err(t('settings.switchFailed', { error: e.message }), 500);
+      console.error('[API Error] settings.switchFailed:', e.message);
+      return err(t('settings.switchFailed'), 500);
     }
   }
 
@@ -613,7 +620,8 @@ export async function onRequest({ request, env, waitUntil }) {
       await db.clearAppDataPreserveWebUsers();
       return j({ ok: true });
     } catch (e) {
-      return err(t('settings.clearDataFailed', { error: e.message }), 500);
+      console.error('[API Error] settings.clearDataFailed:', e.message);
+      return err(t('settings.clearDataFailed'), 500);
     }
   }
 
@@ -640,7 +648,8 @@ export async function onRequest({ request, env, waitUntil }) {
         },
       });
     } catch (e) {
-      return err(t('settings.sqlExportFailed', { error: e.message }), 500);
+      console.error('[API Error] settings.sqlExportFailed:', e.message);
+      return err(t('settings.sqlExportFailed'), 500);
     }
   }
 
@@ -680,7 +689,8 @@ export async function onRequest({ request, env, waitUntil }) {
 
       return j({ ok: true, active });
     } catch (e) {
-      return err(t('settings.sqlImportFailed', { error: e.message }), 500);
+      console.error('[API Error] settings.sqlImportFailed:', e.message);
+      return err(t('settings.sqlImportFailed'), 500);
     }
   }
 
@@ -879,7 +889,8 @@ export async function onRequest({ request, env, waitUntil }) {
 
       return j({ ok: true, reVerifyRequired: !(await db.isWhitelisted(uid)) });
     } catch (e) {
-      return err(t('conversations.deleteFailed', { error: e.message }), 500);
+      console.error('[API Error] conversations.deleteFailed:', e.message);
+      return err(t('conversations.deleteFailed'), 500);
     }
   }
 
@@ -993,6 +1004,19 @@ async function ensureMiniAppMenu(kv, db) {
   await kv.put('miniapp_menu_set', '1', { expirationTtl: 864000 }).catch(() => {});
 }
 
+/**
+ * 简单的 HTML 转义，防止 siteKey 等动态内容中的 XSS
+ */
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function buildVerifyPage(captchaType, siteKey, error, origin, webVerifyId) {
   const isTurnstile = captchaType === 'turnstile';
   const isRecaptcha = captchaType === 'recaptcha';
@@ -1004,19 +1028,19 @@ function buildVerifyPage(captchaType, siteKey, error, origin, webVerifyId) {
     : isRecaptcha
       ? 'https://www.google.com/recaptcha/api.js'
       : isRecaptchaV3
-        ? 'https://www.google.com/recaptcha/api.js?render=' + siteKey
+        ? 'https://www.google.com/recaptcha/api.js?render=' + encodeURIComponent(siteKey)
         : isHcaptcha
           ? 'https://js.hcaptcha.com/1/api.js'
           : '';
 
   const widgetHtml = isTurnstile
-    ? '<div class="cf-turnstile" data-sitekey="' + siteKey + '" data-callback="onVerify"></div>'
+    ? '<div class="cf-turnstile" data-sitekey="' + escapeHtml(siteKey) + '" data-callback="onVerify"></div>'
     : isRecaptcha
-      ? '<div class="g-recaptcha" data-sitekey="' + siteKey + '" data-callback="onVerify"></div>'
+      ? '<div class="g-recaptcha" data-sitekey="' + escapeHtml(siteKey) + '" data-callback="onVerify"></div>'
       : isRecaptchaV3
         ? '<div id="v3-status" class="desc">正在自动验证…</div>'
         : isHcaptcha
-          ? '<div class="h-captcha" data-sitekey="' + siteKey + '" data-callback="onVerify"></div>'
+          ? '<div class="h-captcha" data-sitekey="' + escapeHtml(siteKey) + '" data-callback="onVerify"></div>'
           : '';
 
   const scriptTag = scriptSrc
@@ -1100,7 +1124,7 @@ function buildVerifyPage(captchaType, siteKey, error, origin, webVerifyId) {
         + '      return;\n'
         + '    }\n'
         + '    grecaptcha.ready(function() {\n'
-        + '      grecaptcha.execute("' + siteKey + '", { action: "verify" }).then(function(token) {\n'
+        + '      grecaptcha.execute("' + escapeHtml(siteKey) + '", { action: "verify" }).then(function(token) {\n'
         + '        v3Submit(token);\n'
         + '      }).catch(function() {\n'
         + '        var s = document.getElementById("v3-status");\n'

@@ -67,7 +67,6 @@ All verification methods support:
 <details>
 <summary><b>🛡️ Moderation</b></summary>
 
-- Rate limiting (max messages per minute, KV-based sliding window)
 - Ban / unban / permanent ban
 - User appeal flow (admin approval)
 - Slash command filter (`/xxx` commands not forwarded to admin)
@@ -79,13 +78,12 @@ All verification methods support:
 <details>
 <summary><b>🖥️ Web Admin Panel</b></summary>
 
-- Dashboard (total users, message statistics)
+- Dashboard (total users, message statistics, bot info)
 - Conversation history
 - User management (ban/unblock/whitelist/delete)
 - Whitelist management
 - Full settings page (Bot/Webhook/Verification/Features/Filters/Welcome/Storage)
 - Profile (change password/username/2FA)
-- Login rate limiting (configurable max attempts and lockout duration)
 
 </details>
 
@@ -219,6 +217,10 @@ docker run -d -p 3000:3000 -v data:/app/data telegram-chatbot
 | `D1_FILE` | `/app/data/d1-store.db` | D1 storage SQLite path |
 | `DATABASE_URL` | — | PostgreSQL / MySQL connection string |
 | `ACTIVE_DB` | `kv` | Storage backend: `kv` / `d1` / `hyperdrive` |
+| `COOKIE_SECURE` | `false` | Set to `true` behind HTTPS reverse proxy |
+| `KV_PERSIST` | `true` | KV persistence (recommended for Docker) |
+
+> See `.env.example` for the full list of environment variables.
 
 ### Using PostgreSQL
 
@@ -328,9 +330,8 @@ On Cloudflare Pages, `CAPTCHA_SITE_URL` is auto-filled from the Webhook URL orig
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `MAX_MESSAGES_PER_MINUTE` | `30` | Max messages per user per minute (whitelist exempt) |
 | `AUTO_UNBLOCK_ENABLED` | `true` | Allow banned users to appeal |
-| `WHITELIST_ENABLED` | `false` | Whitelist feature (skip verification & rate limit) |
+| `WHITELIST_ENABLED` | `false` | Whitelist feature (skip verification) |
 | `BOT_COMMAND_FILTER` | `true` | Filter `/xxx` commands from forwarding |
 | `ADMIN_NOTIFY_ENABLED` | `false` | Admin DM notifications |
 | `ZALGO_FILTER_ENABLED` | `true` | Filter Zalgo abnormal text |
@@ -357,8 +358,6 @@ On Cloudflare Pages, `CAPTCHA_SITE_URL` is auto-filled from the Webhook URL orig
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `LOGIN_SESSION_TTL` | `86400` | WebUI login expiration (seconds) |
-| `LOGIN_MAX_ATTEMPTS` | `5` | Max login attempts before lockout |
-| `LOGIN_LOCKOUT_SECONDS` | `900` | Lockout duration (seconds, default 15 min) |
 
 Passwords stored with PBKDF2 (600,000 iterations SHA-256). TOTP two-factor authentication supported.
 
@@ -390,7 +389,7 @@ Subsequent messages forwarded directly, no re-verification needed
 
 ### Whitelist
 
-Whitelisted users skip verification and rate limiting. Add via WebUI or bot command `/wl <userID>`.
+Whitelisted users skip verification. Add via WebUI or bot command `/wl <userID>`.
 
 ---
 
@@ -533,8 +532,6 @@ Three modes supported:
 |-----------|-------------|
 | Password Hashing | PBKDF2 (600,000 iterations SHA-256), backward-compatible with legacy salt:sha256 |
 | Two-Factor Auth | TOTP (RFC 6238), login page recovery supported |
-| Login Rate Limiting | Configurable max attempts and lockout duration (default 5 attempts / 15 min) |
-| Bot Rate Limiting | KV-based sliding window (compatible with CF Workers multi-isolate) |
 | Webhook Verification | Secret Token header validation |
 | SQL Injection Prevention | All queries use parameterized bindings |
 | Default Admin | Random password on first boot (printed in logs); auto-disabled after real registration |

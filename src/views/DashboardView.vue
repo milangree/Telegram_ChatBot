@@ -181,6 +181,8 @@ async function load(force = false) {
     writeLocalCache(DASHBOARD_BOT_CACHE_KEY, bot.value)
 
     for (const c of convs.value) tryLoadAvatar(c.user_id)
+  } catch (err) {
+    console.warn('[Dashboard] 数据加载失败:', err)
   } finally { loading.value = false }
 }
 

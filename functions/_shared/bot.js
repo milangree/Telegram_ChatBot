@@ -121,18 +121,7 @@ function scheduleVerifyTimeout({ waitUntil, tg, db, kv, userId, timeout, verifyM
   }
 }
 
-// ── 频率限制（基于 KV，兼容 CF Workers 多隔离环境）──────────────────────────
-async function rateCheck(kv, uid, max) {
-  const key = `rate:${uid}`;
-  const now = Date.now();
-  const raw = await kv.get(key).catch(() => null);
-  const ts = raw ? JSON.parse(raw).filter(t => now - t < 60000) : [];
-  if (ts.length >= max) return true;
-  ts.push(now);
-  await kv.put(key, JSON.stringify(ts), { expirationTtl: 70 }).catch(() => {});
-  return false;
-}
-
+// ── 频率限制已移除 ───────────────────────────────────────────────────────────
 function parseBoundedInt(raw, fallback, min, max) {
   const n = parseInt(raw, 10);
   if (Number.isNaN(n)) return fallback;
@@ -930,11 +919,6 @@ async function handleMsg(msg, { tg, db, kv, settings, baseUrl, t, waitUntil }) {
   const whitelisted = settings.WHITELIST_ENABLED === 'true' && await db.isWhitelisted(user.id);
 
   if (!whitelisted) {
-    const maxRate = parseInt(settings.MAX_MESSAGES_PER_MINUTE || '30', 10);
-    if (await rateCheck(kv, user.id, maxRate)) {
-      await tg.sendMsg({ chatId: user.id, text: t('rateLimit') });
-      return;
-    }
 
     // ── Verification ──────────────────────────────────────────────────────
     if (settings.VERIFICATION_ENABLED === 'true' && !dbUser?.is_verified) {

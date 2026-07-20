@@ -337,6 +337,8 @@ onMounted(async () => {
   if (!auth.isLoggedIn && telegramInitData) {
     try {
       await auth.telegramLogin(telegramInitData)
+      // Telegram 自动登录成功后跳转到仪表盘
+      router.replace('/')
     } catch {
       // 非管理员或验签失败，静默保留未登录状态，显示登录页
     }
