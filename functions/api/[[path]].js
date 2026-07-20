@@ -926,9 +926,11 @@ function isSecureRequest(request) {
   // Cloudflare / 反向代理常见头
   const proto = request.headers.get('x-forwarded-proto') || request.headers.get('cf-visitor') || '';
   if (String(proto).toLowerCase().includes('https')) return true;
-  // Node 生产环境
+  // 仅在显式配置 COOKIE_SECURE=1 时附加 Secure（Docker 经 HTTPS 反向代理时手动开启）
+  // 注意：不要用 NODE_ENV=production 推断 —— Docker 直连 HTTP 时这会让 Cookie 带上 Secure，
+  // 浏览器在 HTTP 下不会回传 Secure Cookie，导致 /api/auth/me 持续 401 死循环。
   try {
-    if (typeof process !== 'undefined' && process?.env && (process.env.NODE_ENV === 'production' || process.env.COOKIE_SECURE === '1')) {
+    if (typeof process !== 'undefined' && process?.env && process.env.COOKIE_SECURE === '1') {
       return true;
     }
   } catch { /* noop */ }
