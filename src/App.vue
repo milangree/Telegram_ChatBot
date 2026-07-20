@@ -317,13 +317,26 @@ onMounted(async () => {
   document.addEventListener('click', closeThemeMenu)
   window.addEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired)
 
-  // Telegram Web App 自动登录：检测 Telegram 环境，用 initData 免密登录
-  const shouldTelegramLogin = !auth.isLoggedIn
-    && typeof window !== 'undefined'
-    && window.Telegram?.WebApp?.initData
-  if (shouldTelegramLogin) {
+  // Telegram Web App 自动登录
+  // 在 Telegram Mini App 中，initData 由客户端注入，可能稍晚于模块加载
+  // 等待一小段时间确保 WebApp 完全就绪后再提取 initData
+  const telegramInitData = await new Promise(resolve => {
+    if (typeof window !== 'undefined' && window.Telegram?.WebApp?.initData) {
+      resolve(window.Telegram.WebApp.initData)
+    } else {
+      // 给 Telegram 客户端 200ms 注入时间，避免竞态
+      setTimeout(() => {
+        if (typeof window !== 'undefined' && window.Telegram?.WebApp?.initData) {
+          resolve(window.Telegram.WebApp.initData)
+        } else {
+          resolve(null)
+        }
+      }, 200)
+    }
+  })
+  if (!auth.isLoggedIn && telegramInitData) {
     try {
-      await auth.telegramLogin(window.Telegram.WebApp.initData)
+      await auth.telegramLogin(telegramInitData)
     } catch {
       // 非管理员或验签失败，静默保留未登录状态，显示登录页
     }

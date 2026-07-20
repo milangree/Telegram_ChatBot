@@ -120,7 +120,7 @@ export async function onRequest({ request, env, waitUntil }) {
     const parsedBody = await request.json().catch(() => ({}));
     // 检测 Telegram Web App 登录（带 initData）
     if (parsedBody.initData && !parsedBody.username) {
-      return handleTelegramLogin(parsedBody.initData, db, kv, t);
+      return handleTelegramLogin(parsedBody.initData, db, kv, t, request);
     }
 
     try {
@@ -941,7 +941,7 @@ function isSecureRequest(request) {
  * 处理 Telegram Web App 免密登录。
  * 验签 initData → 校验 ADMIN_IDS → 影子 web_user → Cookie 会话。
  */
-async function handleTelegramLogin(initData, db, kv, t) {
+async function handleTelegramLogin(initData, db, kv, t, request) {
   try {
     const botToken = await db.getSetting('BOT_TOKEN');
     if (!botToken) return err(t('kvNotBound'), 500);
