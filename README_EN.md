@@ -121,6 +121,8 @@ docker compose up -d
 
 Visit `http://localhost:3000`. On first boot a temporary admin `admin` is created; **the random password is printed in the server logs** (log in immediately and complete first-time registration to disable the default account).
 
+To set a specific admin password on first boot (avoid checking logs), add `ADMIN_USERNAME` and `ADMIN_PASSWORD` environment variables in `docker-compose.yml` — see the "Environment Variables" table below for details.
+
 ### Setup Order
 
 1. Login to WebUI → **Change password** → Enable **2FA**
@@ -219,6 +221,8 @@ docker run -d -p 3000:3000 -v data:/app/data telegram-chatbot
 | `ACTIVE_DB` | `kv` | Storage backend: `kv` / `d1` / `hyperdrive` |
 | `COOKIE_SECURE` | `false` | Set to `true` behind HTTPS reverse proxy |
 | `KV_PERSIST` | `true` | KV persistence (recommended for Docker) |
+| `ADMIN_USERNAME` | `admin` | Initial admin username (Docker/VPS, effective on first boot) |
+| `ADMIN_PASSWORD` | — | Initial admin password (not printed in logs when set, supports password sync on restart) |
 
 > See `.env.example` for the full list of environment variables.
 

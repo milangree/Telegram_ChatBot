@@ -121,6 +121,8 @@ docker compose up -d
 
 访问 `http://localhost:3000`。首次启动会创建临时管理员 `admin`，**随机密码会打印在服务端日志**（请立即登录并完成首次注册以禁用默认账号）。
 
+如需在首次启动时指定管理员密码（避免查看日志），可在 `docker-compose.yml` 的 environment 中添加 `ADMIN_USERNAME` 和 `ADMIN_PASSWORD` 环境变量，详情见下方"环境变量"表格。
+
 ### 配置顺序
 
 1. 登录 WebUI → **修改密码** → 开启 **2FA**
@@ -219,6 +221,8 @@ docker run -d -p 3000:3000 -v data:/app/data telegram-chatbot
 | `ACTIVE_DB` | `kv` | 存储后端：`kv` / `d1` / `hyperdrive` |
 | `COOKIE_SECURE` | `false` | 通过 HTTPS 反向代理时设为 `true` |
 | `KV_PERSIST` | `true` | KV 持久化（Docker 模式建议开启） |
+| `ADMIN_USERNAME` | `admin` | 初始管理员用户名（Docker/VPS 部署，首次启动有效） |
+| `ADMIN_PASSWORD` | — | 初始管理员密码（设置后密码不打印在日志中，支持重启时修改密码） |
 
 > 完整环境变量列表见 `.env.example` 文件。
 

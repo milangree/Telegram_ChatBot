@@ -1,4 +1,4 @@
-const messages = {
+﻿const messages = {
   "app.title": "Bot 管理",
   "app.mainMenu": "主選單",
   "app.toggleLight": "切換亮色",
@@ -313,10 +313,6 @@ const messages = {
   "settings.feature.zalgoFilterHint": "清理含有大量組合附加符號的異常暱稱與文字，避免內容顯示錯亂或污染介面",
   "settings.feature.loginSessionTtl": "登入過期時長（秒）",
   "settings.feature.loginSessionTtlHint": "超過此時長後，WebUI 需重新登入。最小 300 秒，最大 2592000 秒。",
-  "settings.feature.loginMaxAttempts": "登入最大嘗試次數",
-  "settings.feature.loginMaxAttemptsHint": "連續失敗達上限後鎖定帳號。範圍 1-50 次。",
-  "settings.feature.loginLockout": "登入鎖定時長（秒）",
-  "settings.feature.loginLockoutHint": "鎖定期間拒絕所有登入嘗試。範圍 60-86400 秒。",
   "settings.feature.inlineKbDeleteEnable": "啟用帶按鈕訊息自動撤回",
   "settings.feature.inlineKbDeleteEnableHint": "關閉後，不會自動撤回帶內聯按鈕的訊息。",
   "settings.feature.inlineKbDelete": "帶按鈕訊息自動撤回（秒）",

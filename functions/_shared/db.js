@@ -134,21 +134,43 @@ export class DB {
       if (this._d1) await this._d1.initSchema().catch(e => console.error('D1 initSchema:', e))
       if (this._hyperdrive) await this._hyperdrive.initSchema().catch(e => console.error('Hyperdrive initSchema:', e))
 
+      // 读取环境变量（用于 Docker/VPS 部署），仅在 Node.js 环境下有效
+      const envAdminUsername = typeof process !== 'undefined' && process.env?.ADMIN_USERNAME
+      const envAdminPassword = typeof process !== 'undefined' && process.env?.ADMIN_PASSWORD
+
+      if (envAdminPassword && envAdminPassword.length < 6) {
+        console.warn('[SECURITY] ADMIN_PASSWORD 长度不足 6 位，忽略环境变量')
+      }
+
       // Only create default if no real admin exists yet
       const count = await this.webUserCount()
       if (count === 0) {
         const { genToken } = await import('./auth.js')
-        // 使用随机口令，避免固定弱口令 admin/admins 被公网扫描直接接管
-        const tempPassword = genToken(20)
-        await this.createWebUser('admin', await hashPw(tempPassword))
+        // 优先使用环境变量指定的管理员账号，否则使用随机密码
+        const username = envAdminUsername || 'admin'
+        const password = envAdminPassword || genToken(20)
+
+        await this.createWebUser(username, await hashPw(password))
         // Mark as "default" so we can disable it after real registration
         await this.kv.put('auth:has_default_admin', '1')
+
         console.warn('='.repeat(60))
-        console.warn('[SECURITY] 已创建临时默认管理员（首次启动）')
-        console.warn(`[SECURITY] 用户名: admin`)
-        console.warn(`[SECURITY] 临时密码: ${tempPassword}`)
-        console.warn('[SECURITY] 请立即登录后台完成首次注册，或修改密码。该账号会在真实注册后禁用。')
+        console.warn('[SECURITY] 已创建初始管理员（首次启动）')
+        console.warn(`[SECURITY] 用户名: ${username}`)
+        if (envAdminPassword) {
+          console.warn('[SECURITY] 密码: 使用环境变量 ADMIN_PASSWORD（已隐藏，不会明文打印）')
+        } else {
+          console.warn(`[SECURITY] 临时密码: ${password}`)
+          console.warn('[SECURITY] 请立即登录后台完成首次注册，或修改密码。该账号会在真实注册后禁用。')
+        }
         console.warn('='.repeat(60))
+      } else if (envAdminUsername && envAdminPassword && envAdminPassword.length >= 6) {
+        // 非首次启动但指定了 ADMIN_USERNAME + ADMIN_PASSWORD：同步密码
+        const user = await this.getWebUser(envAdminUsername)
+        if (user) {
+          await this.updateWebUserPassword(user.id, await hashPw(envAdminPassword))
+          console.log(`[SECURITY] 已同步管理员 ${envAdminUsername} 的密码（通过环境变量 ADMIN_PASSWORD）`)
+        }
       }
     } catch (e) { console.error('ensureDefaultAdmin:', e) }
   }

@@ -1,4 +1,4 @@
-const messages = {
+﻿const messages = {
   "app.title": "Bot Admin",
   "app.mainMenu": "Main Menu",
   "app.toggleLight": "Switch to Light",
@@ -325,10 +325,6 @@ const messages = {
   "settings.feature.zalgoFilterHint": "Clean names and messages containing excessive combining marks to avoid garbled display and UI pollution",
   "settings.feature.loginSessionTtl": "Login session expiration (seconds)",
   "settings.feature.loginSessionTtlHint": "After this duration, WebUI users must sign in again. Min 300 seconds, max 2592000 seconds.",
-  "settings.feature.loginMaxAttempts": "Max login attempts",
-  "settings.feature.loginMaxAttemptsHint": "Lock account after this many consecutive failures. Range: 1-50.",
-  "settings.feature.loginLockout": "Login lockout duration (seconds)",
-  "settings.feature.loginLockoutHint": "Reject all login attempts during lockout. Range: 60-86400 seconds.",
   "settings.feature.inlineKbDeleteEnable": "Enable auto delete for button messages",
   "settings.feature.inlineKbDeleteEnableHint": "When disabled, messages with inline buttons will not be auto-deleted.",
   "settings.feature.inlineKbDelete": "Auto delete button messages (seconds)",

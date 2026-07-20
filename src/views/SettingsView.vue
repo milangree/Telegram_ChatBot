@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="page">
     <div class="page-header">
       <h2 class="page-title page-title-with-icon">
@@ -343,21 +343,6 @@
                   <div class="form-hint">{{ t('settings.feature.loginSessionTtlHint') }}</div>
                 </div>
                 <input v-model.number="form.LOGIN_SESSION_TTL" type="number" min="300" max="2592000" style="width:110px" @change="clampLoginSessionTtl" />
-              </div>
-              <div class="divider"></div>
-              <div class="toggle-row">
-                <div>
-                  <div class="toggle-label">{{ t('settings.feature.loginMaxAttempts') }}</div>
-                  <div class="form-hint">{{ t('settings.feature.loginMaxAttemptsHint') }}</div>
-                </div>
-                <input v-model.number="form.LOGIN_MAX_ATTEMPTS" type="number" min="1" max="50" style="width:90px" />
-              </div>
-              <div class="toggle-row">
-                <div>
-                  <div class="toggle-label">{{ t('settings.feature.loginLockout') }}</div>
-                  <div class="form-hint">{{ t('settings.feature.loginLockoutHint') }}</div>
-                </div>
-                <input v-model.number="form.LOGIN_LOCKOUT_SECONDS" type="number" min="60" max="86400" style="width:110px" />
               </div>
               <div class="divider"></div>
               <div class="toggle-row">

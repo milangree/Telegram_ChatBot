@@ -1,4 +1,4 @@
-// functions/api/[[path]].js
+﻿// functions/api/[[path]].js
 import { DB } from '../_shared/db.js';
 import { TG } from '../_shared/tg.js';
 import { CORS, j, err, hashPw, verifyPw, createSession, getSession, delSession, delSessionsForUser, extractToken, genToken, verifyInitData } from '../_shared/auth.js';
@@ -482,7 +482,6 @@ export async function onRequest({ request, env, waitUntil }) {
         'WELCOME_ENABLED', 'WELCOME_MESSAGE', 'BOT_COMMAND_FILTER', 'WHITELIST_ENABLED',
         'ADMIN_NOTIFY_ENABLED',
         'LOGIN_SESSION_TTL',
-        'LOGIN_MAX_ATTEMPTS', 'LOGIN_LOCKOUT_SECONDS',
         'BOT_LOCALE',
         'ZALGO_FILTER_ENABLED',
         'MESSAGE_FILTER_RULES',

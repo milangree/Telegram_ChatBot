@@ -1,4 +1,4 @@
-const messages = {
+﻿const messages = {
   "app.title": "Bot 管理",
   "app.mainMenu": "主菜单",
   "app.toggleLight": "切换亮色",
@@ -325,10 +325,6 @@ const messages = {
   "settings.feature.zalgoFilterHint": "清理带有大量组合附加符号的异常昵称和文本，避免内容显示错乱或污染界面",
   "settings.feature.loginSessionTtl": "登录过期时长（秒）",
   "settings.feature.loginSessionTtlHint": "达到时长后 WebUI 需重新登录，最小 300 秒，最大 2592000 秒。",
-  "settings.feature.loginMaxAttempts": "登录最大尝试次数",
-  "settings.feature.loginMaxAttemptsHint": "连续失败达上限后锁定账号。范围 1-50 次。",
-  "settings.feature.loginLockout": "登录锁定时长（秒）",
-  "settings.feature.loginLockoutHint": "锁定期间拒绝所有登录尝试。范围 60-86400 秒。",
   "settings.feature.inlineKbDeleteEnable": "启用带按钮消息自动撤回",
   "settings.feature.inlineKbDeleteEnableHint": "关闭后不会自动撤回带内联按钮的消息。",
   "settings.feature.inlineKbDelete": "带按钮消息自动撤回（秒）",

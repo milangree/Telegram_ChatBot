@@ -18,6 +18,15 @@ services:
     environment:
       - PORT=3000
       - NODE_ENV=production
+      # 初始管理员账号（可选，仅首次启动有效）
+      # 设置后使用指定密码创建初始管理员，密码不会打印在日志中
+      # - ADMIN_USERNAME=admin
+      # - ADMIN_PASSWORD=your_secure_password
+      #
+      # 修改管理员密码（重启时检测）
+      # 如果 ADMIN_USERNAME 和 ADMIN_PASSWORD 已设置，每次重启会同步密码
+      # - ADMIN_USERNAME=admin
+      # - ADMIN_PASSWORD=new_password
       # 存储配置 — 默认使用 KV（SQLite 文件）
       - KV_FILE=/app/data/kv-store.db
       - D1_FILE=/app/data/d1-store.db
