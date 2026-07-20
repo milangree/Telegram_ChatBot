@@ -67,7 +67,6 @@
           </RouterLink>
 
           <button
-            v-if="!windowTelegram"
             class="btn-icon logout-btn"
             @click="handleLogout"
             :title="t('app.logout')"
@@ -167,8 +166,13 @@ const routeReady = ref(false)
 const themeMode = ref('system')
 const themeMenuOpen = ref(false)
 
+// 在模块加载时立即检测 Telegram Mini App 环境（先于模板渲染），
+// 通过 CSS 类名隐藏退出按钮，避免依赖 Vue 响应式时序。
+if (typeof window !== 'undefined' && window.Telegram?.WebApp) {
+  document.documentElement.classList.add('tg')
+}
+
 const t = i18n.t
-const windowTelegram = ref(false)
 
 let syncLocaleTimer = null
 let systemThemeQuery = null
@@ -289,9 +293,6 @@ async function handleLogout() {
 }
 
 onMounted(async () => {
-  // 在 Telegram Mini App 环境检测，确保 WebView 完全就绪后再判断
-  windowTelegram.value = typeof window !== 'undefined' && !!window.Telegram?.WebApp
-
   const savedMode = localStorage.getItem('theme_mode')
   const legacyTheme = localStorage.getItem('theme')
 

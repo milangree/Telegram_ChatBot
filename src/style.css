@@ -719,6 +719,8 @@ a.user-chip:hover .user-name{color:var(--text)}
 }
 .logout-btn{color:var(--danger)!important}
 .logout-btn:hover{background:rgba(247,79,79,.12)!important;color:var(--danger-h)!important}
+/* Telegram Mini App 环境强制隐藏退出按钮 */
+:root.tg .logout-btn{display:none!important}
 :root.glass .lang-select{
   background:
     linear-gradient(180deg, rgba(255,255,255,.1), rgba(255,255,255,.03)),
