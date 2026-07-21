@@ -28,6 +28,9 @@ RUN npm install --production && \
 # 复制服务端代码
 COPY server/ ./server/
 
+# 复制运维脚本（管理员恢复 CLI）
+COPY scripts/ ./scripts/
+
 # 复制 Cloudflare Functions 代码（被 server 动态导入）
 COPY functions/ ./functions/
 

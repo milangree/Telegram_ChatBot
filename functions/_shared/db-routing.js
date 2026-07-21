@@ -33,7 +33,7 @@ export async function resolveActiveDb({ kv, d1Store, hyperdriveStore }) {
   return 'kv'
 }
 
-export async function autoRepairDb({ kv, kvStore, d1Store, hyperdriveStore }, force = false) {
+export async function autoRepairDb({ kv, kvStore, d1Store, hyperdriveStore }, force = false, preferredDb = null) {
   const now = Date.now()
   if (!force && now - localAutoRepairAt < 60000) return
   localAutoRepairAt = now
@@ -54,15 +54,16 @@ export async function autoRepairDb({ kv, kvStore, d1Store, hyperdriveStore }, fo
     }
 
     for (const [key, defVal] of Object.entries(DEFAULT_SETTINGS)) {
+      const value = key === 'ACTIVE_DB' && preferredDb ? preferredDb : defVal
       const vKv = await kvStore.getSetting(key)
-      if (vKv === null) await kvStore.setSetting(key, defVal)
+      if (vKv === null) await kvStore.setSetting(key, value)
       if (d1Store) {
         const vD1 = await d1Store.getSetting(key)
-        if (vD1 === null) await d1Store.setSetting(key, defVal)
+        if (vD1 === null) await d1Store.setSetting(key, value)
       }
       if (hyperdriveStore) {
         const vHd = await hyperdriveStore.getSetting(key)
-        if (vHd === null) await hyperdriveStore.setSetting(key, defVal)
+        if (vHd === null) await hyperdriveStore.setSetting(key, value)
       }
     }
 

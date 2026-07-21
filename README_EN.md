@@ -179,6 +179,48 @@ Settings → Bindings → Add binding:
 
 Push code to trigger auto-deploy. You'll get `https://your-project.pages.dev`.
 
+### 5. How to look up / recover admin accounts on Cloudflare
+
+> Passwords are stored as **hashes only**. Plaintext passwords cannot be recovered; you can only **reset** them.
+
+**Find usernames (Dashboard):**
+
+1. Cloudflare Dashboard → **Workers & Pages → KV**
+2. Open the KV namespace bound to this project
+3. Search these prefixes:
+   - `webuser:` → key suffix is the username (e.g. `webuser:ops`)
+   - `webuser_id:` → full account JSON (`username` / `id` / `totp_enabled`)
+   - `auth:bootstrap:v2` → bootstrap admin state (`defaultAdminUsername` / `state`)
+
+**If D1 is bound:**
+
+```bash
+npx wrangler d1 execute <your-d1-name> --remote --command "SELECT id, username, is_admin, totp_enabled, created_at FROM web_users;"
+```
+
+**Reset password (manual Cloudflare steps):**
+
+1. Generate a new password hash locally:
+
+```bash
+npm run admin -- hash-password 'NewPassw0rd!'
+# Example output: pbkdf2:100000:<salt>:<hash>
+```
+
+2. Update the target account:
+   - KV: edit `password_hash` in both `webuser_id:<id>` and `webuser:<username>`
+   - D1:
+
+```bash
+npx wrangler d1 execute <your-d1-name> --remote --command "UPDATE web_users SET password_hash='pbkdf2:...' WHERE username='ops';"
+```
+
+3. Revoke existing sessions (strongly recommended):
+   - Put/overwrite KV key `auth:session_epoch:<userId>` with any random string
+   - Optionally delete `sess_user:<userId>:` keys and matching `sess:` keys
+
+4. If 2FA is also lost, set `totp_enabled` to `0` and clear `totp_secret`.
+
 </details>
 
 <details>
@@ -274,6 +316,34 @@ server {
 }
 ```
 
+### Admin recovery CLI (local / Docker)
+
+If the **permanent admin username / password / 2FA are all lost**, Web recovery is not enough. Use the ops CLI:
+
+```bash
+# Local
+npm run admin -- list
+npm run admin -- show <username|id>
+npm run admin -- bootstrap
+npm run admin -- reset-password <username|id> --yes
+npm run admin -- reset-password <username|id> --password 'NewPassw0rd!' --yes
+npm run admin -- disable-2fa <username|id> --yes
+npm run admin -- create newadmin --password 'NewPassw0rd!' --yes
+
+# Docker
+docker exec -it telegram-chatbot node scripts/admin-recovery.js list
+docker exec -it telegram-chatbot node scripts/admin-recovery.js reset-password ops --yes
+docker exec -it telegram-chatbot node scripts/admin-recovery.js disable-2fa ops --yes
+```
+
+Notes:
+
+- `list` shows username, id, 2FA status, whether login is blocked, and whether it is the bootstrap account
+- `reset-password` resets the password and revokes all sessions for that user
+- If `--password` is omitted, a random password is generated and printed **once**
+- Plaintext passwords cannot be recovered from hashes
+- A retired bootstrap account (`login=blocked`) is usually not the permanent login account — reset the real admin, or `create` a new one
+
 </details>
 
 ---
@@ -363,7 +433,8 @@ On Cloudflare Pages, `CAPTCHA_SITE_URL` is auto-filled from the Webhook URL orig
 |---------|---------|-------------|
 | `LOGIN_SESSION_TTL` | `86400` | WebUI login expiration (seconds) |
 
-Passwords stored with PBKDF2 (600,000 iterations SHA-256). TOTP two-factor authentication supported.
+Passwords stored with PBKDF2 (100,000 iterations SHA-256). TOTP two-factor authentication supported.
+If username/password/2FA are all lost, use the ops CLI or Cloudflare manual recovery (see Deployment). Plaintext passwords cannot be recovered from hashes.
 
 </details>
 
@@ -534,7 +605,7 @@ Three modes supported:
 
 | Mechanism | Description |
 |-----------|-------------|
-| Password Hashing | PBKDF2 (600,000 iterations SHA-256), backward-compatible with legacy salt:sha256 |
+| Password Hashing | PBKDF2 (100,000 iterations SHA-256), backward-compatible with legacy salt:sha256 |
 | Two-Factor Auth | TOTP (RFC 6238), login page recovery supported |
 | Webhook Verification | Secret Token header validation |
 | SQL Injection Prevention | All queries use parameterized bindings |

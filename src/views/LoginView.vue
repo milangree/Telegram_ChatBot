@@ -115,7 +115,9 @@
         </div>
       </template>
 
-      <div class="login-footer">{{ t('auth.login.defaultAccountTip') }}</div>
+      <div class="login-footer">
+        {{ needsRegistration ? t('auth.login.firstRegisterTip') : t('auth.login.defaultAccountTip') }}
+      </div>
     </div>
   </div>
 </template>
@@ -287,7 +289,7 @@ async function handleLogin() {
   error.value = ''
   try {
     await auth.login(username.value, password.value, totp.value || undefined)
-    await router.replace('/')
+    await router.replace(needsRegistration.value ? '/register' : '/')
   } catch (e) {
     const msg = String(e.message || '')
     // 后端在密码正确但缺 TOTP 时返回 totpRequired（中/英/繁）
@@ -320,7 +322,7 @@ async function handleLoginTotp() {
   error.value = ''
   try {
     await auth.loginTotp(username.value, totp.value)
-    await router.replace('/')
+    await router.replace(needsRegistration.value ? '/register' : '/')
   } catch (e) {
     error.value = e.message
   } finally {

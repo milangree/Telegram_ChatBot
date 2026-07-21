@@ -68,6 +68,28 @@ const { onRequestPost: webhookHandler } = await import('../functions/webhook.js'
 
 console.log('[server] Functions 已加载')
 
+// ── 启动初始化 ─────────────────────────────────────────────────────────────
+// 在 app.listen 前执行一次管理员初始化，确保：
+// 1) KV/D1/Hyperdrive 可用
+// 2) 初始管理员账号已创建或同步
+// 3) 初始化失败时进程不监听端口，避免半初始化状态
+console.log('[server] 执行启动初始化...')
+{
+  const { DB } = await import('../functions/_shared/db.js')
+  const { ensureAdminInitializedOnce } = await import('../functions/_shared/admin-bootstrap.js')
+  const startupDb = new DB(kv, d1, hyperdrive)
+  const preferredDb = process.env.ACTIVE_DB === 'd1' && d1
+    ? 'd1'
+    : process.env.ACTIVE_DB === 'hyperdrive' && hyperdrive
+      ? 'hyperdrive'
+      : process.env.ACTIVE_DB === 'kv'
+        ? 'kv'
+        : null
+  await startupDb.autoRepair(false, preferredDb)
+  await ensureAdminInitializedOnce({ db: startupDb, kv, env: process.env })
+  console.log('[server] 管理员初始化完成')
+}
+
 // ── 工具函数 ──────────────────────────────────────────────────────────────
 
 /**

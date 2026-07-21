@@ -1,10 +1,10 @@
 // functions/_shared/db.js
-import { hashPw } from './auth.js'
 import { DEFAULT_SETTINGS } from './db-settings.js'
 import { KVStore } from './db-kv.js'
 import { D1Store } from './db-d1.js'
 import { HyperdriveStore } from './db-hyperdrive.js'
 import { resolveActiveDb, autoRepairDb, switchDbStore, syncDbData } from './db-routing.js'
+import { ensureAdminInitializedOnce, finalizeInitialRegistration } from './admin-bootstrap.js'
 
 export { DEFAULT_SETTINGS }
 
@@ -46,8 +46,8 @@ export class DB {
    * - 补齐缺失默认设置
    * - 修复部分数据一致性（thread_map / users 字段）
    */
-  async autoRepair(force = false) {
-    await autoRepairDb({ kv: this.kv, kvStore: this._kv, d1Store: this._d1, hyperdriveStore: this._hyperdrive }, force)
+  async autoRepair(force = false, preferredDb = null) {
+    await autoRepairDb({ kv: this.kv, kvStore: this._kv, d1Store: this._d1, hyperdriveStore: this._hyperdrive }, force, preferredDb)
   }
 
   // Verification always uses KV (ephemeral data, TTL support)
@@ -128,69 +128,14 @@ export class DB {
    * Once a real user registers (registerWebUser is called), we disable the
    * fallback account so it can never be used again.
    */
-  async ensureDefaultAdmin() {
-    try {
-      // Always init schema so tables exist before any query
-      if (this._d1) await this._d1.initSchema().catch(e => console.error('D1 initSchema:', e))
-      if (this._hyperdrive) await this._hyperdrive.initSchema().catch(e => console.error('Hyperdrive initSchema:', e))
+  async getAllWebUsersRaw() { return (await this._store()).getAllWebUsersRaw() }
 
-      // 读取环境变量（用于 Docker/VPS 部署），仅在 Node.js 环境下有效
-      const envAdminUsername = typeof process !== 'undefined' && process.env?.ADMIN_USERNAME
-      const envAdminPassword = typeof process !== 'undefined' && process.env?.ADMIN_PASSWORD
-
-      if (envAdminPassword && envAdminPassword.length < 6) {
-        console.warn('[SECURITY] ADMIN_PASSWORD 长度不足 6 位，忽略环境变量')
-      }
-
-      // Only create default if no real admin exists yet
-      const count = await this.webUserCount()
-      if (count === 0) {
-        const { genToken } = await import('./auth.js')
-        // 优先使用环境变量指定的管理员账号，否则使用随机密码
-        const username = envAdminUsername || 'admin'
-        const password = envAdminPassword || genToken(20)
-
-        await this.createWebUser(username, await hashPw(password))
-        // Mark as "default" so we can disable it after real registration
-        await this.kv.put('auth:has_default_admin', '1')
-
-        console.warn('='.repeat(60))
-        console.warn('[SECURITY] 已创建初始管理员（首次启动）')
-        console.warn(`[SECURITY] 用户名: ${username}`)
-        if (envAdminPassword) {
-          console.warn('[SECURITY] 密码: 使用环境变量 ADMIN_PASSWORD（已隐藏，不会明文打印）')
-        } else {
-          console.warn(`[SECURITY] 临时密码: ${password}`)
-          console.warn('[SECURITY] 请立即登录后台完成首次注册，或修改密码。该账号会在真实注册后禁用。')
-        }
-        console.warn('='.repeat(60))
-      } else if (envAdminUsername && envAdminPassword && envAdminPassword.length >= 6) {
-        // 非首次启动但指定了 ADMIN_USERNAME + ADMIN_PASSWORD：同步密码
-        const user = await this.getWebUser(envAdminUsername)
-        if (user) {
-          await this.updateWebUserPassword(user.id, await hashPw(envAdminPassword))
-          console.log(`[SECURITY] 已同步管理员 ${envAdminUsername} 的密码（通过环境变量 ADMIN_PASSWORD）`)
-        }
-      }
-    } catch (e) { console.error('ensureDefaultAdmin:', e) }
+  async ensureDefaultAdmin(env = {}) {
+    return ensureAdminInitializedOnce({ db: this, kv: this.kv, env })
   }
 
-  /**
-   * Called after a real admin registers. Disables the default admin/admins
-   * account so it cannot be used to log in anymore.
-   */
-  async disableDefaultAdmin() {
-    try {
-      const hasDefault = await this.kv.get('auth:has_default_admin')
-      if (!hasDefault) return
-      const u = await this.getWebUser('admin')
-      if (u) {
-        // Overwrite the password hash with a random irreversible value
-        const { genToken } = await import('./auth.js')
-        await this.updateWebUserPassword(u.id, '!!disabled:' + genToken(32))
-        console.log('Default admin account disabled after real registration')
-      }
-      await this.kv.delete('auth:has_default_admin')
-    } catch (e) { console.error('disableDefaultAdmin:', e) }
+  async disableDefaultAdmin(registeredUserId = null) {
+    return finalizeInitialRegistration({ db: this, kv: this.kv, registeredUserId })
   }
+
 }

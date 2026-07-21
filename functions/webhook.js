@@ -1,5 +1,6 @@
 // functions/webhook.js
 import { DB } from './_shared/db.js';
+import { ensureAdminInitializedOnce } from './_shared/admin-bootstrap.js';
 import { processUpdate } from './_shared/bot.js';
 import { createT, normalizeLocale } from '../shared/i18n.js';
 
@@ -10,9 +11,8 @@ export async function onRequestPost(context) {
     if (!env.KV) return new Response(earlyT('webhook.kvNotBound'), { status: 500 });
 
     const db = new DB(env.KV, env.D1 || null, env.HYPERDRIVE || null);
-    await db.autoRepair();
-    await db.ensureDefaultAdmin();
 
+    // 先读取 webhook secret，校验不通过不触发昂贵的初始化
     const botLocale = normalizeLocale(await db.getSetting('BOT_LOCALE'));
     const t = createT(botLocale);
 
@@ -27,6 +27,10 @@ export async function onRequestPost(context) {
       console.error('Webhook secret mismatch');
       return new Response(t('webhook.unauthorized'), { status: 401 });
     }
+
+    // Secret 校验通过后执行初始化
+    await db.autoRepair();
+    await ensureAdminInitializedOnce({ db, kv: env.KV, env });
 
     let update;
     try {

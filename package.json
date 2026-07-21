@@ -5,12 +5,16 @@
   "type": "module",
   "scripts": {
     "build": "vite build",
+    "test": "node --test",
     "preview": "node server/index.js",
     "preview:static": "vite preview",
     "server": "node server/index.js",
     "server:dev": "node --watch server/index.js",
     "stop": "node scripts/stop-server.js",
-    "server:stop": "node scripts/stop-server.js"
+    "server:stop": "node scripts/stop-server.js",
+    "admin": "node scripts/admin-recovery.js",
+    "admin:list": "node scripts/admin-recovery.js list",
+    "admin:reset": "node scripts/admin-recovery.js reset-password"
   },
   "dependencies": {
     "axios": "^1.7.0",

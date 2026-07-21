@@ -1,7 +1,8 @@
 ﻿// functions/api/[[path]].js
 import { DB } from '../_shared/db.js';
 import { TG } from '../_shared/tg.js';
-import { CORS, j, err, hashPw, verifyPw, createSession, getSession, delSession, delSessionsForUser, extractToken, genToken, verifyInitData } from '../_shared/auth.js';
+import { CORS, j, err, hashPw, verifyPw, createSession, getSession, delSession, rotatePasswordAndRevokeSessions, extractToken, genToken, verifyInitData } from '../_shared/auth.js';
+import { ensureAdminInitializedOnce, getBootstrapStatus, isBootstrapAdminDisabled, registerInitialAdmin, BootstrapError } from '../_shared/admin-bootstrap.js';
 import { verifyTOTP, generateTOTPSecret } from '../_shared/totp.js';
 import { renderCaptchaPNG } from '../_shared/captcha.js';
 import { setupMiniAppMenu, getOrCreateThread } from '../_shared/bot.js';
@@ -70,10 +71,17 @@ export async function onRequest({ request, env, waitUntil }) {
   }
 
   const db = new DB(env.KV, env.D1 || null, env.HYPERDRIVE || null);
-  await db.autoRepair();
-  await db.ensureDefaultAdmin();
   const kv = env.KV;
-  const t = getApiTranslator(request, await db.getSetting('BOT_LOCALE'));
+  let t = getApiTranslator(request);
+  try {
+    await db.autoRepair();
+    await ensureAdminInitializedOnce({ db, kv, env });
+  } catch (e) {
+    console.error('[API] 管理员初始化失败:', e?.message || e);
+    if (e instanceof BootstrapError) return err(t('unavailable'), e.status || 503);
+    return err(t('unavailable'), 503);
+  }
+  t = getApiTranslator(request, await db.getSetting('BOT_LOCALE'));
   const url = new URL(request.url);
   const path = url.pathname.replace(/^\/api/, '');
 
@@ -88,22 +96,31 @@ export async function onRequest({ request, env, waitUntil }) {
   // ═══════════════════════════════════════════════
 
   if (path === '/auth/status' && request.method === 'GET') {
-    const hasDefaultAdmin = (await kv.get('auth:has_default_admin')) === '1';
-    return j({ needsRegistration: hasDefaultAdmin || (await db.webUserCount()) === 0 });
+    const status = await getBootstrapStatus({ db, kv }).catch(() => ({ state: 'error', needsRegistration: false }));
+    return j({ needsRegistration: status.needsRegistration });
   }
 
   if (path === '/auth/register' && request.method === 'POST') {
     try {
-      const hasDefaultAdmin = (await kv.get('auth:has_default_admin')) === '1';
-      if (!hasDefaultAdmin && (await db.webUserCount()) > 0) return err(t('auth.registrationClosed'), 403);
+      const status = await getBootstrapStatus({ db, kv })
+      if (!status.needsRegistration) return err(t('auth.registrationClosed'), 403)
       const { username, password } = await request.json();
       if (!username || !password) return err(t('common.missingParams'));
       if (username.length < 3) return err(t('auth.usernameMin'));
       if (password.length < 6) return err(t('auth.passwordMin'));
-      if (await db.getWebUser(username)) return err(t('auth.usernameExists'), 400);
-      const user = await db.createWebUser(username, await hashPw(password));
-      // 注册后禁用默认 admin/admins 账户
-      await db.disableDefaultAdmin();
+
+      // 首次注册必须由当前初始管理员会话发起，不能仅凭公开状态标志注册管理员。
+      const bootstrapTokenValue = extractToken(request)
+      const bootstrapSession = bootstrapTokenValue ? await getSession(kv, bootstrapTokenValue) : null
+      if (!bootstrapSession) return err(t('auth.unauthorized'), 401)
+      const bootstrapUser = await db.getWebUserById(bootstrapSession.userId)
+      if (!bootstrapUser || await isBootstrapAdminDisabled({ kv, user: bootstrapUser })) {
+        return err(t('auth.unauthorized'), 401)
+      }
+
+      const user = await registerInitialAdmin({
+        db, kv, username, password, bootstrapUserId: bootstrapUser.id,
+      })
       const sessionTtl = await getLoginSessionTtl(db);
       const token = await createSession(kv, user.id, sessionTtl);
       return new Response(JSON.stringify({ token, username: user.username, isAdmin: true }), {
@@ -111,8 +128,8 @@ export async function onRequest({ request, env, waitUntil }) {
         headers: { ...CORS, 'Content-Type': 'application/json', 'Set-Cookie': cookie(token, sessionTtl, { secure: isSecureRequest(request) }) },
       });
     } catch (e) {
-      console.error('[API Error] auth.registerFailed:', e.message);
-      return err(t('auth.registerFailed'), 500);
+      console.error('[API Error] auth.registerFailed:', e?.message || e);
+      return err(t('auth.registerFailed'), e instanceof BootstrapError ? e.status || 500 : 500);
     }
   }
 
@@ -130,11 +147,8 @@ export async function onRequest({ request, env, waitUntil }) {
       const user = await db.getWebUser(username);
       if (!user) return err(t('auth.invalidCredentials'), 401);
 
-      // 若默认管理员已被禁用，永久阻止 admin/admins 登录
-      if (String(user.username).toLowerCase() === 'admin') {
-        const hasDefaultAdmin = (await kv.get('auth:has_default_admin')) === '1';
-        if (!hasDefaultAdmin) return err(t('auth.invalidCredentials'), 401);
-      }
+      // 若初始管理员已被禁用，阻止该账号登录（按 ID，不限于用户名 admin）
+      if (await isBootstrapAdminDisabled({ kv, user })) return err(t('auth.invalidCredentials'), 401);
 
       // loginMode: 'totp_only' — 仅用户名 + TOTP（无密码）
       if (loginMode === 'totp_only') {
@@ -184,6 +198,7 @@ export async function onRequest({ request, env, waitUntil }) {
     if (!sess) return err(t('auth.sessionExpired'), 401);
     const user = await db.getWebUserById(sess.userId);
     if (!user) return err(t('auth.userNotFound'), 401);
+    if (await isBootstrapAdminDisabled({ kv, user })) return err(t('auth.unauthorized'), 401);
     return j({ username: user.username, isAdmin: Boolean(user.is_admin), totpEnabled: Boolean(user.totp_enabled) });
   }
 
@@ -206,6 +221,8 @@ export async function onRequest({ request, env, waitUntil }) {
 
       const user = await db.getWebUser(username);
       if (!user) return err(t('auth.invalidCredentials'), 401);
+      // 已退役的初始管理员不允许通过找回密码重新启用
+      if (await isBootstrapAdminDisabled({ kv, user })) return err(t('auth.invalidCredentials'), 401);
 
       // 已启用 2FA 必须校验 TOTP；未启用的可直接重置密码
       if (user.totp_enabled) {
@@ -213,9 +230,7 @@ export async function onRequest({ request, env, waitUntil }) {
         if (!await verifyTOTP(totp, user.totp_secret)) return err(t('auth.invalidTotp'), 401);
       }
 
-      await db.updateWebUserPassword(user.id, await hashPw(newPassword));
-      // 改密后吊销全部既有会话
-      await delSessionsForUser(kv, user.id).catch(() => {});
+      await rotatePasswordAndRevokeSessions({ db, kv, userId: user.id, newPassword });
       return j({ ok: true });
     } catch {
       return err(t('auth.recoverFailed'), 500);
@@ -393,6 +408,7 @@ export async function onRequest({ request, env, waitUntil }) {
   if (!sess) return err(t('auth.sessionExpired'), 401);
   const webUser = await db.getWebUserById(sess.userId);
   if (!webUser) return err(t('auth.userNotFound'), 401);
+  if (await isBootstrapAdminDisabled({ kv, user: webUser })) return err(t('auth.unauthorized'), 401);
   const adminUser = isWebAdmin(webUser);
 
   // 管理类接口需要 is_admin（个人资料除外）
@@ -422,9 +438,7 @@ export async function onRequest({ request, env, waitUntil }) {
       if (!oldPassword || !newPassword) return err(t('common.missingParams'));
       if (!await verifyPw(oldPassword, webUser.password_hash)) return err(t('profile.oldPasswordWrong'), 401);
       if (newPassword.length < 6) return err(t('auth.passwordMin'));
-      await db.updateWebUserPassword(webUser.id, await hashPw(newPassword));
-      // 改密后吊销其他会话，当前 token 也会失效（需重新登录）
-      await delSessionsForUser(kv, webUser.id).catch(() => {});
+      await rotatePasswordAndRevokeSessions({ db, kv, userId: webUser.id, newPassword });
       return j({ ok: true, reLogin: true });
     } catch {
       return err(t('profile.updateFailed'), 500);

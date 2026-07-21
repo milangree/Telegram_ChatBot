@@ -179,6 +179,48 @@ Settings → Bindings → Add binding：
 
 推送代码后自动部署，得到 `https://your-project.pages.dev`。
 
+### 5. 忘记管理员账号时如何查询 / 恢复（Cloudflare）
+
+> 系统**只存储密码哈希**，无法还原明文密码。忘记密码时只能**重置**。
+
+**查询用户名（Dashboard）：**
+
+1. Cloudflare Dashboard → **Workers & Pages → KV**
+2. 打开本项目绑定的命名空间
+3. 搜索前缀：
+   - `webuser:` → 键名即用户名（如 `webuser:ops`）
+   - `webuser_id:` → 账号完整 JSON（含 `username` / `id` / `totp_enabled`）
+   - `auth:bootstrap:v2` → 初始管理员状态（`defaultAdminUsername` / `state`）
+
+**如果绑定了 D1：**
+
+```bash
+npx wrangler d1 execute <你的-D1名称> --remote --command "SELECT id, username, is_admin, totp_enabled, created_at FROM web_users;"
+```
+
+**重置密码（Cloudflare 手工步骤）：**
+
+1. 在本地生成新密码哈希：
+
+```bash
+npm run admin -- hash-password 'NewPassw0rd!'
+# 输出示例：pbkdf2:100000:<salt>:<hash>
+```
+
+2. 找到目标账号：
+   - KV：编辑 `webuser_id:<id>` 与 `webuser:<username>` 两份 JSON 中的 `password_hash`
+   - D1：
+
+```bash
+npx wrangler d1 execute <你的-D1名称> --remote --command "UPDATE web_users SET password_hash='pbkdf2:...' WHERE username='ops';"
+```
+
+3. 吊销旧会话（强烈建议）：
+   - 在 KV 中写入/覆盖：`auth:session_epoch:<userId>` = 任意随机字符串
+   - 可选：删除 `sess_user:<userId>:` 与对应 `sess:` 键
+
+4. 若 2FA 也丢失，把 `totp_enabled` 设为 `0`，`totp_secret` 设为 `null` / 空。
+
 </details>
 
 <details>
@@ -274,6 +316,34 @@ server {
 }
 ```
 
+### 管理员账号恢复（CLI，本地 / Docker）
+
+当**正式管理员用户名 / 密码 / 2FA 全部丢失**时，Web 找回不可用，请使用运维 CLI。
+
+```bash
+# 本地
+npm run admin -- list
+npm run admin -- show <username|id>
+npm run admin -- bootstrap
+npm run admin -- reset-password <username|id> --yes
+npm run admin -- reset-password <username|id> --password 'NewPassw0rd!' --yes
+npm run admin -- disable-2fa <username|id> --yes
+npm run admin -- create newadmin --password 'NewPassw0rd!' --yes
+
+# Docker
+docker exec -it telegram-chatbot node scripts/admin-recovery.js list
+docker exec -it telegram-chatbot node scripts/admin-recovery.js reset-password ops --yes
+docker exec -it telegram-chatbot node scripts/admin-recovery.js disable-2fa ops --yes
+```
+
+说明：
+
+- `list` 会显示用户名、ID、是否开启 2FA、是否被禁用 / 是否为初始管理员
+- `reset-password` 会重置密码并吊销该账号全部会话
+- 未传 `--password` 时自动生成随机密码，**仅打印一次**
+- 系统无法还原明文密码，只能重置
+- 已退役的初始管理员（`login=blocked`）通常不是正式登录账号；请重置正式管理员，或 `create` 新建一个
+
 </details>
 
 ---
@@ -363,7 +433,8 @@ Cloudflare Pages 部署时，`CAPTCHA_SITE_URL` 会自动从 Webhook URL 提取 
 |--------|--------|------|
 | `LOGIN_SESSION_TTL` | `86400` | WebUI 登录过期时长（秒） |
 
-密码使用 PBKDF2（600,000 次迭代 SHA-256）哈希存储，支持 TOTP 两步验证。
+密码使用 PBKDF2（100,000 次迭代 SHA-256）哈希存储，支持 TOTP 两步验证。
+忘记用户名/密码/2FA 时，请使用运维 CLI 或 Cloudflare 手工恢复（见上方部署章节），**无法从哈希还原明文密码**。
 
 </details>
 

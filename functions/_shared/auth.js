@@ -52,6 +52,11 @@ async function pbkdf2Hash(password, salt, iterations = PBKDF2_ITERATIONS) {
   return toHex(bits);
 }
 
+/** 密码策略：管理员和普通 Web 用户统一至少 6 位。 */
+export function validatePassword(password) {
+  return typeof password === 'string' && password.length >= 6
+}
+
 /** 哈希密码：pbkdf2:iterations:salt:hash（兼容旧格式 salt:sha256hash） */
 export async function hashPw(pw) {
   const s = genToken(16);
@@ -82,11 +87,22 @@ export async function verifyPw(pw, stored) {
 export async function createSession(kv, userId, ttlSeconds = DEFAULT_TTL) {
   const ttl = Math.max(300, parseInt(ttlSeconds, 10) || DEFAULT_TTL);
   const token = genToken();
-  const sessionData = { userId, exp: Date.now() + ttl * 1000 };
+  const epoch = await getSessionEpoch(kv, userId)
+  const sessionData = { userId, exp: Date.now() + ttl * 1000, epoch };
   await kv.put(`sess:${token}`, JSON.stringify(sessionData), { expirationTtl: ttl });
   // 用户维度索引，便于改密后吊销全部会话
   await kv.put(`sess_user:${userId}:${token}`, '1', { expirationTtl: ttl }).catch(() => {});
   return token;
+}
+
+async function getSessionEpoch(kv, userId) {
+  return await kv.get(`auth:session_epoch:${userId}`) || '0'
+}
+
+export async function bumpSessionEpoch(kv, userId) {
+  const epoch = genToken(24)
+  await kv.put(`auth:session_epoch:${userId}`, epoch)
+  return epoch
 }
 
 export async function getSession(kv, token) {
@@ -95,10 +111,17 @@ export async function getSession(kv, token) {
   if (!raw) return null;
   let s;
   try { s = JSON.parse(raw); } catch { return null; }
+  if (!s || !s.userId || !Number.isFinite(s.exp)) return null
   if (Date.now() > s.exp) {
     await kv.delete(`sess:${token}`);
     if (s.userId) await kv.delete(`sess_user:${s.userId}:${token}`).catch(() => {});
     return null;
+  }
+  const currentEpoch = await getSessionEpoch(kv, s.userId)
+  if (String(s.epoch || '0') !== String(currentEpoch)) {
+    await kv.delete(`sess:${token}`).catch(() => {})
+    await kv.delete(`sess_user:${s.userId}:${token}`).catch(() => {})
+    return null
   }
   return s;
 }
@@ -118,48 +141,51 @@ export async function delSession(kv, token) {
 /** 吊销某用户的全部会话（改密 / 找回密码后调用） */
 export async function delSessionsForUser(kv, userId) {
   if (!kv || userId == null) return 0;
-  const prefix = `sess_user:${userId}:`;
-  let deleted = 0;
-  let cursor;
+  const tokens = new Set()
+  let cursor
   do {
-    const page = await kv.list({ prefix, limit: 200, ...(cursor ? { cursor } : {}) });
-    const keys = page?.keys || [];
-    for (const item of keys) {
-      const name = item?.name || item;
-      if (!name || !String(name).startsWith(prefix)) continue;
-      const token = String(name).slice(prefix.length);
-      if (token) {
-        await kv.delete(`sess:${token}`).catch(() => {});
-        await kv.delete(name).catch(() => {});
-        deleted++;
-      }
+    const page = await kv.list({ prefix: `sess_user:${userId}:`, limit: 200, ...(cursor ? { cursor } : {}) })
+    for (const item of page?.keys || []) {
+      const name = item?.name || item
+      const prefix = `sess_user:${userId}:`
+      if (name && String(name).startsWith(prefix)) tokens.add(String(name).slice(prefix.length))
     }
-    cursor = page?.list_complete === false ? page.cursor : null;
-  } while (cursor);
+    cursor = page?.list_complete === false ? page.cursor : null
+  } while (cursor)
 
-  // 兼容旧会话（无 sess_user 索引）：扫描 sess: 前缀
-  if (deleted === 0 && typeof kv.list === 'function') {
-    cursor = undefined;
-    do {
-      const page = await kv.list({ prefix: 'sess:', limit: 200, ...(cursor ? { cursor } : {}) });
-      const keys = page?.keys || [];
-      for (const item of keys) {
-        const name = item?.name || item;
-        if (!name || !String(name).startsWith('sess:')) continue;
-        const raw = await kv.get(name).catch(() => null);
-        if (!raw) continue;
-        try {
-          const s = JSON.parse(raw);
-          if (s?.userId === userId) {
-            await kv.delete(name).catch(() => {});
-            deleted++;
-          }
-        } catch { /* noop */ }
-      }
-      cursor = page?.list_complete === false ? page.cursor : null;
-    } while (cursor);
+  // 始终扫描旧格式会话，避免新旧索引混用时遗漏。
+  cursor = undefined
+  do {
+    const page = await kv.list({ prefix: 'sess:', limit: 200, ...(cursor ? { cursor } : {}) })
+    for (const item of page?.keys || []) {
+      const name = item?.name || item
+      if (!name || !String(name).startsWith('sess:')) continue
+      const raw = await kv.get(name).catch(() => null)
+      if (!raw) continue
+      try {
+        const s = JSON.parse(raw)
+        if (s?.userId === userId) tokens.add(String(name).slice('sess:'.length))
+      } catch { /* noop */ }
+    }
+    cursor = page?.list_complete === false ? page.cursor : null
+  } while (cursor)
+
+  let deleted = 0
+  for (const token of tokens) {
+    await kv.delete(`sess:${token}`).catch(() => {})
+    await kv.delete(`sess_user:${userId}:${token}`).catch(() => {})
+    deleted++
   }
-  return deleted;
+  return deleted
+}
+
+export async function rotatePasswordAndRevokeSessions({ db, kv, userId, newPassword }) {
+  if (!validatePassword(newPassword)) throw new Error('密码长度不足 6 位')
+  const passwordHash = await hashPw(newPassword)
+  await db.updateWebUserPassword(userId, passwordHash)
+  // 先改变 epoch，物理清理失败也不会留下可用旧会话。
+  await bumpSessionEpoch(kv, userId)
+  await delSessionsForUser(kv, userId)
 }
 
 export function extractToken(req) {

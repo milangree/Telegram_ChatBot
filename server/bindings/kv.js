@@ -133,7 +133,8 @@ export class LocalKV {
   async list(options = {}) {
     const prefix = options.prefix || ''
     const limit = options.limit || Infinity
-    const keys = []
+    const cursorToken = options.cursor || ''
+    const names = []
 
     for (const [key, entry] of this._mem) {
       if (!key.startsWith(prefix)) continue
@@ -141,16 +142,18 @@ export class LocalKV {
         this._mem.delete(key)
         continue
       }
-      keys.push({ name: key })
-      if (keys.length >= limit) break
+      names.push(key)
     }
 
-    keys.sort((a, b) => a.name.localeCompare(b.name))
+    names.sort((a, b) => a.localeCompare(b))
+    const start = cursorToken ? Math.max(0, names.indexOf(cursorToken) + 1) : 0
+    const pageNames = names.slice(start, start + limit)
+    const hasMore = start + pageNames.length < names.length
 
     return {
-      keys,
-      list_complete: true,
-      cursor: null,
+      keys: pageNames.map(name => ({ name })),
+      list_complete: !hasMore,
+      cursor: hasMore ? pageNames[pageNames.length - 1] : null,
     }
   }
 
