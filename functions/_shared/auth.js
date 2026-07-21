@@ -365,6 +365,20 @@ async function readRateBucket(kv, key) {
  * 检查是否已触发锁定。
  * @returns {{ allowed: true } | { allowed: false, retryAfterSec: number }}
  */
+/**
+ * 模糊化重试时间，防止攻击者通过精确时间推断限流窗口。
+ * 将秒数模糊为「约 X 分钟」或「约 X 秒」（X 为 ±30% 抖动后的整数）。
+ * 小于 60 秒直接返回原文；大于等于 60 秒模糊到分钟级。
+ */
+export function fuzzRetryTime(seconds) {
+  const sec = Math.max(1, Math.ceil(Number(seconds) || 1));
+  if (sec < 60) return sec;
+  // 抖动 ±30%，取整到 10 秒的倍数，最少 60 秒
+  const jitter = 1 + (Math.random() * 0.6 - 0.3); // 0.7 ~ 1.3
+  const fuzzy = Math.max(60, Math.round(sec * jitter / 10) * 10);
+  return fuzzy;
+}
+
 export async function checkAuthRateLimit(kv, action, { ip, username } = {}) {
   const conf = AUTH_RATE_LIMITS[action] || AUTH_RATE_LIMITS.login;
   const now = Date.now();

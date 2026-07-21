@@ -31,9 +31,7 @@ function shouldSanitizeDisplayNames(payload = null) {
 }
 
 api.interceptors.request.use(config => {
-  // 兼容迁移期：若仍有遗留 localStorage token 则附带；主路径依赖 Cookie
-  const token = localStorage.getItem('token')
-  if (token) config.headers.Authorization = `Bearer ${token}`
+  // 会话凭据依赖 HttpOnly Cookie，不附加 Bearer 头
 
   // FormData 上传时不要强制 application/json，让浏览器自动带 multipart boundary
   if (typeof FormData !== 'undefined' && config.data instanceof FormData) {
@@ -58,7 +56,7 @@ api.interceptors.response.use(
 
     // Cookie 会话下：仅在确实有过有效会话时标记过期，避免首次打开页面时误提示
     if (status === 401) {
-      const hadSession = localStorage.getItem('username') || localStorage.getItem('token')
+      const hadSession = localStorage.getItem('username')
       if (hadSession) {
         markSessionExpired()
       }

@@ -1099,10 +1099,7 @@ async function exportSql() {
 
   try {
     const headers = {}
-    const token = localStorage.getItem('token')
     const locale = localStorage.getItem('ui_locale')
-
-    if (token) headers.Authorization = `Bearer ${token}`
     if (locale) headers['X-Locale'] = locale
 
     if (!sqlPassword.value) {

@@ -231,9 +231,52 @@ const distDir = path.join(ROOT, 'dist')
 if (fs.existsSync(distDir)) {
   app.use(express.static(distDir))
 
-  // SPA 回退 — 所有非文件请求返回 index.html
+  // SPA 回退 — 对已知探测路径返回 404 而非 SPA 页面，避免掩盖真实端点
+  const PROBE_PATTERNS = [
+    '/admin', '/administrator', '/wp-admin', '/wp-login', '/wp-content',
+    '/config', '/configuration', '/settings',
+    '/package.json', '/composer.json', '/yarn.lock', '/package-lock.json',
+    '/.env', '/.git', '/.gitignore', '/.dockerignore', '/.env.example',
+    '/server-status', '/server-info',
+    '/xmlrpc', '/xmlrpc.php', '/wp-includes',
+    '/actuator', '/actuator/health', '/actuator/info',
+    '/swagger', '/swagger-ui', '/swagger-resources', '/api-docs', '/openapi.json', '/v2/api-docs', '/v3/api-docs',
+    '/backup', '/dump', '/db', '/database',
+    '/robots.txt', '/sitemap.xml', '/crossdomain.xml', '/clientaccesspolicy.xml',
+    '/shell', '/cmd', '/exec', '/upload', '/uploads',
+    '/phpinfo', '/phpinfo.php', '/info.php', '/test.php',
+    '/cgi-bin', '/cgi-bin/',
+    '/.htaccess', '/.htpasswd',
+    '/proxy', '/proxy/',
+    '/owa', '/exchange', '/autodiscover',
+    '/vendor', '/node_modules',
+    '/tmp', '/temp', '/logs', '/log',
+    '/debug', '/dev', '/devtools',
+    '/console', '/management',
+    '/batch', '/batch/',
+    '/web-console', '/jmx',
+    '/grafana', '/prometheus', '/metrics',
+    '/jenkins', '/jenkins/',
+    '/.well-known/security.txt',
+  ]
+
+  // 检查路径是否为已知探测路径（不区分大小写）
+  function isProbePath(pathname) {
+    const lower = pathname.toLowerCase()
+    // 精确匹配或路径前缀匹配
+    return PROBE_PATTERNS.some(pattern => {
+      if (pattern.endsWith('/')) return lower === pattern.slice(0, -1) || lower.startsWith(pattern)
+      return lower === pattern || lower.startsWith(pattern + '/') || lower.startsWith(pattern + '.')
+    })
+  }
+
+  const indexPath = path.join(distDir, 'index.html')
+
   app.get('{*path}', (req, res) => {
-    const indexPath = path.join(distDir, 'index.html')
+    // 对探测路径返回 404
+    if (isProbePath(req.path)) {
+      return res.status(404).send('Not Found')
+    }
     if (fs.existsSync(indexPath)) {
       res.sendFile(indexPath)
     } else {

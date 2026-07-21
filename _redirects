@@ -1,1 +1,62 @@
+# 静态资源 200
+/*.ico    /index.html    200
+/*.svg    /index.html    200
+/*.png    /index.html    200
+/*.jpg    /index.html    200
+/*.webp   /index.html    200
+/*.js     /index.html    200
+/*.css    /index.html    200
+/*.woff2  /index.html    200
+
+# 已知探测路径统一返回 404
+/admin*
+/administrator*
+/wp-*
+/config*
+/package.json
+/composer.json
+/yarn.lock
+/package-lock.json
+/.env*
+/.git*
+/server-status
+/server-info
+/xmlrpc*
+/actuator*
+/swagger*
+/api-docs
+/openapi.json
+/backup*
+/dump*
+/db
+/database
+/robots.txt
+/sitemap.xml
+/crossdomain.xml
+/shell*
+/cmd*
+/exec*
+/phpinfo*
+/cgi-bin*
+/.htaccess*
+/proxy*
+/owa*
+/exchange*
+/vendor*
+/node_modules*
+/tmp*
+/temp*
+/logs*
+/debug*
+/dev*
+/console*
+/batch*
+/web-console*
+/jmx*
+/grafana*
+/prometheus*
+/metrics*
+/jenkins*
+
+# SPA 回退
 /*    /index.html    200

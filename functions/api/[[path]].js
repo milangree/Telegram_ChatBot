@@ -6,7 +6,7 @@ import {
   delSessionsForUser, bumpSessionEpoch,
   rotatePasswordAndRevokeSessions, extractToken, genToken, verifyInitData,
   getClientIp, checkAuthRateLimit, recordAuthFailure, clearAuthFailures,
-  validatePassword, validatePasswordReason, isLegacyPasswordHash,
+  validatePassword, validatePasswordReason, isLegacyPasswordHash, fuzzRetryTime,
 } from '../_shared/auth.js';
 import { ensureAdminInitializedOnce, getBootstrapStatus, isBootstrapAdminDisabled, registerInitialAdmin, adoptBootstrapAdmin, BootstrapError } from '../_shared/admin-bootstrap.js';
 import { verifyTOTP, generateTOTPSecret } from '../_shared/totp.js';
@@ -111,6 +111,7 @@ export async function onRequest({ request, env, waitUntil }) {
       const status = await getBootstrapStatus({ db, kv })
       if (!status.needsRegistration) return err(t('auth.registrationClosed'), 403)
       const { username, password } = await request.json();
+      if (typeof username !== 'string' || typeof password !== 'string') return err(t('common.missingParams'));
       if (!username || !password) return err(t('common.missingParams'));
       if (username.length < 3) return err(t('auth.usernameMin'));
       if (!validatePassword(password)) return err(t('auth.passwordMin'));
@@ -157,6 +158,12 @@ export async function onRequest({ request, env, waitUntil }) {
 
     try {
       const { username, password, totp } = parsedBody;
+      // 严格类型校验，防止 NoSQL 操作符注入（如 {"$gt":""}）等对象/数组绕过
+      if (typeof username !== 'string' || typeof password !== 'string') {
+        const ip = getClientIp(request);
+        await recordAuthFailure(kv, 'login', { ip, username }).catch(() => {});
+        return err(t('auth.invalidCredentials'), 401);
+      }
       const ip = getClientIp(request);
       const rateId = { ip, username };
 
@@ -167,7 +174,7 @@ export async function onRequest({ request, env, waitUntil }) {
 
       const rate = await checkAuthRateLimit(kv, 'login', rateId);
       if (!rate.allowed) {
-        return err(t('auth.tooManyAttempts', { seconds: rate.retryAfterSec }), 429);
+        return err(t('auth.tooManyAttempts', { seconds: fuzzRetryTime(rate.retryAfterSec) }), 429);
       }
 
       const user = await db.getWebUser(username);
@@ -260,7 +267,7 @@ export async function onRequest({ request, env, waitUntil }) {
       const rateId = { ip, username: body?.username };
       const rate = await checkAuthRateLimit(kv, 'totpStatus', rateId);
       if (!rate.allowed) {
-        return err(t('auth.tooManyAttempts', { seconds: rate.retryAfterSec }), 429);
+        return err(t('auth.tooManyAttempts', { seconds: fuzzRetryTime(rate.retryAfterSec) }), 429);
       }
       await recordAuthFailure(kv, 'totpStatus', rateId);
     } catch { /* noop */ }
@@ -270,6 +277,7 @@ export async function onRequest({ request, env, waitUntil }) {
   if (path === '/auth/recover' && request.method === 'POST') {
     try {
       const { username, totp, newPassword } = await request.json();
+      if (typeof username !== 'string' || typeof newPassword !== 'string' || typeof totp !== 'string') return err(t('common.missingParams'));
       if (!username || !newPassword || !totp) return err(t('common.missingParams'));
       if (!validatePassword(newPassword)) return err(t('auth.passwordMin'));
 
@@ -277,7 +285,7 @@ export async function onRequest({ request, env, waitUntil }) {
       const rateId = { ip, username };
       const rate = await checkAuthRateLimit(kv, 'recover', rateId);
       if (!rate.allowed) {
-        return err(t('auth.tooManyAttempts', { seconds: rate.retryAfterSec }), 429);
+        return err(t('auth.tooManyAttempts', { seconds: fuzzRetryTime(rate.retryAfterSec) }), 429);
       }
 
       const user = await db.getWebUser(username);
