@@ -1259,6 +1259,13 @@ function isSecureRequest(request) {
  */
 async function handleTelegramLogin(initData, db, kv, t, request) {
   try {
+    // IP 级别速率限制，防止 initData 接口被滥用
+    const ip = getClientIp(request);
+    const initRate = await checkAuthRateLimit(kv, 'login', { ip });
+    if (!initRate.allowed) {
+      return err(t('auth.tooManyAttempts', { seconds: fuzzRetryTime(initRate.retryAfterSec) }), 429);
+    }
+
     const botToken = await db.getSetting('BOT_TOKEN');
     if (!botToken) return err(t('kvNotBound'), 500);
 

@@ -177,6 +177,9 @@ function buildContext(request) {
 
 const app = express()
 
+// 禁用 Express 版本标识，防止信息泄露
+app.disable('x-powered-by')
+
 // 解析 JSON body（用于 API 请求）
 app.use(express.json({ limit: '10mb' }))
 
@@ -195,6 +198,29 @@ app.use((req, res, next) => {
   res.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
   res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Locale')
   if (req.method === 'OPTIONS') return res.status(204).end()
+  next()
+})
+
+// Content-Security-Policy 中间件 — 仅对 HTML 页面生效
+app.use((req, res, next) => {
+  // 仅对非 API 路径的 HTML 响应添加 CSP（API 响应由 API handler 自行处理）
+  if (!req.path.startsWith('/api/') && !req.path.startsWith('/webhook')) {
+    res.set('Content-Security-Policy', [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline'",
+      "style-src 'self' 'unsafe-inline'",
+      "connect-src 'self'",
+      "img-src 'self' data: blob:",
+      "font-src 'self'",
+      "frame-src 'none'",
+      "object-src 'none'",
+      "base-uri 'self'",
+      "form-action 'self'",
+    ].join('; '))
+    res.set('X-Content-Type-Options', 'nosniff')
+    res.set('X-Frame-Options', 'DENY')
+    res.set('Referrer-Policy', 'strict-origin-when-cross-origin')
+  }
   next()
 })
 
