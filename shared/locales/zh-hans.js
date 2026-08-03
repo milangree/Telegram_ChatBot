@@ -656,6 +656,14 @@
   "webhook.internalServerError": "服务器内部错误",
   "store.api.requestFailed": "请求失败",
   "store.auth.loginFailed": "登录失败",
+  // Telegram Mini App 自动登录
+  "store.auth.telegramLoggingIn": "正在通过 Telegram 登录…",
+  "store.auth.telegramNotDetected": "未检测到 Telegram 环境",
+  "store.auth.telegramNotDetectedDesc": "请通过 Bot 菜单或链接在 Telegram 内重新打开。",
+  "store.auth.telegramLoginFailed": "Telegram 登录失败",
+  "store.auth.telegramLoginFailedDesc": "身份验证未通过，请使用管理员 Telegram 账号打开，或改用账号密码登录。",
+  "store.auth.telegramRetry": "重试",
+  "store.auth.telegramSwitchToPassword": "改用账号密码登录",
 
   "miniapp.ui.app.title": "Bot 助手",
   "miniapp.ui.app.loading": "加载中…",

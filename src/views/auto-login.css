@@ -1,0 +1,25 @@
+.auto-login-card {
+  text-align: center;
+}
+
+.auto-login-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 16px;
+  color: var(--text2);
+  font-size: 14px;
+}
+
+.auto-login-desc {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--text3);
+  line-height: 1.5;
+  text-align: left;
+}
+
+.auto-login-switch {
+  margin-top: 10px;
+}

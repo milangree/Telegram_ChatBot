@@ -103,9 +103,36 @@
     </main>
   </div>
 
-  <!-- Auth pages -->
   <div v-else class="main-content no-sidebar">
-    <div v-if="routeReady && showAuthControls" class="auth-topbar">
+    <!-- Telegram Mini App 自动登录中：显示加载态，避免登录表单闪烁 -->
+    <div v-if="isAutoLoginChecking" class="login-wrap">
+      <div class="login-card card auto-login-card">
+        <div class="login-logo"><AppIcon name="logo" :size="44" /></div>
+        <h1 class="login-title">{{ t('app.title') }}</h1>
+        <div class="auto-login-status">
+          <span class="spinner"></span>
+          <span>{{ t('store.auth.telegramLoggingIn') }}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Telegram 自动登录失败：友好提示 + 重试 / 切换密码登录 -->
+    <div v-else-if="autoLoginFailed" class="login-wrap">
+      <div class="login-card card auto-login-card">
+        <div class="login-logo"><AppIcon name="logo" :size="44" /></div>
+        <h1 class="login-title">{{ t('app.title') }}</h1>
+        <div class="alert alert-error">
+          <strong>{{ autoLoginStatus === 'notDetected' ? t('store.auth.telegramNotDetected') : t('store.auth.telegramLoginFailed') }}</strong>
+          <p class="auto-login-desc">{{ autoLoginStatus === 'notDetected' ? t('store.auth.telegramNotDetectedDesc') : t('store.auth.telegramLoginFailedDesc') }}</p>
+        </div>
+        <button class="btn-primary w-full" @click="handleRetryAutoLogin">{{ t('store.auth.telegramRetry') }}</button>
+        <button class="btn-ghost w-full auto-login-switch" @click="handleSwitchToPassword">{{ t('store.auth.telegramSwitchToPassword') }}</button>
+      </div>
+    </div>
+
+    <!-- Auth pages -->
+    <div v-else>
+      <div v-if="routeReady && showAuthControls" class="auth-topbar">
       <select class="lang-select auth-lang-select" v-model="selectedLocale" :title="t('app.language')">
         <option v-for="opt in localeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
       </select>
@@ -139,6 +166,7 @@
       </button>
     </div>
     <RouterView />
+    </div>
   </div>
 
   <AppDialog />
@@ -154,6 +182,9 @@ import AppIcon from './components/AppIcon.vue'
 import AppDialog from './components/AppDialog.vue'
 import AppToast from './components/AppToast.vue'
 import api from './stores/api'
+
+// Telegram Mini App 自动登录卡片样式（全局，与 login-card 风格一致）
+import './views/auto-login.css'
 
 const auth = useAuthStore()
 const i18n = useI18nStore()
@@ -199,6 +230,25 @@ const selectedLocale = computed({
 })
 
 const showAuthControls = computed(() => route.path !== '/login')
+
+// Telegram Mini App 自动登录中：隐藏登录表单，避免闪烁
+const isAutoLoginChecking = computed(() => auth.autoLoginStatus === 'checking')
+// 自动登录失败（非 Telegram 环境 或 验签/白名单不通过）：显示友好提示
+const autoLoginFailed = computed(() => auth.autoLoginStatus === 'notDetected' || auth.autoLoginStatus === 'failed')
+
+async function handleRetryAutoLogin() {
+  const result = await auth.runAutoLogin()
+  if (result === 'success') {
+    await router.replace('/')
+  }
+}
+
+async function handleSwitchToPassword() {
+  await auth.resetAutoLogin()
+  if (route.path !== '/login') {
+    await router.replace('/login')
+  }
+}
 
 const navItems = computed(() => {
   const items = [
@@ -317,31 +367,16 @@ onMounted(async () => {
   document.addEventListener('click', closeThemeMenu)
   window.addEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired)
 
-  // Telegram Web App 自动登录
-  // 在 Telegram Mini App 中，initData 由客户端注入，可能稍晚于模块加载
-  // 等待一小段时间确保 WebApp 完全就绪后再提取 initData
-  const telegramInitData = await new Promise(resolve => {
-    if (typeof window !== 'undefined' && window.Telegram?.WebApp?.initData) {
-      resolve(window.Telegram.WebApp.initData)
-    } else {
-      // 给 Telegram 客户端 200ms 注入时间，避免竞态
-      setTimeout(() => {
-        if (typeof window !== 'undefined' && window.Telegram?.WebApp?.initData) {
-          resolve(window.Telegram.WebApp.initData)
-        } else {
-          resolve(null)
-        }
-      }, 200)
-    }
-  })
-  if (!auth.isLoggedIn && telegramInitData) {
-    try {
-      await auth.telegramLogin(telegramInitData)
-      // Telegram 自动登录成功后跳转到仪表盘
-      router.replace('/')
-    } catch {
-      // 非管理员或验签失败，静默保留未登录状态，显示登录页
-    }
+  // Telegram Mini App 自动登录：
+  // 替换原来 200ms 硬等，改用事件 + 轮询（最长 1.5s），避免竞态导致落到登录页。
+  // 不阻塞 routeReady：自动登录期间由 isAutoLoginChecking 遮罩盖住登录表单，避免闪烁。
+  if (!auth.isLoggedIn) {
+    auth.runAutoLogin().then((result) => {
+      if (result === 'success') {
+        // 仅在仍不在登录相关页时替换，避免覆盖用户已主动进入的页面
+        if (auth.isLoggedIn) router.replace('/')
+      }
+    })
   }
 
   await router.isReady()

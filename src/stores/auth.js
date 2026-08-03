@@ -59,6 +59,10 @@ export const useAuthStore = defineStore('auth', () => {
   const isAdmin = ref(localStorage.getItem('isAdmin') === 'true')
   const sessionReady = ref(false)
 
+  // Telegram Mini App 自动登录状态机：idle / checking / success / notDetected / failed
+  const autoLoginStatus = ref('idle')
+  const autoLoginError = ref('')
+
   // sessionReady：Cookie 会话已由 /auth/me 确认
   const isLoggedIn = computed(() => sessionReady.value && !!username.value)
 
@@ -96,6 +100,90 @@ export const useAuthStore = defineStore('auth', () => {
    */
   async function telegramLogin(initData) {
     return _doLogin({ initData })
+  }
+
+  /**
+   * 等待 Telegram Web App 注入 initData。
+   * 结合 web-app-ready 事件 + 短轮询，最长等待 maxWaitMs（默认 1500ms）。
+   * 返回 initData 字符串；非 Telegram 环境或超时返回 null。
+   */
+  function waitForTelegramInitData(maxWaitMs = 1500) {
+    return new Promise((resolve) => {
+      if (typeof window === 'undefined') {
+        resolve(null)
+        return
+      }
+      const webApp = window.Telegram?.WebApp
+      // 已经注入则立即返回
+      if (webApp?.initData) {
+        resolve(webApp.initData)
+        return
+      }
+      // 没有 WebApp 对象：不是 Telegram Mini App 环境
+      if (!webApp) {
+        resolve(null)
+        return
+      }
+
+      let settled = false
+      const finish = (value) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        if (pollTimer) clearInterval(pollTimer)
+        resolve(value)
+      }
+
+      // 1) Telegram 客户端就绪事件（initData 此时通常已可用）
+      try {
+        webApp.onEvent?.('web-app-ready', () => {
+          finish(webApp.initData || null)
+        })
+      } catch { /* noop */ }
+
+      // 2) 兜底轮询：每 150ms 检查一次 initData 是否已注入
+      const pollTimer = setInterval(() => {
+        if (webApp?.initData) finish(webApp.initData)
+      }, 150)
+
+      // 3) 超时兜底
+      const timer = setTimeout(() => finish(null), maxWaitMs)
+    })
+  }
+
+  /**
+   * 执行 Telegram Mini App 自动登录流程（带状态机）。
+   * @returns {'success' | 'notDetected' | 'failed'}
+   */
+  async function runAutoLogin() {
+    if (isLoggedIn.value) {
+      autoLoginStatus.value = 'success'
+      return 'success'
+    }
+    autoLoginStatus.value = 'checking'
+    autoLoginError.value = ''
+
+    const initData = await waitForTelegramInitData()
+    if (!initData) {
+      autoLoginStatus.value = 'notDetected'
+      return 'notDetected'
+    }
+
+    try {
+      await telegramLogin(initData)
+      autoLoginStatus.value = 'success'
+      autoLoginError.value = ''
+      return 'success'
+    } catch (e) {
+      autoLoginStatus.value = 'failed'
+      autoLoginError.value = e?.message || ''
+      return 'failed'
+    }
+  }
+
+  function resetAutoLogin() {
+    autoLoginStatus.value = 'idle'
+    autoLoginError.value = ''
   }
 
   async function login(u, p, totpCode) {
@@ -203,8 +291,12 @@ export const useAuthStore = defineStore('auth', () => {
     isAdmin,
     isLoggedIn,
     sessionReady,
+    autoLoginStatus,
+    autoLoginError,
     login,
     telegramLogin,
+    runAutoLogin,
+    resetAutoLogin,
     logout,
     checkAuth,
     resetState,
