@@ -21,7 +21,7 @@ RUN apk add --no-cache python3 make g++ && \
 WORKDIR /app
 
 # 只复制 server 依赖（package.json + lock）
-COPY server/package.json ./
+COPY server/package.json server/package-lock.json ./
 RUN npm ci --only=production && \
     npm rebuild better-sqlite3-multiple-ciphers --build-from-source && \
     npm cache clean --force && \
