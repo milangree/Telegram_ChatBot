@@ -14,15 +14,12 @@ RUN npm ci && npm run build
 # ─── 生产运行阶段 ─────────────────────────────────────────────────────
 FROM node:20-alpine AS production
 
-# 安装 better-sqlite3 编译依赖（构建后清理）
-RUN apk add --no-cache python3 make g++ && \
-    apk add --no-cache libstdc++
-
 WORKDIR /app
 
-# 只复制 server 依赖（package.json + lock）
+# 安装编译依赖 + 安装 server 依赖 + 编译 better-sqlite3（同一 RUN 保证 python3 可用）
 COPY server/package.json server/package-lock.json ./
-RUN npm ci --only=production && \
+RUN apk add --no-cache python3 make g++ libstdc++ && \
+    npm ci --only=production && \
     npm rebuild better-sqlite3-multiple-ciphers --build-from-source && \
     npm cache clean --force && \
     apk del python3 make g++
