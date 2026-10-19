@@ -20,7 +20,7 @@ WORKDIR /app
 COPY server/package.json server/package-lock.json ./
 RUN apk add --no-cache python3 make g++ libstdc++ && \
     npm ci --only=production && \
-    npm rebuild better-sqlite3-multiple-ciphers --build-from-source && \
+    PYTHON=$(which python3) npm rebuild better-sqlite3-multiple-ciphers --build-from-source && \
     npm cache clean --force && \
     apk del python3 make g++
 
