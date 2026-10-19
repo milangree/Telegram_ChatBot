@@ -60,10 +60,13 @@ export class KVStore {
   constructor(kv) {
     this.kv = kv
     this.cache = new Map()
-    this.defaultCacheTtlMs = 30000         // 30s default (was 15s)
-    this.settingsCacheTtlMs = 60000        // 60s for settings (rarely change)
+    this.defaultCacheTtlMs = 60000         // 60s default (increased from 30s)
+    this.settingsCacheTtlMs = 120000       // 120s for settings (rarely change, increased from 60s)
+    this.userCacheTtlMs = 120000           // 120s for user data (increased from 30s)
+    this.whitelistCacheTtlMs = 120000      // 120s for whitelist data
+    this.messageCacheTtlMs = 30000         // 30s for message data
     this.settingsCacheKey = '_all_settings'
-    this.negativeCacheTtlMs = 5000         // 5s negative cache for null values
+    this.negativeCacheTtlMs = 10000         // 10s negative cache for null values (increased from 5s)
   }
 
   _cacheGet(key) {
@@ -142,6 +145,39 @@ export class KVStore {
     return s
   }
 
+  /** 批量读取多个设置（减少 KV 读写次数） */
+  async getSettingsBatch(keys) {
+    const result = {}
+    const missingKeys = []
+
+    // 先从缓存读取
+    for (const key of keys) {
+      const ck = `setting:${key}`
+      const cached = this._cacheGet(ck)
+      if (cached !== undefined) {
+        result[key] = cached
+      } else {
+        missingKeys.push(key)
+      }
+    }
+
+    // 批量读取缺失的设置
+    if (missingKeys.length > 0) {
+      await Promise.all(missingKeys.map(async (key) => {
+        const ck = `setting:${key}`
+        const v = await this.kv.get(ck)
+        if (v !== null && v !== undefined && v !== '') {
+          this._cacheSet(ck, v, this.settingsCacheTtlMs)
+          result[key] = v
+        } else {
+          this._cacheSet(ck, null, this.negativeCacheTtlMs)
+        }
+      }))
+    }
+
+    return result
+  }
+
   // Users
   async getUser(userId) {
     const key = `user:${userId}`
@@ -149,7 +185,7 @@ export class KVStore {
     if (cached !== undefined) return cached
     const d = await this.kv.get(key)
     const parsed = d ? JSON.parse(d) : null
-    this._cacheSet(key, parsed)
+    this._cacheSet(key, parsed, parsed ? this.userCacheTtlMs : this.negativeCacheTtlMs)
     return parsed
   }
   async upsertUser(u) {

@@ -8,7 +8,7 @@
 export async function readJsonSafe(response, fallback = null) {
   if (!response) return fallback
 
-  let text = ''
+  let text
   try {
     text = await response.text()
   } catch {

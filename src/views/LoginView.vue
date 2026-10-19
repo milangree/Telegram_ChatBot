@@ -2,14 +2,35 @@
   <div class="login-wrap">
     <div class="login-card card">
       <div class="login-topbar">
-        <select class="lang-select login-lang-select" v-model="selectedLocale" :title="t('app.language')">
-          <option v-for="opt in localeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+        <select
+          v-model="selectedLocale"
+          class="lang-select login-lang-select"
+          :title="t('app.language')"
+        >
+          <option
+            v-for="opt in localeOptions"
+            :key="opt.value"
+            :value="opt.value"
+          >
+            {{ opt.label }}
+          </option>
         </select>
         <div class="theme-menu-wrap login-theme-wrap">
-          <button class="btn-icon theme-trigger" type="button" @click.stop="toggleThemeMenu" :title="t('app.toggleTheme')">
-            <AppIcon :name="currentThemeOption.icon" :size="18" />
+          <button
+            class="btn-icon theme-trigger"
+            type="button"
+            :title="t('app.toggleTheme')"
+            @click.stop="toggleThemeMenu"
+          >
+            <AppIcon
+              :name="currentThemeOption.icon"
+              :size="18"
+            />
           </button>
-          <div v-if="themeMenuOpen" class="theme-menu">
+          <div
+            v-if="themeMenuOpen"
+            class="theme-menu"
+          >
             <button
               v-for="option in themeOptions"
               :key="option.value"
@@ -18,7 +39,11 @@
               type="button"
               @click.stop="applyTheme(option.value)"
             >
-              <AppIcon :name="option.icon" :size="16" class="theme-menu-icon" />
+              <AppIcon
+                :name="option.icon"
+                :size="16"
+                class="theme-menu-icon"
+              />
               <span class="theme-menu-label">{{ option.label }}</span>
               <span class="theme-menu-check">{{ themeMode === option.value ? '●' : '' }}</span>
             </button>
@@ -27,19 +52,36 @@
       </div>
 
       <div class="login-logo">
-        <AppIcon name="logo" :size="44" />
+        <AppIcon
+          name="logo"
+          :size="44"
+        />
       </div>
-      <h1 class="login-title">{{ t('auth.login.title') }}</h1>
+      <h1 class="login-title">
+        {{ t('auth.login.title') }}
+      </h1>
 
-      <div v-if="error" class="alert alert-error">{{ error }}</div>
+      <div
+        v-if="error"
+        class="alert alert-error"
+      >
+        {{ error }}
+      </div>
 
       <div class="login-links">
         <div class="login-link-side login-link-left">
-          <RouterLink v-if="needsRegistration" to="/register">{{ t('auth.login.register') }}</RouterLink>
+          <RouterLink
+            v-if="needsRegistration"
+            to="/register"
+          >
+            {{ t('auth.login.register') }}
+          </RouterLink>
         </div>
 
         <div class="login-link-side login-link-right">
-          <RouterLink to="/recover">{{ t('auth.login.recover') }}</RouterLink>
+          <RouterLink to="/recover">
+            {{ t('auth.login.recover') }}
+          </RouterLink>
         </div>
       </div>
 
@@ -50,7 +92,7 @@
           :placeholder="t('auth.login.username')"
           autocomplete="username"
           @keydown.enter="handleLogin"
-        />
+        >
       </div>
 
       <div class="form-group">
@@ -61,10 +103,13 @@
           :placeholder="t('auth.login.password')"
           autocomplete="current-password"
           @keydown.enter="handleLogin"
-        />
+        >
       </div>
 
-      <div v-if="needTotp" class="form-group">
+      <div
+        v-if="needTotp"
+        class="form-group"
+      >
         <label>{{ t('auth.login.totp') }} <span class="text-muted">({{ t('auth.login.sixDigits') }})</span></label>
         <input
           v-model="totp"
@@ -73,11 +118,18 @@
           inputmode="numeric"
           autocomplete="one-time-code"
           @keydown.enter="handleLogin"
-        />
+        >
       </div>
 
-      <button class="btn-primary w-full" :disabled="loading" @click="handleLogin">
-        <span v-if="loading" class="spinner"></span>{{ loading ? t('auth.login.loggingIn') : t('auth.login.login') }}
+      <button
+        class="btn-primary w-full"
+        :disabled="loading"
+        @click="handleLogin"
+      >
+        <span
+          v-if="loading"
+          class="spinner"
+        />{{ loading ? t('auth.login.loggingIn') : t('auth.login.login') }}
       </button>
 
       <div class="login-footer">

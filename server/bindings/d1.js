@@ -14,7 +14,7 @@ function loadDatabase() {
   try {
     return require('better-sqlite3')
   } catch (err) {
-    throw new Error(`better-sqlite3 不可用: ${err.message}`)
+    throw new Error(`better-sqlite3 不可用: ${err.message}`, { cause: err })
   }
 }
 

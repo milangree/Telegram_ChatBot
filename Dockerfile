@@ -5,25 +5,27 @@ WORKDIR /app
 
 # 先复制 package 文件以利用 Docker 缓存层
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN npm ci --only=production
 
 # 复制源码并构建前端
 COPY . .
-RUN npm run build
+RUN npm ci && npm run build
 
 # ─── 生产运行阶段 ─────────────────────────────────────────────────────
 FROM node:20-alpine AS production
 
 # 安装 better-sqlite3 编译依赖（构建后清理）
-RUN apk add --no-cache python3 make g++
+RUN apk add --no-cache python3 make g++ && \
+    apk add --no-cache libstdc++
 
 WORKDIR /app
 
 # 只复制 server 依赖（package.json + lock）
 COPY server/package.json ./
-RUN npm install --production && \
-    npm rebuild better-sqlite3 --build-from-source && \
-    npm cache clean --force
+RUN npm ci --only=production && \
+    npm rebuild better-sqlite3-multiple-ciphers --build-from-source && \
+    npm cache clean --force && \
+    apk del python3 make g++
 
 # 复制服务端代码
 COPY server/ ./server/

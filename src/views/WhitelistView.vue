@@ -2,69 +2,135 @@
   <div class="page">
     <div class="page-header">
       <h2 class="page-title page-title-with-icon">
-        <AppIcon name="whitelist" :size="20" />
+        <AppIcon
+          name="whitelist"
+          :size="20"
+        />
         {{ t('whitelist.title') }}
       </h2>
-      <button class="btn-ghost btn-sm" @click="load" :title="t('whitelist.refresh')">
-        <AppIcon name="refresh" :size="14" />
+      <button
+        class="btn-ghost btn-sm"
+        :title="t('whitelist.refresh')"
+        @click="load"
+      >
+        <AppIcon
+          name="refresh"
+          :size="14"
+        />
         {{ t('whitelist.refresh') }}
       </button>
     </div>
 
     <div class="card mb-2">
       <h3 class="sec-title sec-title-with-icon">
-        <AppIcon name="add" :size="18" />
+        <AppIcon
+          name="add"
+          :size="18"
+        />
         {{ t('whitelist.addUser') }}
       </h3>
       <div class="quick-row">
         <UserSearchPicker
           v-model="addId"
           :placeholder="t('whitelist.search')"
-          @selected="onPickAddUser"
           style="flex:1"
+          @selected="onPickAddUser"
         />
-        <input v-model="addReason" :placeholder="t('whitelist.reasonOptional')" style="flex:1" />
-        <button class="btn-primary btn-sm" :disabled="!addId || adding" @click="doAdd">
-          <span v-if="adding" class="spinner"></span>
-          <AppIcon v-else name="add" :size="14" />
+        <input
+          v-model="addReason"
+          :placeholder="t('whitelist.reasonOptional')"
+          style="flex:1"
+        >
+        <button
+          class="btn-primary btn-sm"
+          :disabled="!addId || adding"
+          @click="doAdd"
+        >
+          <span
+            v-if="adding"
+            class="spinner"
+          />
+          <AppIcon
+            v-else
+            name="add"
+            :size="14"
+          />
           {{ t('whitelist.add') }}
         </button>
       </div>
-      <div class="form-hint mt-1">{{ t('whitelist.tip') }}</div>
+      <div class="form-hint mt-1">
+        {{ t('whitelist.tip') }}
+      </div>
     </div>
 
     <div class="card">
-      <div v-if="loading" class="skeleton-stack" style="padding:8px 0">
-        <div class="skeleton-row" v-for="i in 4" :key="i">
-          <div class="skeleton skeleton-ava"></div>
-          <div class="skeleton-stack" style="flex:1">
-            <div class="skeleton skeleton-line"></div>
-            <div class="skeleton skeleton-line sm"></div>
+      <div
+        v-if="loading"
+        class="skeleton-stack"
+        style="padding:8px 0"
+      >
+        <div
+          v-for="i in 4"
+          :key="i"
+          class="skeleton-row"
+        >
+          <div class="skeleton skeleton-ava" />
+          <div
+            class="skeleton-stack"
+            style="flex:1"
+          >
+            <div class="skeleton skeleton-line" />
+            <div class="skeleton skeleton-line sm" />
           </div>
         </div>
       </div>
       <template v-else>
-        <div v-if="!users.length" class="empty-state">
-          <div class="empty-state-icon"><AppIcon name="whitelist" :size="24" /></div>
-          <div class="empty-state-title">{{ t('whitelist.empty') }}</div>
+        <div
+          v-if="!users.length"
+          class="empty-state"
+        >
+          <div class="empty-state-icon">
+            <AppIcon
+              name="whitelist"
+              :size="24"
+            />
+          </div>
+          <div class="empty-state-title">
+            {{ t('whitelist.empty') }}
+          </div>
         </div>
-        <div style="overflow-x:auto" v-else>
+        <div
+          v-else
+          style="overflow-x:auto"
+        >
           <table class="table">
             <thead>
               <tr>
                 <th>{{ t('whitelist.table.user') }}</th>
-                <th class="hide-mobile">{{ t('whitelist.table.telegramId') }}</th>
+                <th class="hide-mobile">
+                  {{ t('whitelist.table.telegramId') }}
+                </th>
                 <th>{{ t('whitelist.table.reason') }}</th>
-                <th class="hide-mobile">{{ t('whitelist.table.addedAt') }}</th>
+                <th class="hide-mobile">
+                  {{ t('whitelist.table.addedAt') }}
+                </th>
                 <th>{{ t('whitelist.table.actions') }}</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="u in users" :key="u.user_id">
+              <tr
+                v-for="u in users"
+                :key="u.user_id"
+              >
                 <td>
                   <div class="user-cell">
                     <div class="u-ava">
-                      <img v-if="avatars[u.user_id]" :src="avatars[u.user_id]" class="ava-img" @error="avatars[u.user_id] = ''" />
+                      <img
+                        v-if="avatars[u.user_id]"
+                        :src="avatars[u.user_id]"
+                        class="ava-img"
+                        @error="avatars[u.user_id] = ''"
+                      >
                       <span v-else>{{ (u.first_name || u.username || '?')[0].toUpperCase() }}</span>
                     </div>
                     <div class="user-cell-line">
@@ -84,17 +150,42 @@
                   </div>
                 </td>
                 <td class="hide-mobile">
-                  <button type="button" class="id-copy" :title="t('common.copy')" @click="copyTelegramId(u.user_id)">{{ u.user_id }}</button>
+                  <button
+                    type="button"
+                    class="id-copy"
+                    :title="t('common.copy')"
+                    @click="copyTelegramId(u.user_id)"
+                  >
+                    {{ u.user_id }}
+                  </button>
                 </td>
-                <td class="text-muted text-sm">{{ u.reason || '—' }}</td>
-                <td class="hide-mobile text-muted text-sm">{{ fmtDate(u.created_at) }}</td>
+                <td class="text-muted text-sm">
+                  {{ u.reason || '—' }}
+                </td>
+                <td class="hide-mobile text-muted text-sm">
+                  {{ fmtDate(u.created_at) }}
+                </td>
                 <td>
                   <div class="row-actions">
-                    <RouterLink :to="`/conversations?user=${u.user_id}`" class="btn-ghost btn-sm action-link-icon" :title="t('users.messages')">
-                      <AppIcon name="conversations" :size="14" />
+                    <RouterLink
+                      :to="`/conversations?user=${u.user_id}`"
+                      class="btn-ghost btn-sm action-link-icon"
+                      :title="t('users.messages')"
+                    >
+                      <AppIcon
+                        name="conversations"
+                        :size="14"
+                      />
                     </RouterLink>
-                    <button class="btn-danger btn-sm" @click="doRemove(u)" :title="t('whitelist.remove')">
-                      <AppIcon name="delete" :size="14" />
+                    <button
+                      class="btn-danger btn-sm"
+                      :title="t('whitelist.remove')"
+                      @click="doRemove(u)"
+                    >
+                      <AppIcon
+                        name="delete"
+                        :size="14"
+                      />
                     </button>
                   </div>
                 </td>
@@ -102,16 +193,30 @@
             </tbody>
           </table>
         </div>
-        <div class="pagination-bar" v-if="total > pageSize">
+        <div
+          v-if="total > pageSize"
+          class="pagination-bar"
+        >
           <div class="pagination-meta">
             <span class="text-muted text-sm">{{ t('whitelist.pageInfo', { page, total }) }}</span>
           </div>
           <div class="pagination-actions">
-            <button class="btn-ghost btn-sm" :disabled="page <= 1" @click="page--; load()">
-              <AppIcon name="chevron-left" :size="14" />
+            <button
+              class="btn-ghost btn-sm"
+              :disabled="page <= 1"
+              @click="page--; load()"
+            >
+              <AppIcon
+                name="chevron-left"
+                :size="14"
+              />
               {{ t('users.prevPage') }}
             </button>
-            <button class="btn-ghost btn-sm" :disabled="page * pageSize >= total" @click="page++; load()">
+            <button
+              class="btn-ghost btn-sm"
+              :disabled="page * pageSize >= total"
+              @click="page++; load()"
+            >
               {{ t('users.nextPage') }}
             </button>
           </div>

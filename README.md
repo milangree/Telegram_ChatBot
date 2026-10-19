@@ -94,7 +94,43 @@
 - **D1** — SQLite，支持 SQL 查询
 - **Hyperdrive** — PostgreSQL / MySQL，适合大规模生产
 - 三向一键切换，自动同步数据
-- SQL 导入导出（明文 / Base64 / AES-256-GCM 加密）
+- SQL 导入导出（AES-256-GCM 加密，安全可靠）
+
+</details>
+
+<details>
+<summary><b>🔌 实时通信</b></summary>
+
+- WebSocket 实时推送新消息
+- 自动重连（最多 5 次，间隔 3 秒）
+- 消息处理器机制，支持按类型订阅
+
+</details>
+
+<details>
+<summary><b>📝 审计日志</b></summary>
+
+- 记录所有管理员操作（封禁/解封/删除用户、白名单管理、设置变更、数据导出/导入）
+- 日志保留 30 天，最多 1000 条
+- 通过 `/api/settings/audit-logs` 查询
+
+</details>
+
+<details>
+<summary><b>📚 API 文档</b></summary>
+
+- OpenAPI 3.0 规范
+- Swagger UI 界面：`/api-docs`
+- 原始规范文件：`/openapi.yaml`
+
+</details>
+
+<details>
+<summary><b>🧪 测试</b></summary>
+
+- Vitest 测试框架
+- 66 个单元测试覆盖核心模块
+- 运行测试：`npm test`
 
 </details>
 

@@ -48,7 +48,9 @@ export function markSessionExpired() {
 
 /** 登录成功后统一写入内存态；会话凭据依赖 HttpOnly Cookie，不落 localStorage */
 function applySession(data) {
+  // eslint-disable-next-line eqeqeq
   if (data?.username != null) localStorage.setItem('username', data.username)
+  // eslint-disable-next-line eqeqeq
   if (data?.isAdmin != null) localStorage.setItem('isAdmin', String(!!data.isAdmin))
 }
 
@@ -289,7 +291,7 @@ export const useAuthStore = defineStore('auth', () => {
         _checkAuthCachedOk = true
         _checkAuthCachedAt = Date.now()
         return true
-      } catch (error) {
+      } catch {
         // 非 401 错误：弱网时若已有用户名则暂视为登录
         if (username.value) {
           sessionReady.value = true
@@ -302,6 +304,21 @@ export const useAuthStore = defineStore('auth', () => {
     })()
 
     return _checkAuthInflight
+  }
+
+  /**
+   * 敏感操作前强制刷新登录状态
+   * @returns {Promise<boolean>} 是否已认证
+   */
+  async function requireAuth() {
+    const ok = await checkAuth({ force: true })
+    if (!ok) {
+      setAuthNotice(AUTH_NOTICE_SESSION_EXPIRED)
+      if (typeof window !== 'undefined') {
+        window.location.href = '/login'
+      }
+    }
+    return ok
   }
 
   return {
@@ -318,6 +335,7 @@ export const useAuthStore = defineStore('auth', () => {
     resetAutoLogin,
     logout,
     checkAuth,
+    requireAuth,
     resetState,
     applySession,
   }

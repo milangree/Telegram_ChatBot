@@ -7,16 +7,36 @@
       tabindex="-1"
       @click.self="onCancel"
     >
-      <div class="modal-card card app-dialog" role="dialog" aria-modal="true" :aria-label="state.title || 'dialog'">
+      <div
+        class="modal-card card app-dialog"
+        role="dialog"
+        aria-modal="true"
+        :aria-label="state.title || 'dialog'"
+      >
         <div class="app-dialog-header">
-          <h3 class="app-dialog-title">{{ state.title || defaultTitle }}</h3>
-          <button class="btn-icon" type="button" :title="t('app.close')" @click="onCancel">
-            <AppIcon name="close" :size="16" />
+          <h3 class="app-dialog-title">
+            {{ state.title || defaultTitle }}
+          </h3>
+          <button
+            class="btn-icon"
+            type="button"
+            :title="t('app.close')"
+            @click="onCancel"
+          >
+            <AppIcon
+              name="close"
+              :size="16"
+            />
           </button>
         </div>
 
         <div class="app-dialog-body">
-          <p v-if="state.message" class="app-dialog-message">{{ state.message }}</p>
+          <p
+            v-if="state.message"
+            class="app-dialog-message"
+          >
+            {{ state.message }}
+          </p>
           <input
             v-if="state.mode === 'prompt'"
             ref="inputRef"
@@ -24,7 +44,7 @@
             class="app-dialog-input"
             :placeholder="state.placeholder || t('common.inputPlaceholder')"
             @keydown.enter.prevent="onSubmit"
-          />
+          >
         </div>
 
         <div class="app-dialog-actions">

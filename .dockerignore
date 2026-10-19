@@ -12,6 +12,7 @@ dist/
 .vscode/
 .vscode-test/
 .idea/
+.claude/
 
 # 本地构建与调试缓存
 .cache/
@@ -24,6 +25,17 @@ pnpm-debug.log*
 # Docker 数据文件
 data/
 
-.claude/
-.git/
-node_modules/.cache/
+# 测试文件
+tests/
+*.test.js
+*.spec.js
+
+# 文档
+*.md
+LICENSE
+
+# 其他
+.mailmap
+.dockerignore
+Dockerfile
+docker-compose.yml

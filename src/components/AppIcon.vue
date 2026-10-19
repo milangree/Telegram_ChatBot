@@ -13,11 +13,29 @@
     aria-hidden="true"
   >
     <template v-if="name === 'logo' || name === 'bot'">
-      <rect x="7" y="8" width="10" height="8" rx="2" />
+      <rect
+        x="7"
+        y="8"
+        width="10"
+        height="8"
+        rx="2"
+      />
       <path d="M12 4v4" />
       <path d="M9 4h6" />
-      <circle cx="10" cy="12" r="1" fill="currentColor" stroke="none" />
-      <circle cx="14" cy="12" r="1" fill="currentColor" stroke="none" />
+      <circle
+        cx="10"
+        cy="12"
+        r="1"
+        fill="currentColor"
+        stroke="none"
+      />
+      <circle
+        cx="14"
+        cy="12"
+        r="1"
+        fill="currentColor"
+        stroke="none"
+      />
       <path d="M9.5 15h5" />
       <path d="M7 11H5" />
       <path d="M19 11h-2" />
@@ -25,9 +43,27 @@
 
     <template v-else-if="name === 'dashboard' || name === 'stats'">
       <path d="M4 19h16" />
-      <rect x="5" y="11" width="3" height="6" rx="1" />
-      <rect x="10.5" y="7" width="3" height="10" rx="1" />
-      <rect x="16" y="4" width="3" height="13" rx="1" />
+      <rect
+        x="5"
+        y="11"
+        width="3"
+        height="6"
+        rx="1"
+      />
+      <rect
+        x="10.5"
+        y="7"
+        width="3"
+        height="10"
+        rx="1"
+      />
+      <rect
+        x="16"
+        y="4"
+        width="3"
+        height="13"
+        rx="1"
+      />
     </template>
 
     <template v-else-if="name === 'conversations' || name === 'message'">
@@ -37,8 +73,16 @@
     </template>
 
     <template v-else-if="name === 'users'">
-      <circle cx="9" cy="9" r="2.5" />
-      <circle cx="16" cy="10" r="2" />
+      <circle
+        cx="9"
+        cy="9"
+        r="2.5"
+      />
+      <circle
+        cx="16"
+        cy="10"
+        r="2"
+      />
       <path d="M4.5 18a4.5 4.5 0 0 1 9 0" />
       <path d="M13.5 18a3.5 3.5 0 0 1 5-2.8" />
     </template>
@@ -49,8 +93,16 @@
     </template>
 
     <template v-else-if="name === 'settings'">
-      <circle cx="12" cy="12" r="7" />
-      <circle cx="12" cy="12" r="3" />
+      <circle
+        cx="12"
+        cy="12"
+        r="7"
+      />
+      <circle
+        cx="12"
+        cy="12"
+        r="3"
+      />
       <path d="M12 2.5v2.5" />
       <path d="M12 19v2.5" />
       <path d="M2.5 12H5" />
@@ -62,7 +114,11 @@
     </template>
 
     <template v-else-if="name === 'profile'">
-      <circle cx="12" cy="8" r="3" />
+      <circle
+        cx="12"
+        cy="8"
+        r="3"
+      />
       <path d="M6 19a6 6 0 0 1 12 0" />
     </template>
 
@@ -91,7 +147,11 @@
     </template>
 
     <template v-else-if="name === 'light'">
-      <circle cx="12" cy="12" r="4" />
+      <circle
+        cx="12"
+        cy="12"
+        r="4"
+      />
       <path d="M12 2.5v2.5" />
       <path d="M12 19v2.5" />
       <path d="M4.9 4.9l1.8 1.8" />
@@ -107,19 +167,33 @@
     </template>
 
     <template v-else-if="name === 'system'">
-      <rect x="3.5" y="5" width="17" height="11" rx="2" />
+      <rect
+        x="3.5"
+        y="5"
+        width="17"
+        height="11"
+        rx="2"
+      />
       <path d="M8 19h8" />
       <path d="M10 16v3" />
       <path d="M14 16v3" />
     </template>
 
     <template v-else-if="name === 'block'">
-      <circle cx="12" cy="12" r="8" />
+      <circle
+        cx="12"
+        cy="12"
+        r="8"
+      />
       <path d="M8.5 8.5l7 7" />
     </template>
 
     <template v-else-if="name === 'unblock'">
-      <circle cx="12" cy="12" r="8" />
+      <circle
+        cx="12"
+        cy="12"
+        r="8"
+      />
       <path d="M9 12l2 2 4-4" />
     </template>
 
@@ -147,7 +221,13 @@
     </template>
 
     <template v-else-if="name === 'verify' || name === 'lock'">
-      <rect x="6.5" y="10.5" width="11" height="8" rx="2" />
+      <rect
+        x="6.5"
+        y="10.5"
+        width="11"
+        height="8"
+        rx="2"
+      />
       <path d="M9 10.5V8.5a3 3 0 0 1 6 0v2" />
     </template>
 
@@ -163,20 +243,35 @@
     </template>
 
     <template v-else-if="name === 'storage'">
-      <ellipse cx="12" cy="6" rx="6.5" ry="2.5" />
+      <ellipse
+        cx="12"
+        cy="6"
+        rx="6.5"
+        ry="2.5"
+      />
       <path d="M5.5 6v6c0 1.4 2.9 2.5 6.5 2.5s6.5-1.1 6.5-2.5V6" />
       <path d="M5.5 12v6c0 1.4 2.9 2.5 6.5 2.5s6.5-1.1 6.5-2.5v-6" />
     </template>
 
     <template v-else-if="name === 'today' || name === 'calendar'">
-      <rect x="4" y="5" width="16" height="15" rx="2" />
+      <rect
+        x="4"
+        y="5"
+        width="16"
+        height="15"
+        rx="2"
+      />
       <path d="M8 3.5v3" />
       <path d="M16 3.5v3" />
       <path d="M4 9h16" />
     </template>
 
     <template v-else-if="name === 'search'">
-      <circle cx="11" cy="11" r="6" />
+      <circle
+        cx="11"
+        cy="11"
+        r="6"
+      />
       <path d="M20 20l-4.2-4.2" />
     </template>
 
@@ -200,7 +295,11 @@
     </template>
 
     <template v-else-if="name === 'key'">
-      <circle cx="8.5" cy="14.5" r="3.5" />
+      <circle
+        cx="8.5"
+        cy="14.5"
+        r="3.5"
+      />
       <path d="M11.5 12.5L19 5" />
       <path d="M16.5 7.5l2 2" />
       <path d="M14.5 9.5l1.5 1.5" />

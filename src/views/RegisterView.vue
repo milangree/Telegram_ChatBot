@@ -2,24 +2,58 @@
   <div class="auth-page">
     <div class="auth-card card">
       <div class="login-logo">
-        <AppIcon name="logo" :size="44" />
+        <AppIcon
+          name="logo"
+          :size="44"
+        />
       </div>
-      <h1 class="login-title">{{ t('auth.register.title') }}</h1>
-      <div class="alert alert-info mb-2">{{ t('auth.register.tip') }}</div>
-      <div v-if="error" class="alert alert-error">{{ error }}</div>
+      <h1 class="login-title">
+        {{ t('auth.register.title') }}
+      </h1>
+      <div class="alert alert-info mb-2">
+        {{ t('auth.register.tip') }}
+      </div>
+      <div
+        v-if="error"
+        class="alert alert-error"
+      >
+        {{ error }}
+      </div>
       <div class="form-group">
         <label>{{ t('auth.register.username') }}</label>
-        <input v-model="username" :placeholder="t('auth.register.usernamePh')" autocomplete="username" />
+        <input
+          v-model="username"
+          :placeholder="t('auth.register.usernamePh')"
+          autocomplete="username"
+        >
       </div>
       <div class="form-group">
         <label>{{ t('auth.register.password') }}</label>
-        <input v-model="password" type="password" :placeholder="t('auth.register.passwordPh')" autocomplete="new-password" @keydown.enter="doRegister" />
+        <input
+          v-model="password"
+          type="password"
+          :placeholder="t('auth.register.passwordPh')"
+          autocomplete="new-password"
+          @keydown.enter="doRegister"
+        >
       </div>
-      <button class="btn-primary w-full" @click="doRegister" :disabled="loading">
-        <span v-if="loading" class="spinner"></span>{{ loading ? t('auth.register.submitting') : t('auth.register.submit') }}
+      <button
+        class="btn-primary w-full"
+        :disabled="loading"
+        @click="doRegister"
+      >
+        <span
+          v-if="loading"
+          class="spinner"
+        />{{ loading ? t('auth.register.submitting') : t('auth.register.submit') }}
       </button>
       <div class="auth-footer-link">
-        <RouterLink to="/login" class="text-sm">← {{ t('auth.register.toLogin') }}</RouterLink>
+        <RouterLink
+          to="/login"
+          class="text-sm"
+        >
+          ← {{ t('auth.register.toLogin') }}
+        </RouterLink>
       </div>
     </div>
   </div>

@@ -1,6 +1,10 @@
 <template>
   <Teleport to="body">
-    <div class="toast-stack" aria-live="polite" aria-relevant="additions">
+    <div
+      class="toast-stack"
+      aria-live="polite"
+      aria-relevant="additions"
+    >
       <TransitionGroup name="toast">
         <div
           v-for="item in state.items"
@@ -9,12 +13,26 @@
           :class="[`toast-${item.type}`, { leaving: item.leaving }]"
           role="status"
         >
-          <span class="toast-icon" aria-hidden="true">
-            <AppIcon :name="iconOf(item.type)" :size="15" />
+          <span
+            class="toast-icon"
+            aria-hidden="true"
+          >
+            <AppIcon
+              :name="iconOf(item.type)"
+              :size="15"
+            />
           </span>
           <span class="toast-text">{{ item.message }}</span>
-          <button class="toast-close btn-icon" type="button" :title="t('app.close')" @click="toast.dismiss(item.id)">
-            <AppIcon name="close" :size="14" />
+          <button
+            class="toast-close btn-icon"
+            type="button"
+            :title="t('app.close')"
+            @click="toast.dismiss(item.id)"
+          >
+            <AppIcon
+              name="close"
+              :size="14"
+            />
           </button>
         </div>
       </TransitionGroup>

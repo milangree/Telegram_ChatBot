@@ -34,7 +34,7 @@ function openDialog(mode, options = {}) {
     state.title = options.title || ''
     state.message = options.message || ''
     state.placeholder = options.placeholder || ''
-    state.inputValue = options.defaultValue != null ? String(options.defaultValue) : ''
+    state.inputValue = options.defaultValue !== null && options.defaultValue !== undefined ? String(options.defaultValue) : ''
     state.danger = !!options.danger
     state.confirmText = options.confirmText || ''
     state.cancelText = options.cancelText || ''

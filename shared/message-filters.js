@@ -101,7 +101,7 @@ export function normalizeMessageFilterRule(input) {
     }
     const safeFlags = sanitizeRegexFlags(flags)
     // 校验正则表达式是否合法
-    // eslint-disable-next-line no-new
+     
     new RegExp(source, safeFlags)
     return {
       id: String(input?.id || createRuleId()),
@@ -130,6 +130,7 @@ export function parseMessageFilterRules(raw) {
     try {
       rules.push(normalizeMessageFilterRule(item))
     } catch {
+      // 忽略无效规则
     }
   }
   return rules

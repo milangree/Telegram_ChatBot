@@ -60,7 +60,7 @@ export function stripSensitiveSettings(value) {
   for (const key of SENSITIVE_CACHE_KEYS) {
     if (!(key in next)) continue
     const raw = next[key]
-    const configured = raw != null && String(raw).trim() !== ''
+    const configured = raw !== null && raw !== undefined && String(raw).trim() !== ''
     // 已配置 → 固定占位符；未配置 → 空串（与 maskSecretValue 语义一致）
     next[key] = configured ? '****' : ''
   }

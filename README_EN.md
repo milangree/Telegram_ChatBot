@@ -94,7 +94,43 @@ All verification methods support:
 - **D1** — SQLite, supports SQL queries
 - **Hyperdrive** — PostgreSQL / MySQL, suitable for production
 - One-click switching with automatic data sync
-- SQL import/export (plain / Base64 / AES-256-GCM encryption)
+- SQL import/export (AES-256-GCM encryption, secure and reliable)
+
+</details>
+
+<details>
+<summary><b>🔌 Real-time Communication</b></summary>
+
+- WebSocket real-time push for new messages
+- Auto-reconnect (up to 5 times, 3s interval)
+- Message handler mechanism, supports subscription by type
+
+</details>
+
+<details>
+<summary><b>📝 Audit Log</b></summary>
+
+- Records all admin operations (ban/unblock/delete users, whitelist management, settings changes, data export/import)
+- Logs retained for 30 days, up to 1000 entries
+- Query via `/api/settings/audit-logs`
+
+</details>
+
+<details>
+<summary><b>📚 API Documentation</b></summary>
+
+- OpenAPI 3.0 specification
+- Swagger UI: `/api-docs`
+- Raw spec file: `/openapi.yaml`
+
+</details>
+
+<details>
+<summary><b>🧪 Testing</b></summary>
+
+- Vitest test framework
+- 66 unit tests covering core modules
+- Run tests: `npm test`
 
 </details>
 

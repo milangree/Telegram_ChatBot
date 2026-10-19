@@ -1,0 +1,419 @@
+openapi: 3.0.3
+info:
+  title: Telegram ChatBot API
+  description: |
+    Telegram 双向消息机器人 API
+    
+    ## 认证
+    所有 API（除公开接口外）需要通过 Cookie 进行认证。
+    登录成功后会设置 `session` Cookie，后续请求自动携带。
+    
+    ## 存储后端
+    支持 KV / D1 / Hyperdrive 三种存储后端，通过 `ACTIVE_DB` 环境变量切换。
+  version: 2.0.0
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:3000/api
+    description: 本地开发
+  - url: https://your-domain.com/api
+    description: 生产环境
+
+tags:
+  - name: auth
+    description: 认证相关
+  - name: users
+    description: 用户管理
+  - name: conversations
+    description: 对话记录
+  - name: settings
+    description: 系统设置
+  - name: whitelist
+    description: 白名单管理
+  - name: tg
+    description: Telegram 代理
+
+paths:
+  /auth/status:
+    get:
+      tags: [auth]
+      summary: 获取认证状态
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  needsRegistration:
+                    type: boolean
+
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: 用户登录
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username:
+                  type: string
+                password:
+                  type: string
+                totp:
+                  type: string
+                  description: 2FA 验证码（如已启用）
+      responses:
+        '200':
+          description: 登录成功
+        '401':
+          description: 认证失败
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      summary: 退出登录
+      responses:
+        '200':
+          description: 成功
+
+  /auth/me:
+    get:
+      tags: [auth]
+      summary: 获取当前用户信息
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  username:
+                    type: string
+                  isAdmin:
+                    type: boolean
+                  totpEnabled:
+                    type: boolean
+
+  /users:
+    get:
+      tags: [users]
+      summary: 获取用户列表
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: filter
+          in: query
+          schema:
+            type: string
+            enum: [blocked, normal]
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  users:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/User'
+                  total:
+                    type: integer
+
+  /users/{userId}/block:
+    put:
+      tags: [users]
+      summary: 封禁用户
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                permanent:
+                  type: boolean
+      responses:
+        '200':
+          description: 成功
+
+  /users/{userId}/unblock:
+    put:
+      tags: [users]
+      summary: 解封用户
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 成功
+
+  /users/{userId}:
+    delete:
+      tags: [users]
+      summary: 删除用户
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 成功
+
+  /conversations:
+    get:
+      tags: [conversations]
+      summary: 获取对话列表
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Conversation'
+                  serverTime:
+                    type: string
+                    format: date-time
+
+  /conversations/{userId}:
+    get:
+      tags: [conversations]
+      summary: 获取对话详情
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 成功
+
+  /conversations/{userId}:
+    post:
+      tags: [conversations]
+      summary: 发送消息
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                kind:
+                  type: string
+                  enum: [text, photo, document]
+                text:
+                  type: string
+                caption:
+                  type: string
+      responses:
+        '200':
+          description: 成功
+
+  /settings:
+    get:
+      tags: [settings]
+      summary: 获取设置（脱敏）
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: 成功
+
+  /settings:
+    put:
+      tags: [settings]
+      summary: 保存设置
+      security:
+        - cookieAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: 成功
+
+  /settings/audit-logs:
+    get:
+      tags: [settings]
+      summary: 获取审计日志
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+      responses:
+        '200':
+          description: 成功
+
+  /whitelist:
+    get:
+      tags: [whitelist]
+      summary: 获取白名单
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: 成功
+
+  /whitelist/{userId}:
+    post:
+      tags: [whitelist]
+      summary: 添加白名单
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 成功
+
+  /whitelist/{userId}:
+    delete:
+      tags: [whitelist]
+      summary: 移除白名单
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 成功
+
+  /tg/me:
+    get:
+      tags: [tg]
+      summary: 获取 Bot 信息
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: 成功
+
+  /tg/resolve-chat:
+    post:
+      tags: [tg]
+      summary: 解析 Chat
+      security:
+        - cookieAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                chatId:
+                  type: string
+      responses:
+        '200':
+          description: 成功
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: session
+
+  schemas:
+    User:
+      type: object
+      properties:
+        user_id:
+          type: integer
+        username:
+          type: string
+        first_name:
+          type: string
+        is_blocked:
+          type: boolean
+        is_verified:
+          type: boolean
+        is_whitelisted:
+          type: boolean
+
+    Conversation:
+      type: object
+      properties:
+        user_id:
+          type: integer
+        first_name:
+          type: string
+        username:
+          type: string
+        last_message:
+          type: string
+        last_direction:
+          type: string
+          enum: [incoming, outgoing]
+        last_time:
+          type: string
+          format: date-time

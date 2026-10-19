@@ -2,80 +2,185 @@
   <div class="page">
     <div class="page-header">
       <h2 class="page-title page-title-with-icon">
-        <AppIcon name="users" :size="20" />
+        <AppIcon
+          name="users"
+          :size="20"
+        />
         {{ t('users.title') }}
       </h2>
       <div class="toolbar-controls">
-        <select v-model="filter" class="toolbar-select">
-          <option value="">{{ t('users.filter.all') }}</option>
-          <option value="blocked">{{ t('users.filter.blocked') }}</option>
-          <option value="normal">{{ t('users.filter.normal') }}</option>
+        <select
+          v-model="filter"
+          class="toolbar-select"
+        >
+          <option value="">
+            {{ t('users.filter.all') }}
+          </option>
+          <option value="blocked">
+            {{ t('users.filter.blocked') }}
+          </option>
+          <option value="normal">
+            {{ t('users.filter.normal') }}
+          </option>
         </select>
-        <select v-model.number="pageSize" class="toolbar-select">
-          <option v-for="size in pageSizeOptions" :key="size" :value="size">
+        <select
+          v-model.number="pageSize"
+          class="toolbar-select"
+        >
+          <option
+            v-for="size in pageSizeOptions"
+            :key="size"
+            :value="size"
+          >
             {{ t('users.pageSizeOption', { n: size }) }}
           </option>
         </select>
-        <button class="btn-ghost btn-sm" @click="load" :title="t('dashboard.refresh')">
-          <AppIcon name="refresh" :size="14" />
+        <button
+          class="btn-ghost btn-sm"
+          :title="t('dashboard.refresh')"
+          @click="load"
+        >
+          <AppIcon
+            name="refresh"
+            :size="14"
+          />
         </button>
       </div>
     </div>
 
     <div class="card mb-2">
       <h3 class="sec-title sec-title-with-icon">
-        <AppIcon name="quick" :size="18" />
+        <AppIcon
+          name="quick"
+          :size="18"
+        />
         {{ t('users.quickActions') }}
       </h3>
       <div class="quick-row">
-        <UserSearchPicker v-model="quickId" :placeholder="t('users.searchUser')" @selected="u => quickId = String(u.user_id)" style="flex:1" />
-        <input v-model="quickReason" :placeholder="t('users.reasonOptional')" style="flex:1" />
-        <button class="btn-danger btn-sm" :disabled="!quickId" @click="quickBlock">
-          <AppIcon name="block" :size="14" />
+        <UserSearchPicker
+          v-model="quickId"
+          :placeholder="t('users.searchUser')"
+          style="flex:1"
+          @selected="u => quickId = String(u.user_id)"
+        />
+        <input
+          v-model="quickReason"
+          :placeholder="t('users.reasonOptional')"
+          style="flex:1"
+        >
+        <button
+          class="btn-danger btn-sm"
+          :disabled="!quickId"
+          @click="quickBlock"
+        >
+          <AppIcon
+            name="block"
+            :size="14"
+          />
           {{ t('users.block') }}
         </button>
-        <button class="btn-success btn-sm" :disabled="!quickId" @click="quickUnblock">
-          <AppIcon name="unblock" :size="14" />
+        <button
+          class="btn-success btn-sm"
+          :disabled="!quickId"
+          @click="quickUnblock"
+        >
+          <AppIcon
+            name="unblock"
+            :size="14"
+          />
           {{ t('users.unblock') }}
         </button>
-        <button class="btn-ghost btn-sm" :disabled="!quickId" @click="quickWhitelist">
-          <AppIcon name="whitelist" :size="14" />
+        <button
+          class="btn-ghost btn-sm"
+          :disabled="!quickId"
+          @click="quickWhitelist"
+        >
+          <AppIcon
+            name="whitelist"
+            :size="14"
+          />
           {{ t('users.addWhitelist') }}
         </button>
       </div>
-      <div v-if="quickMsg" class="alert mt-1" :class="quickOk ? 'alert-success' : 'alert-error'">{{ quickMsg }}</div>
+      <div
+        v-if="quickMsg"
+        class="alert mt-1"
+        :class="quickOk ? 'alert-success' : 'alert-error'"
+      >
+        {{ quickMsg }}
+      </div>
     </div>
 
-    <div v-if="selected.length" class="batch-bar mb-2">
+    <div
+      v-if="selected.length"
+      class="batch-bar mb-2"
+    >
       <span class="text-sm text-muted">{{ t('users.selectedCount', { n: selected.length }) }}</span>
       <div class="batch-actions flex gap-2 flex-wrap">
-        <button class="btn-danger btn-sm" @click="batchBlock">
-          <AppIcon name="block" :size="14" />
+        <button
+          class="btn-danger btn-sm"
+          @click="batchBlock"
+        >
+          <AppIcon
+            name="block"
+            :size="14"
+          />
           {{ t('users.batchBlock') }}
         </button>
-        <button class="btn-success btn-sm" @click="batchUnblock">
-          <AppIcon name="unblock" :size="14" />
+        <button
+          class="btn-success btn-sm"
+          @click="batchUnblock"
+        >
+          <AppIcon
+            name="unblock"
+            :size="14"
+          />
           {{ t('users.batchUnblock') }}
         </button>
-        <button class="btn-ghost btn-sm" @click="batchWhitelist">
-          <AppIcon name="whitelist" :size="14" />
+        <button
+          class="btn-ghost btn-sm"
+          @click="batchWhitelist"
+        >
+          <AppIcon
+            name="whitelist"
+            :size="14"
+          />
           {{ t('users.batchWhitelist') }}
         </button>
-        <button class="btn-ghost btn-sm" @click="selected = []">
-          <AppIcon name="close" :size="14" />
+        <button
+          class="btn-ghost btn-sm"
+          @click="selected = []"
+        >
+          <AppIcon
+            name="close"
+            :size="14"
+          />
           {{ t('users.cancel') }}
         </button>
       </div>
     </div>
 
     <div class="card">
-      <div v-if="loading" class="flex-center" style="padding:30px"><div class="spinner"></div></div>
+      <div
+        v-if="loading"
+        class="flex-center"
+        style="padding:30px"
+      >
+        <div class="spinner" />
+      </div>
       <template v-else>
         <div style="overflow-x:auto">
           <table class="table compact-users-table">
             <thead>
               <tr>
-                <th style="width:36px"><input type="checkbox" :checked="allSelected" @change="toggleAll" class="cb" /></th>
+                <th style="width:36px">
+                  <input
+                    type="checkbox"
+                    :checked="allSelected"
+                    class="cb"
+                    @change="toggleAll"
+                  >
+                </th>
                 <th>{{ t('users.table.user') }}</th>
                 <th>{{ t('users.table.id') }}</th>
                 <th>{{ t('users.table.status') }}</th>
@@ -84,18 +189,44 @@
               </tr>
             </thead>
             <tbody>
-              <tr v-for="u in users" :key="u.user_id" :class="{ 'row-sel': selected.includes(u.user_id) }">
-                <td><input type="checkbox" :checked="selected.includes(u.user_id)" @change="toggleSelect(u.user_id)" class="cb" /></td>
+              <tr
+                v-for="u in users"
+                :key="u.user_id"
+                :class="{ 'row-sel': selected.includes(u.user_id) }"
+              >
                 <td>
-                  <div class="user-cell" :class="{ 'is-blocked': !!u.is_blocked, 'is-wl': !!wlMap[u.user_id] && !u.is_blocked }" @click="openDetail(u)">
-                    <div class="u-ava" :class="{ blocked: u.is_blocked }">
-                      <img v-if="avatars[u.user_id]" :src="avatars[u.user_id]" class="ava-img" @error="avatars[u.user_id] = ''" />
+                  <input
+                    type="checkbox"
+                    :checked="selected.includes(u.user_id)"
+                    class="cb"
+                    @change="toggleSelect(u.user_id)"
+                  >
+                </td>
+                <td>
+                  <div
+                    class="user-cell"
+                    :class="{ 'is-blocked': !!u.is_blocked, 'is-wl': !!wlMap[u.user_id] && !u.is_blocked }"
+                    @click="openDetail(u)"
+                  >
+                    <div
+                      class="u-ava"
+                      :class="{ blocked: u.is_blocked }"
+                    >
+                      <img
+                        v-if="avatars[u.user_id]"
+                        :src="avatars[u.user_id]"
+                        class="ava-img"
+                        @error="avatars[u.user_id] = ''"
+                      >
                       <span v-else>{{ (u.first_name || u.username || '?')[0].toUpperCase() }}</span>
                     </div>
                     <div class="user-summary">
                       <div class="u-name">
                         {{ formatDisplayName(u) }}
-                        <span v-if="wlMap[u.user_id] && !u.is_blocked" class="wl-inline-tag">{{ t('users.detail.whitelist') }}</span>
+                        <span
+                          v-if="wlMap[u.user_id] && !u.is_blocked"
+                          class="wl-inline-tag"
+                        >{{ t('users.detail.whitelist') }}</span>
                       </div>
                       <div class="u-username">
                         <button
@@ -104,42 +235,91 @@
                           class="id-copy"
                           :title="t('common.copy')"
                           @click.stop="copyText('@' + u.username, t('users.copyUsername'))"
-                        >@{{ u.username }}</button>
-                        <template v-else>{{ t('users.detail.noUsername') }}</template>
+                        >
+                          @{{ u.username }}
+                        </button>
+                        <template v-else>
+                          {{ t('users.detail.noUsername') }}
+                        </template>
                       </div>
                     </div>
                   </div>
                 </td>
                 <td>
-                  <button type="button" class="id-copy" :title="t('common.copy')" @click.stop="copyText(String(u.user_id), t('users.copyUid'))">{{ u.user_id }}</button>
+                  <button
+                    type="button"
+                    class="id-copy"
+                    :title="t('common.copy')"
+                    @click.stop="copyText(String(u.user_id), t('users.copyUid'))"
+                  >
+                    {{ u.user_id }}
+                  </button>
                 </td>
                 <td>
-                  <span class="badge" :class="u.is_blocked ? 'badge-danger' : 'badge-success'">
+                  <span
+                    class="badge"
+                    :class="u.is_blocked ? 'badge-danger' : 'badge-success'"
+                  >
                     {{ u.is_blocked ? (u.is_permanent_block ? t('users.status.permanent') : t('users.status.blocked')) : t('users.status.normal') }}
                   </span>
                 </td>
-                <td class="text-muted text-sm">{{ fmtDate(u.created_at) }}</td>
+                <td class="text-muted text-sm">
+                  {{ fmtDate(u.created_at) }}
+                </td>
                 <td>
                   <div class="row-actions">
-                    <button v-if="!u.is_blocked" class="btn-danger btn-sm" @click.stop="blockOne(u)" :title="t('users.blockUser')">
-                      <AppIcon name="block" :size="14" />
+                    <button
+                      v-if="!u.is_blocked"
+                      class="btn-danger btn-sm"
+                      :title="t('users.blockUser')"
+                      @click.stop="blockOne(u)"
+                    >
+                      <AppIcon
+                        name="block"
+                        :size="14"
+                      />
                     </button>
-                    <button v-else class="btn-success btn-sm" @click.stop="unblockOne(u)" :title="t('users.unblockUser')">
-                      <AppIcon name="unblock" :size="14" />
+                    <button
+                      v-else
+                      class="btn-success btn-sm"
+                      :title="t('users.unblockUser')"
+                      @click.stop="unblockOne(u)"
+                    >
+                      <AppIcon
+                        name="unblock"
+                        :size="14"
+                      />
                     </button>
                     <button
                       class="btn-sm"
                       :class="wlMap[u.user_id] ? 'btn-danger' : 'btn-ghost'"
-                      @click.stop="toggleWhitelistOne(u)"
                       :title="wlMap[u.user_id] ? t('users.removeWhitelist') : t('users.addWhitelist')"
+                      @click.stop="toggleWhitelistOne(u)"
                     >
-                      <AppIcon name="whitelist" :size="14" />
+                      <AppIcon
+                        name="whitelist"
+                        :size="14"
+                      />
                     </button>
-                    <button class="btn-danger btn-sm" @click.stop="deleteOne(u)" :title="t('users.delete')">
-                      <AppIcon name="delete" :size="14" />
+                    <button
+                      class="btn-danger btn-sm"
+                      :title="t('users.delete')"
+                      @click.stop="deleteOne(u)"
+                    >
+                      <AppIcon
+                        name="delete"
+                        :size="14"
+                      />
                     </button>
-                    <RouterLink :to="`/conversations?user=${u.user_id}`" class="btn-ghost btn-sm action-link action-link-icon" :title="t('users.messages')">
-                      <AppIcon name="conversations" :size="14" />
+                    <RouterLink
+                      :to="`/conversations?user=${u.user_id}`"
+                      class="btn-ghost btn-sm action-link action-link-icon"
+                      :title="t('users.messages')"
+                    >
+                      <AppIcon
+                        name="conversations"
+                        :size="14"
+                      />
                     </RouterLink>
                   </div>
                 </td>
@@ -147,8 +327,15 @@
               <tr v-if="!users.length">
                 <td colspan="6">
                   <div class="empty-state">
-                    <div class="empty-state-icon"><AppIcon name="users" :size="24" /></div>
-                    <div class="empty-state-title">{{ t('users.empty') }}</div>
+                    <div class="empty-state-icon">
+                      <AppIcon
+                        name="users"
+                        :size="24"
+                      />
+                    </div>
+                    <div class="empty-state-title">
+                      {{ t('users.empty') }}
+                    </div>
                   </div>
                 </td>
               </tr>
@@ -156,27 +343,53 @@
           </table>
         </div>
 
-        <div class="pagination-bar" v-if="total > 0">
+        <div
+          v-if="total > 0"
+          class="pagination-bar"
+        >
           <div class="pagination-meta">
             <span class="text-muted text-sm">{{ t('users.pageInfo', { page, total }) }}</span>
           </div>
           <div class="pagination-actions">
-            <button class="btn-ghost btn-sm" :disabled="page <= 1" @click="goPrevPage">{{ t('users.prevPage') }}</button>
-            <button class="btn-ghost btn-sm" :disabled="page >= totalPages" @click="goNextPage">{{ t('users.nextPage') }}</button>
+            <button
+              class="btn-ghost btn-sm"
+              :disabled="page <= 1"
+              @click="goPrevPage"
+            >
+              {{ t('users.prevPage') }}
+            </button>
+            <button
+              class="btn-ghost btn-sm"
+              :disabled="page >= totalPages"
+              @click="goNextPage"
+            >
+              {{ t('users.nextPage') }}
+            </button>
           </div>
         </div>
       </template>
     </div>
 
-    <div v-if="detailUser" class="modal-overlay" @click.self="detailUser = null">
+    <div
+      v-if="detailUser"
+      class="modal-overlay"
+      @click.self="detailUser = null"
+    >
       <div class="modal-card card">
         <div class="modal-hdr">
           <div class="modal-ava">
-            <img v-if="avatars[detailUser.user_id]" :src="avatars[detailUser.user_id]" class="ava-img" @error="avatars[detailUser.user_id] = ''" />
+            <img
+              v-if="avatars[detailUser.user_id]"
+              :src="avatars[detailUser.user_id]"
+              class="ava-img"
+              @error="avatars[detailUser.user_id] = ''"
+            >
             <span v-else>{{ (detailUser.first_name || '?')[0].toUpperCase() }}</span>
           </div>
           <div style="flex:1;min-width:0">
-            <div style="font-size:17px;font-weight:700">{{ detailUser.first_name }} {{ detailUser.last_name }}</div>
+            <div style="font-size:17px;font-weight:700">
+              {{ detailUser.first_name }} {{ detailUser.last_name }}
+            </div>
             <div class="text-muted text-sm">
               <button
                 v-if="detailUser.username"
@@ -184,12 +397,23 @@
                 class="id-copy"
                 :title="t('common.copy')"
                 @click="copyText('@' + detailUser.username, t('users.copyUsername'))"
-              >@{{ detailUser.username }}</button>
-              <template v-else>{{ t('users.detail.noUsername') }}</template>
+              >
+                @{{ detailUser.username }}
+              </button>
+              <template v-else>
+                {{ t('users.detail.noUsername') }}
+              </template>
             </div>
           </div>
-          <button class="btn-icon" @click="detailUser = null" style="font-size:20px">
-            <AppIcon name="close" :size="18" />
+          <button
+            class="btn-icon"
+            style="font-size:20px"
+            @click="detailUser = null"
+          >
+            <AppIcon
+              name="close"
+              :size="18"
+            />
           </button>
         </div>
 
@@ -197,21 +421,48 @@
           <div class="dr">
             <span class="dl">{{ t('users.detail.id') }}</span>
             <span class="id-inline">
-              <button type="button" class="id-copy" :title="t('common.copy')" @click="copyText(String(detailUser.user_id), t('users.copyUid'))">{{ detailUser.user_id }}</button>
+              <button
+                type="button"
+                class="id-copy"
+                :title="t('common.copy')"
+                @click="copyText(String(detailUser.user_id), t('users.copyUid'))"
+              >{{ detailUser.user_id }}</button>
             </span>
-            <button class="btn-ghost btn-sm copy-btn" @click="copyText(String(detailUser.user_id), t('users.copyUid'))">{{ t('users.copy') }}</button>
+            <button
+              class="btn-ghost btn-sm copy-btn"
+              @click="copyText(String(detailUser.user_id), t('users.copyUid'))"
+            >
+              {{ t('users.copy') }}
+            </button>
           </div>
-          <div class="dr"><span class="dl">{{ t('users.detail.status') }}</span>
-            <span class="badge" :class="detailUser.is_blocked ? 'badge-danger' : 'badge-success'">
+          <div class="dr">
+            <span class="dl">{{ t('users.detail.status') }}</span>
+            <span
+              class="badge"
+              :class="detailUser.is_blocked ? 'badge-danger' : 'badge-success'"
+            >
               {{ detailUser.is_blocked ? (detailUser.is_permanent_block ? t('users.status.permanent') : t('users.status.blocked')) : t('users.status.normal') }}
             </span>
           </div>
-          <div class="dr" v-if="detailUser.block_reason"><span class="dl">{{ t('users.detail.blockReason') }}</span>{{ detailUser.block_reason }}</div>
-          <div class="dr"><span class="dl">{{ t('users.detail.verified') }}</span>{{ detailUser.is_verified ? t('users.detail.verified') : t('users.detail.unverified') }}</div>
+          <div
+            v-if="detailUser.block_reason"
+            class="dr"
+          >
+            <span class="dl">{{ t('users.detail.blockReason') }}</span>{{ detailUser.block_reason }}
+          </div>
+          <div class="dr">
+            <span class="dl">{{ t('users.detail.verified') }}</span>{{ detailUser.is_verified ? t('users.detail.verified') : t('users.detail.unverified') }}
+          </div>
           <div class="dr">
             <span class="dl">{{ t('users.detail.whitelist') }}</span>
-            <span v-if="detailIsWl" class="inline-icon-text">
-              <AppIcon name="whitelist" :size="14" />
+            <span
+              v-if="detailIsWl"
+              class="inline-icon-text"
+            >
+              <AppIcon
+                name="whitelist"
+                :size="14"
+              />
               {{ t('common.yes') }}
             </span>
             <span v-else>{{ t('common.no') }}</span>
@@ -219,31 +470,75 @@
           <div class="dr">
             <span class="dl">{{ t('users.detail.name') }}</span>
             <span>{{ detailUser.first_name }} {{ detailUser.last_name }}</span>
-            <button class="btn-ghost btn-sm copy-btn" @click="copyText(`${detailUser.first_name || ''} ${detailUser.last_name || ''}`.trim(), t('users.copyName'))">{{ t('users.copy') }}</button>
+            <button
+              class="btn-ghost btn-sm copy-btn"
+              @click="copyText(`${detailUser.first_name || ''} ${detailUser.last_name || ''}`.trim(), t('users.copyName'))"
+            >
+              {{ t('users.copy') }}
+            </button>
           </div>
-          <div class="dr"><span class="dl">{{ t('users.detail.language') }}</span>{{ detailUser.language_code || t('users.detail.unknown') }}</div>
-          <div class="dr"><span class="dl">{{ t('users.detail.firstContact') }}</span>{{ fmtDate(detailUser.created_at) }}</div>
+          <div class="dr">
+            <span class="dl">{{ t('users.detail.language') }}</span>{{ detailUser.language_code || t('users.detail.unknown') }}
+          </div>
+          <div class="dr">
+            <span class="dl">{{ t('users.detail.firstContact') }}</span>{{ fmtDate(detailUser.created_at) }}
+          </div>
         </div>
 
         <div class="modal-acts">
-          <button v-if="!detailUser.is_blocked" class="btn-danger" @click="blockDetail">
-            <AppIcon name="block" :size="14" />
+          <button
+            v-if="!detailUser.is_blocked"
+            class="btn-danger"
+            @click="blockDetail"
+          >
+            <AppIcon
+              name="block"
+              :size="14"
+            />
             {{ t('users.block') }}
           </button>
-          <button v-else class="btn-success" @click="unblockDetail">
-            <AppIcon name="unblock" :size="14" />
+          <button
+            v-else
+            class="btn-success"
+            @click="unblockDetail"
+          >
+            <AppIcon
+              name="unblock"
+              :size="14"
+            />
             {{ t('users.unblock') }}
           </button>
-          <button class="btn-ghost" :class="{ 'btn-danger': detailIsWl }" @click="toggleWlDetail">
-            <AppIcon name="whitelist" :size="14" />
+          <button
+            class="btn-ghost"
+            :class="{ 'btn-danger': detailIsWl }"
+            @click="toggleWlDetail"
+          >
+            <AppIcon
+              name="whitelist"
+              :size="14"
+            />
             {{ detailIsWl ? t('users.removeWhitelist') : t('users.addWhitelist') }}
           </button>
-          <button class="btn-danger" @click="deleteDetail">
-            <AppIcon name="delete" :size="14" />
+          <button
+            class="btn-danger"
+            @click="deleteDetail"
+          >
+            <AppIcon
+              name="delete"
+              :size="14"
+            />
             {{ t('users.delete') }}
           </button>
-          <RouterLink :to="`/conversations?user=${detailUser.user_id}`" class="btn-ghost action-link" style="text-decoration:none" @click="detailUser = null">
-            <AppIcon name="conversations" :size="14" />
+          <RouterLink
+            :to="`/conversations?user=${detailUser.user_id}`"
+            class="btn-ghost action-link"
+            style="text-decoration:none"
+            @click="detailUser = null"
+          >
+            <AppIcon
+              name="conversations"
+              :size="14"
+            />
             {{ t('users.messages') }}
           </RouterLink>
         </div>
@@ -261,9 +556,11 @@ import UserSearchPicker from '../components/UserSearchPicker.vue'
 import { useI18nStore } from '../stores/i18n'
 import { useDialog } from '../stores/dialog.js'
 import { useToast } from '../stores/toast.js'
+import { useAuthStore } from '../stores/auth.js'
 
 const route = useRoute()
 const i18n = useI18nStore()
+const auth = useAuthStore()
 const t = i18n.t
 const dialog = useDialog()
 const toast = useToast()
@@ -362,7 +659,9 @@ async function openDetail(u) {
     try {
       const r = await api.get(`/api/whitelist/check/${u.user_id}`)
       detailIsWl.value = r.whitelisted
-    } catch {}
+    } catch {
+      // 忽略白名单状态查询失败
+    }
   }
 }
 
@@ -493,6 +792,7 @@ async function quickWhitelist() {
 }
 
 async function blockOne(u) {
+  if (!await auth.requireAuth()) return
   const r = await dialog.prompt({
     title: t('users.blockUser'),
     message: t('users.blockReasonPrompt'),
@@ -511,6 +811,7 @@ async function blockOne(u) {
 }
 
 async function unblockOne(u) {
+  if (!await auth.requireAuth()) return
   const ok = await dialog.confirm({
     title: t('users.unblockUser'),
     message: t('users.unblockConfirm', { name: formatConfirmName(u) }),

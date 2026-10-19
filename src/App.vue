@@ -1,14 +1,31 @@
 <template>
-  <div class="app-root" v-if="auth.isLoggedIn">
+  <div
+    v-if="auth.isLoggedIn"
+    class="app-root"
+  >
     <!-- Top Navigation -->
     <header class="topbar">
       <div class="topbar-inner">
         <div class="topbar-left">
-          <button class="btn-icon mobile-only" @click="navOpen = !navOpen" :title="t('app.menu')">
-            <AppIcon name="menu" :size="18" />
+          <button
+            class="btn-icon mobile-only"
+            :title="t('app.menu')"
+            @click="navOpen = !navOpen"
+          >
+            <AppIcon
+              name="menu"
+              :size="18"
+            />
           </button>
-          <RouterLink to="/" class="brand" @click="navOpen = false">
-            <span class="brand-mark"><AppIcon name="logo" :size="20" /></span>
+          <RouterLink
+            to="/"
+            class="brand"
+            @click="navOpen = false"
+          >
+            <span class="brand-mark"><AppIcon
+              name="logo"
+              :size="20"
+            /></span>
             <span class="brand-text">{{ t('app.title') }}</span>
           </RouterLink>
 
@@ -20,22 +37,45 @@
               class="top-link"
               :class="{ active: isActive(item.to) }"
             >
-              <AppIcon :name="item.icon" :size="16" />
+              <AppIcon
+                :name="item.icon"
+                :size="16"
+              />
               <span>{{ item.label }}</span>
             </RouterLink>
           </nav>
         </div>
 
         <div class="topbar-right">
-          <select class="lang-select" v-model="selectedLocale" :title="t('app.language')">
-            <option v-for="opt in localeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+          <select
+            v-model="selectedLocale"
+            class="lang-select"
+            :title="t('app.language')"
+          >
+            <option
+              v-for="opt in localeOptions"
+              :key="opt.value"
+              :value="opt.value"
+            >
+              {{ opt.label }}
+            </option>
           </select>
 
           <div class="theme-menu-wrap">
-            <button class="btn-icon theme-trigger" @click.stop="toggleThemeMenu" :title="t('app.toggleTheme')">
-              <AppIcon :name="currentThemeOption.icon" :size="18" />
+            <button
+              class="btn-icon theme-trigger"
+              :title="t('app.toggleTheme')"
+              @click.stop="toggleThemeMenu"
+            >
+              <AppIcon
+                :name="currentThemeOption.icon"
+                :size="18"
+              />
             </button>
-            <div v-if="themeMenuOpen" class="theme-menu theme-menu-down">
+            <div
+              v-if="themeMenuOpen"
+              class="theme-menu theme-menu-down"
+            >
               <button
                 v-for="option in themeOptions"
                 :key="option.value"
@@ -43,33 +83,53 @@
                 :class="{ active: themeMode === option.value }"
                 @click.stop="applyTheme(option.value)"
               >
-                <AppIcon :name="option.icon" :size="16" class="theme-menu-icon" />
+                <AppIcon
+                  :name="option.icon"
+                  :size="16"
+                  class="theme-menu-icon"
+                />
                 <span class="theme-menu-label">{{ option.label }}</span>
                 <span class="theme-menu-check">
-                  <AppIcon v-if="themeMode === option.value" name="check" :size="14" />
+                  <AppIcon
+                    v-if="themeMode === option.value"
+                    name="check"
+                    :size="14"
+                  />
                 </span>
               </button>
             </div>
           </div>
 
-          <RouterLink to="/profile" class="user-chip" :title="t('nav.profile')">
-            <div class="user-ava">{{ auth.username?.[0]?.toUpperCase() || 'U' }}</div>
+          <RouterLink
+            to="/profile"
+            class="user-chip"
+            :title="t('nav.profile')"
+          >
+            <div class="user-ava">
+              {{ auth.username?.[0]?.toUpperCase() || 'U' }}
+            </div>
             <span class="user-name hide-mobile">{{ auth.username }}</span>
           </RouterLink>
 
           <button
             v-if="!isTelegramMiniApp"
             class="btn-icon logout-btn"
-            @click="handleLogout"
             :title="t('app.logout')"
+            @click="handleLogout"
           >
-            <AppIcon name="logout" :size="18" />
+            <AppIcon
+              name="logout"
+              :size="18"
+            />
           </button>
         </div>
       </div>
 
       <!-- Mobile dropdown nav -->
-      <nav v-if="navOpen" class="mobile-nav mobile-only">
+      <nav
+        v-if="navOpen"
+        class="mobile-nav mobile-only"
+      >
         <RouterLink
           v-for="item in navItems"
           :key="item.to"
@@ -78,79 +138,162 @@
           :class="{ active: isActive(item.to) }"
           @click="navOpen = false"
         >
-          <AppIcon :name="item.icon" :size="16" />
+          <AppIcon
+            :name="item.icon"
+            :size="16"
+          />
           <span>{{ item.label }}</span>
         </RouterLink>
       </nav>
     </header>
 
     <main class="main-content">
-      <div class="page-shell" :class="{ 'page-shell-wide': isWidePage }">
+      <div
+        class="page-shell"
+        :class="{ 'page-shell-wide': isWidePage }"
+      >
         <RouterView v-slot="{ Component, route: r }">
-          <Transition name="fade-slide" mode="out-in">
-            <component :is="Component" :key="r.path" />
+          <Transition
+            name="fade-slide"
+            mode="out-in"
+          >
+            <component
+              :is="Component"
+              :key="r.path"
+            />
           </Transition>
         </RouterView>
       </div>
     </main>
   </div>
 
-  <div v-else class="main-content no-sidebar">
+  <div
+    v-else
+    class="main-content no-sidebar"
+  >
     <!-- Telegram Mini App 自动登录中：显示加载态，避免登录表单闪烁 -->
-    <div v-if="isAutoLoginChecking" class="login-wrap">
+    <div
+      v-if="isAutoLoginChecking"
+      class="login-wrap"
+    >
       <div class="login-card card auto-login-card">
-        <div class="login-logo"><AppIcon name="logo" :size="44" /></div>
-        <h1 class="login-title">{{ t('app.title') }}</h1>
+        <div class="login-logo">
+          <AppIcon
+            name="logo"
+            :size="44"
+          />
+        </div>
+        <h1 class="login-title">
+          {{ t('app.title') }}
+        </h1>
         <div class="auto-login-status">
-          <span class="spinner"></span>
+          <span class="spinner" />
           <span>{{ t('store.auth.telegramLoggingIn') }}</span>
         </div>
       </div>
     </div>
 
     <!-- Telegram 自动登录失败：友好提示 + 重试 / 切换密码登录 -->
-    <div v-else-if="autoLoginFailed" class="login-wrap">
+    <div
+      v-else-if="autoLoginFailed"
+      class="login-wrap"
+    >
       <div class="login-card card auto-login-card">
-        <div class="login-logo"><AppIcon name="logo" :size="44" /></div>
-        <h1 class="login-title">{{ t('app.title') }}</h1>
+        <div class="login-logo">
+          <AppIcon
+            name="logo"
+            :size="44"
+          />
+        </div>
+        <h1 class="login-title">
+          {{ t('app.title') }}
+        </h1>
         <div class="alert alert-error">
           <strong>{{ autoLoginStatus === 'notDetected' ? t('store.auth.telegramNotDetected') : t('store.auth.telegramLoginFailed') }}</strong>
-          <p class="auto-login-desc">{{ autoLoginStatus === 'notDetected' ? t('store.auth.telegramNotDetectedDesc') : t('store.auth.telegramLoginFailedDesc') }}</p>
-          <p v-if="autoLoginStatus !== 'notDetected' && auth.autoLoginError" class="auto-login-detail">{{ t('store.auth.telegramLoginFailedDetail', { error: auth.autoLoginError }) }}</p>
+          <p class="auto-login-desc">
+            {{ autoLoginStatus === 'notDetected' ? t('store.auth.telegramNotDetectedDesc') : t('store.auth.telegramLoginFailedDesc') }}
+          </p>
+          <p
+            v-if="autoLoginStatus !== 'notDetected' && auth.autoLoginError"
+            class="auto-login-detail"
+          >
+            {{ t('store.auth.telegramLoginFailedDetail', { error: auth.autoLoginError }) }}
+          </p>
         </div>
-        <button class="btn-primary w-full" @click="handleRetryAutoLogin">{{ t('store.auth.telegramRetry') }}</button>
-        <button class="btn-ghost w-full auto-login-switch" @click="handleSwitchToPassword">{{ t('store.auth.telegramSwitchToPassword') }}</button>
+        <button
+          class="btn-primary w-full"
+          @click="handleRetryAutoLogin"
+        >
+          {{ t('store.auth.telegramRetry') }}
+        </button>
+        <button
+          class="btn-ghost w-full auto-login-switch"
+          @click="handleSwitchToPassword"
+        >
+          {{ t('store.auth.telegramSwitchToPassword') }}
+        </button>
       </div>
     </div>
 
     <!-- Auth pages -->
     <div v-else>
-      <div v-if="routeReady && showAuthControls" class="auth-topbar">
-      <select class="lang-select auth-lang-select" v-model="selectedLocale" :title="t('app.language')">
-        <option v-for="opt in localeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
-      </select>
-      <div class="theme-menu-wrap">
-        <button class="btn-icon theme-trigger" @click.stop="toggleThemeMenu" :title="t('app.toggleTheme')">
-          <AppIcon :name="currentThemeOption.icon" :size="18" />
-        </button>
-        <div v-if="themeMenuOpen" class="theme-menu theme-menu-down">
-          <button
-            v-for="option in themeOptions"
-            :key="option.value"
-            class="theme-menu-item"
-            :class="{ active: themeMode === option.value }"
-            @click.stop="applyTheme(option.value)"
+      <div
+        v-if="routeReady && showAuthControls"
+        class="auth-topbar"
+      >
+        <select
+          v-model="selectedLocale"
+          class="lang-select auth-lang-select"
+          :title="t('app.language')"
+        >
+          <option
+            v-for="opt in localeOptions"
+            :key="opt.value"
+            :value="opt.value"
           >
-            <AppIcon :name="option.icon" :size="16" class="theme-menu-icon" />
-            <span class="theme-menu-label">{{ option.label }}</span>
-            <span class="theme-menu-check">
-              <AppIcon v-if="themeMode === option.value" name="check" :size="14" />
-            </span>
+            {{ opt.label }}
+          </option>
+        </select>
+        <div class="theme-menu-wrap">
+          <button
+            class="btn-icon theme-trigger"
+            :title="t('app.toggleTheme')"
+            @click.stop="toggleThemeMenu"
+          >
+            <AppIcon
+              :name="currentThemeOption.icon"
+              :size="18"
+            />
           </button>
+          <div
+            v-if="themeMenuOpen"
+            class="theme-menu theme-menu-down"
+          >
+            <button
+              v-for="option in themeOptions"
+              :key="option.value"
+              class="theme-menu-item"
+              :class="{ active: themeMode === option.value }"
+              @click.stop="applyTheme(option.value)"
+            >
+              <AppIcon
+                :name="option.icon"
+                :size="16"
+                class="theme-menu-icon"
+              />
+              <span class="theme-menu-label">{{ option.label }}</span>
+              <span class="theme-menu-check">
+                <AppIcon
+                  v-if="themeMode === option.value"
+                  name="check"
+                  :size="14"
+                />
+              </span>
+            </button>
+          </div>
         </div>
       </div>
-    </div>
-    <RouterView />
+      <RouterView />
     </div>
   </div>
 
@@ -350,7 +493,9 @@ async function syncLocaleToBackend() {
   if (!auth.isLoggedIn || !auth.isAdmin) return
   try {
     await api.put('/api/settings', { BOT_LOCALE: i18n.locale })
-  } catch {}
+  } catch {
+    // 忽略语言保存失败
+  }
 }
 
 async function handleLogout() {

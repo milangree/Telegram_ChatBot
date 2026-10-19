@@ -1,4 +1,4 @@
-﻿const messages = {
+const messages = {
   "app.title": "Bot 管理",
   "app.mainMenu": "主選單",
   "app.toggleLight": "切換亮色",
@@ -633,7 +633,6 @@
   "conv.type.location": "📍 位置",
   "conv.type.poll": "📊 投票",
   "conv.type.dice": "🎲 骰子",
-  "settings.token.test": "測試",
   "api.settings.sqlExportFailed": "匯出 SQL 失敗: {error}",
   "api.settings.sqlSecretsRequireAes": "包含密鑰時必須使用 AES 加密匯出",
   "api.settings.sqlImportFailed": "匯入 SQL 失敗: {error}",

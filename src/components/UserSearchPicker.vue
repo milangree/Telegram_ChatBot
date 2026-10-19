@@ -1,33 +1,59 @@
 <template>
-  <div class="id-picker" ref="root">
+  <div
+    ref="root"
+    class="id-picker"
+  >
     <div class="input-row">
       <input
         v-model="query"
         :placeholder="placeholder || t('users.searchUser')"
+        autocomplete="off"
         @input="onInput"
         @focus="open = true"
         @keydown.esc="open = false"
-        autocomplete="off"
-      />
+      >
       <slot name="append" />
     </div>
 
-    <div v-if="open && (results.length || loading || query.length > 0)" class="id-dropdown">
-      <div v-if="loading" class="id-dropdown-item text-muted">{{ t('picker.searching') }}</div>
-      <div v-else-if="!results.length" class="id-dropdown-item text-muted">{{ t('picker.empty') }}</div>
+    <div
+      v-if="open && (results.length || loading || query.length > 0)"
+      class="id-dropdown"
+    >
+      <div
+        v-if="loading"
+        class="id-dropdown-item text-muted"
+      >
+        {{ t('picker.searching') }}
+      </div>
+      <div
+        v-else-if="!results.length"
+        class="id-dropdown-item text-muted"
+      >
+        {{ t('picker.empty') }}
+      </div>
       <div
         v-for="u in results"
         :key="u.user_id"
         class="id-dropdown-item"
         @mousedown.prevent="select(u)"
       >
-        <div class="user-ava-sm">{{ (u.first_name || u.username || '?')[0].toUpperCase() }}</div>
+        <div class="user-ava-sm">
+          {{ (u.first_name || u.username || '?')[0].toUpperCase() }}
+        </div>
         <div>
-          <div style="font-weight:500">{{ u.first_name }} {{ u.last_name }}</div>
-          <div class="text-sm text-muted">{{ u.username ? '@' + u.username : '' }}</div>
+          <div style="font-weight:500">
+            {{ u.first_name }} {{ u.last_name }}
+          </div>
+          <div class="text-sm text-muted">
+            {{ u.username ? '@' + u.username : '' }}
+          </div>
         </div>
         <span class="item-id">{{ u.user_id }}</span>
-        <span v-if="u.is_blocked" class="badge badge-danger" style="font-size:9px">{{ t('picker.blocked') }}</span>
+        <span
+          v-if="u.is_blocked"
+          class="badge badge-danger"
+          style="font-size:9px"
+        >{{ t('picker.blocked') }}</span>
       </div>
     </div>
   </div>

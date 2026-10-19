@@ -2,77 +2,149 @@
   <div class="page">
     <div class="page-header">
       <h2 class="page-title page-title-with-icon">
-        <AppIcon name="dashboard" :size="20" />
+        <AppIcon
+          name="dashboard"
+          :size="20"
+        />
         {{ t('dashboard.title') }}
       </h2>
-      <button class="btn-ghost btn-sm" @click="load(true)">
-        <AppIcon name="refresh" :size="14" />
+      <button
+        class="btn-ghost btn-sm"
+        @click="load(true)"
+      >
+        <AppIcon
+          name="refresh"
+          :size="14"
+        />
         {{ t('dashboard.refresh') }}
       </button>
     </div>
 
-    <div v-if="loading" class="skeleton-stack mt-2">
+    <div
+      v-if="loading"
+      class="skeleton-stack mt-2"
+    >
       <div class="stat-grid mb-2">
-        <div class="card skeleton-card" v-for="i in 4" :key="i">
+        <div
+          v-for="i in 4"
+          :key="i"
+          class="card skeleton-card"
+        >
           <div class="skeleton-row">
-            <div class="skeleton skeleton-ava"></div>
-            <div class="skeleton-stack" style="flex:1">
-              <div class="skeleton skeleton-line lg"></div>
-              <div class="skeleton skeleton-line sm"></div>
+            <div class="skeleton skeleton-ava" />
+            <div
+              class="skeleton-stack"
+              style="flex:1"
+            >
+              <div class="skeleton skeleton-line lg" />
+              <div class="skeleton skeleton-line sm" />
             </div>
           </div>
         </div>
       </div>
       <div class="card skeleton-card">
-        <div class="skeleton skeleton-line lg mb-2"></div>
-        <div class="skeleton skeleton-line mb-1"></div>
-        <div class="skeleton skeleton-line sm"></div>
+        <div class="skeleton skeleton-line lg mb-2" />
+        <div class="skeleton skeleton-line mb-1" />
+        <div class="skeleton skeleton-line sm" />
       </div>
     </div>
     <template v-else>
       <div class="stat-grid mb-2">
-        <div class="stat-card card clickable" v-for="s in statCards" :key="s.label" @click="goTo(s.to)">
+        <div
+          v-for="s in statCards"
+          :key="s.label"
+          class="stat-card card clickable"
+          @click="goTo(s.to)"
+        >
           <div class="stat-icon-wrap">
-            <AppIcon :name="s.icon" :size="22" />
+            <AppIcon
+              :name="s.icon"
+              :size="22"
+            />
           </div>
           <div>
-            <div class="stat-val" :class="s.cls">{{ s.val }}</div>
-            <div class="text-muted text-sm">{{ s.label }}</div>
+            <div
+              class="stat-val"
+              :class="s.cls"
+            >
+              {{ s.val }}
+            </div>
+            <div class="text-muted text-sm">
+              {{ s.label }}
+            </div>
           </div>
         </div>
       </div>
 
       <div class="card mb-2">
         <h3 class="sec-title sec-title-with-icon">
-          <AppIcon name="bot" :size="18" />
+          <AppIcon
+            name="bot"
+            :size="18"
+          />
           {{ t('dashboard.botStatus') }}
         </h3>
-        <div v-if="bot" class="bot-info">
+        <div
+          v-if="bot"
+          class="bot-info"
+        >
           <div class="bot-ava">
-            <AppIcon name="bot" :size="28" />
+            <AppIcon
+              name="bot"
+              :size="28"
+            />
           </div>
           <div>
-            <div style="font-weight:600">{{ bot.first_name }}</div>
+            <div style="font-weight:600">
+              {{ bot.first_name }}
+            </div>
             <div class="text-muted text-sm">
               <template v-if="bot.username">
-                <button type="button" class="id-copy" :title="t('common.copy')" @click="copyUsername(bot.username)">@{{ bot.username }}</button>
+                <button
+                  type="button"
+                  class="id-copy"
+                  :title="t('common.copy')"
+                  @click="copyUsername(bot.username)"
+                >
+                  @{{ bot.username }}
+                </button>
                 <span> · </span>
               </template>
               <span class="id-inline">
                 <span class="id-label">ID: </span>
-                <button type="button" class="id-copy" :title="t('common.copy')" @click="copyTelegramId(bot.id)">{{ bot.id }}</button>
+                <button
+                  type="button"
+                  class="id-copy"
+                  :title="t('common.copy')"
+                  @click="copyTelegramId(bot.id)"
+                >{{ bot.id }}</button>
               </span>
             </div>
           </div>
           <span class="badge badge-success">{{ t('dashboard.botOnline') }}</span>
         </div>
-        <div v-else class="alert alert-error mb-1">
-          {{ t('dashboard.botTokenMissing') }} <RouterLink to="/settings">{{ t('nav.settings') }}</RouterLink>
+        <div
+          v-else
+          class="alert alert-error mb-1"
+        >
+          {{ t('dashboard.botTokenMissing') }} <RouterLink to="/settings">
+            {{ t('nav.settings') }}
+          </RouterLink>
         </div>
         <div class="config-checks mt-2">
-          <div class="config-row" v-for="c in configChecks" :key="c.label">
-            <span class="text-muted" style="font-size:13px">{{ c.label }}</span>
-            <span class="badge" :class="c.ok ? 'badge-success' : 'badge-danger'">
+          <div
+            v-for="c in configChecks"
+            :key="c.label"
+            class="config-row"
+          >
+            <span
+              class="text-muted"
+              style="font-size:13px"
+            >{{ c.label }}</span>
+            <span
+              class="badge"
+              :class="c.ok ? 'badge-success' : 'badge-danger'"
+            >
               {{ c.ok ? t('dashboard.config.ok') : t('dashboard.config.missing') }}
             </span>
           </div>
@@ -80,30 +152,72 @@
       </div>
 
       <div class="card">
-        <div class="flex" style="justify-content:space-between;align-items:center;margin-bottom:12px">
-          <h3 class="sec-title sec-title-with-icon" style="margin:0">
-            <AppIcon name="conversations" :size="18" />
+        <div
+          class="flex"
+          style="justify-content:space-between;align-items:center;margin-bottom:12px"
+        >
+          <h3
+            class="sec-title sec-title-with-icon"
+            style="margin:0"
+          >
+            <AppIcon
+              name="conversations"
+              :size="18"
+            />
             {{ t('dashboard.recentConversations') }}
           </h3>
-          <RouterLink to="/conversations" class="text-sm">{{ t('dashboard.viewAll') }} →</RouterLink>
+          <RouterLink
+            to="/conversations"
+            class="text-sm"
+          >
+            {{ t('dashboard.viewAll') }} →
+          </RouterLink>
         </div>
-        <div v-if="!convs.length" class="empty-state">
-          <div class="empty-state-icon"><AppIcon name="conversations" :size="24" /></div>
-          <div class="empty-state-title">{{ t('dashboard.emptyConversations') }}</div>
+        <div
+          v-if="!convs.length"
+          class="empty-state"
+        >
+          <div class="empty-state-icon">
+            <AppIcon
+              name="conversations"
+              :size="24"
+            />
+          </div>
+          <div class="empty-state-title">
+            {{ t('dashboard.emptyConversations') }}
+          </div>
         </div>
-        <RouterLink v-for="c in convs.slice(0, 8)" :key="c.user_id" :to="`/conversations?user=${c.user_id}`" class="conv-row">
+        <RouterLink
+          v-for="c in convs.slice(0, 8)"
+          :key="c.user_id"
+          :to="`/conversations?user=${c.user_id}`"
+          class="conv-row"
+        >
           <div class="conv-ava">
-            <img v-if="avatars[c.user_id]" :src="avatars[c.user_id]" class="ava-img" @error="avatars[c.user_id] = ''" />
+            <img
+              v-if="avatars[c.user_id]"
+              :src="avatars[c.user_id]"
+              class="ava-img"
+              @error="avatars[c.user_id] = ''"
+            >
             <span v-else>{{ (c.first_name || c.username || '?')[0].toUpperCase() }}</span>
           </div>
           <div class="conv-body">
             <div class="conv-name">
               {{ c.first_name || c.username || c.user_id }}
-              <span v-if="c.is_blocked" class="badge badge-danger" style="font-size:9px;margin-left:4px">{{ t('dashboard.blockedShort') }}</span>
+              <span
+                v-if="c.is_blocked"
+                class="badge badge-danger"
+                style="font-size:9px;margin-left:4px"
+              >{{ t('dashboard.blockedShort') }}</span>
             </div>
-            <div class="conv-preview text-muted">{{ c.last_direction === 'outgoing' ? '← ' : '→ ' }}{{ c.last_message || t('dashboard.noMessage') }}</div>
+            <div class="conv-preview text-muted">
+              {{ c.last_direction === 'outgoing' ? '← ' : '→ ' }}{{ c.last_message || t('dashboard.noMessage') }}
+            </div>
           </div>
-          <div class="text-sm text-muted">{{ fmtTime(c.last_at) }}</div>
+          <div class="text-sm text-muted">
+            {{ fmtTime(c.last_at) }}
+          </div>
         </RouterLink>
       </div>
     </template>

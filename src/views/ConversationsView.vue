@@ -1,11 +1,23 @@
 <template>
   <div class="conv-page">
-    <div class="conv-left" :class="{ 'mobile-hidden': mobileView === 'detail' }">
+    <div
+      class="conv-left"
+      :class="{ 'mobile-hidden': mobileView === 'detail' }"
+    >
       <div class="left-search">
-        <input v-model="search" :placeholder="t('conv.search')" />
+        <input
+          v-model="search"
+          :placeholder="t('conv.search')"
+        >
       </div>
       <div class="left-list">
-        <div v-if="loadingList" class="flex-center" style="padding:20px"><div class="spinner"></div></div>
+        <div
+          v-if="loadingList"
+          class="flex-center"
+          style="padding:20px"
+        >
+          <div class="spinner" />
+        </div>
         <template v-else>
           <div
             v-for="c in filtered"
@@ -14,74 +26,180 @@
             :class="{ active: selId === c.user_id }"
             @click="selectUser(c)"
           >
-            <div class="item-ava" :class="{ blocked: c.is_blocked }">
-              <img v-if="avatars[c.user_id]" :src="avatars[c.user_id]" class="ava-img" @error="avatars[c.user_id] = ''" />
+            <div
+              class="item-ava"
+              :class="{ blocked: c.is_blocked }"
+            >
+              <img
+                v-if="avatars[c.user_id]"
+                :src="avatars[c.user_id]"
+                class="ava-img"
+                @error="avatars[c.user_id] = ''"
+              >
               <span v-else>{{ (c.first_name || c.username || '?')[0].toUpperCase() }}</span>
             </div>
             <div class="item-body">
               <div class="item-line">
                 <span class="item-name">{{ c.first_name || c.username || c.user_id }}</span>
-                <span v-if="c.is_blocked" class="badge badge-danger" style="font-size:9px">{{ t('conv.blockedTag') }}</span>
+                <span
+                  v-if="c.is_blocked"
+                  class="badge badge-danger"
+                  style="font-size:9px"
+                >{{ t('conv.blockedTag') }}</span>
                 <span class="item-sep">·</span>
                 <span class="item-preview">{{ c.last_direction === 'outgoing' ? '← ' : '→ ' }}{{ c.last_message || t('conv.noMessage') }}</span>
               </div>
             </div>
-            <div class="item-time">{{ fmtShort(c.last_at) }}</div>
+            <div class="item-time">
+              {{ fmtShort(c.last_at) }}
+            </div>
           </div>
-          <div v-if="!filtered.length" class="empty-state">
-            <div class="empty-state-icon"><AppIcon name="conversations" :size="22" /></div>
-            <div class="empty-state-title">{{ t('conv.empty') }}</div>
+          <div
+            v-if="!filtered.length"
+            class="empty-state"
+          >
+            <div class="empty-state-icon">
+              <AppIcon
+                name="conversations"
+                :size="22"
+              />
+            </div>
+            <div class="empty-state-title">
+              {{ t('conv.empty') }}
+            </div>
           </div>
         </template>
       </div>
     </div>
 
-    <div class="conv-right" :class="{ 'mobile-hidden': mobileView === 'list' }">
+    <div
+      class="conv-right"
+      :class="{ 'mobile-hidden': mobileView === 'list' }"
+    >
       <template v-if="selUser">
         <div class="right-header">
-          <button class="btn-icon mobile-only" @click="mobileView = 'list'" :title="t('users.prevPage')">
-            <AppIcon name="back" :size="18" />
+          <button
+            class="btn-icon mobile-only"
+            :title="t('users.prevPage')"
+            @click="mobileView = 'list'"
+          >
+            <AppIcon
+              name="back"
+              :size="18"
+            />
           </button>
           <div class="hdr-ava">
-            <img v-if="avatars[selUser.user_id]" :src="avatars[selUser.user_id]" class="ava-img" @error="avatars[selUser.user_id] = ''" />
+            <img
+              v-if="avatars[selUser.user_id]"
+              :src="avatars[selUser.user_id]"
+              class="ava-img"
+              @error="avatars[selUser.user_id] = ''"
+            >
             <span v-else>{{ (selUser.first_name || '?')[0].toUpperCase() }}</span>
           </div>
           <div style="flex:1;min-width:0">
-            <div class="hdr-name">{{ selUser.first_name }} {{ selUser.last_name }}</div>
+            <div class="hdr-name">
+              {{ selUser.first_name }} {{ selUser.last_name }}
+            </div>
             <div class="hdr-meta text-muted text-sm">
               <span class="id-inline">
                 <span class="id-label">{{ t('common.id') }}: </span>
-                <button type="button" class="id-copy" :title="t('common.copy')" @click="copyTelegramId(selUser.user_id)">{{ selUser.user_id }}</button>
+                <button
+                  type="button"
+                  class="id-copy"
+                  :title="t('common.copy')"
+                  @click="copyTelegramId(selUser.user_id)"
+                >{{ selUser.user_id }}</button>
               </span>
               <template v-if="selUser.username">
                 <span class="hdr-sep"> · </span>
-                <button type="button" class="id-copy" :title="t('common.copy')" @click="copyUsername(selUser.username)">@{{ selUser.username }}</button>
+                <button
+                  type="button"
+                  class="id-copy"
+                  :title="t('common.copy')"
+                  @click="copyUsername(selUser.username)"
+                >
+                  @{{ selUser.username }}
+                </button>
               </template>
             </div>
           </div>
-          <span class="badge" :class="selUser.is_blocked ? 'badge-danger' : 'badge-success'">
+          <span
+            class="badge"
+            :class="selUser.is_blocked ? 'badge-danger' : 'badge-success'"
+          >
             {{ selUser.is_blocked ? t('conv.status.blocked') : t('conv.status.normal') }}
           </span>
-          <button v-if="!selUser.is_blocked" class="btn-danger btn-sm" @click="blockUser" :title="t('users.blockUser')">
-            <AppIcon name="block" :size="14" />
+          <button
+            v-if="!selUser.is_blocked"
+            class="btn-danger btn-sm"
+            :title="t('users.blockUser')"
+            @click="blockUser"
+          >
+            <AppIcon
+              name="block"
+              :size="14"
+            />
           </button>
-          <button v-else class="btn-success btn-sm" @click="unblockUser" :title="t('users.unblockUser')">
-            <AppIcon name="unblock" :size="14" />
+          <button
+            v-else
+            class="btn-success btn-sm"
+            :title="t('users.unblockUser')"
+            @click="unblockUser"
+          >
+            <AppIcon
+              name="unblock"
+              :size="14"
+            />
           </button>
-          <button class="btn-ghost btn-sm" @click="deleteConv" :title="t('conv.deleteTitle')">
-            <AppIcon name="delete" :size="14" />
+          <button
+            class="btn-ghost btn-sm"
+            :title="t('conv.deleteTitle')"
+            @click="deleteConv"
+          >
+            <AppIcon
+              name="delete"
+              :size="14"
+            />
           </button>
         </div>
 
-        <div class="msg-list" ref="msgRef">
-          <div v-if="loadingMsgs" class="flex-center" style="padding:30px"><div class="spinner"></div></div>
+        <div
+          ref="msgRef"
+          class="msg-list"
+        >
+          <div
+            v-if="loadingMsgs"
+            class="flex-center"
+            style="padding:30px"
+          >
+            <div class="spinner" />
+          </div>
           <template v-else>
-            <div v-if="!dedupedMsgs.length" class="empty-state">
-              <div class="empty-state-icon"><AppIcon name="inbox" :size="22" /></div>
-              <div class="empty-state-title">{{ t('conv.msgEmpty') }}</div>
+            <div
+              v-if="!dedupedMsgs.length"
+              class="empty-state"
+            >
+              <div class="empty-state-icon">
+                <AppIcon
+                  name="inbox"
+                  :size="22"
+                />
+              </div>
+              <div class="empty-state-title">
+                {{ t('conv.msgEmpty') }}
+              </div>
             </div>
-            <div v-for="m in dedupedMsgs" :key="m.id" class="msg-wrap" :class="m.direction">
-              <div class="msg-bubble" :class="{ 'msg-bubble--media': isVisualMedia(m) }">
+            <div
+              v-for="m in dedupedMsgs"
+              :key="m.id"
+              class="msg-wrap"
+              :class="m.direction"
+            >
+              <div
+                class="msg-bubble"
+                :class="{ 'msg-bubble--media': isVisualMedia(m) }"
+              >
                 <template v-if="isVisualMedia(m)">
                   <img
                     v-if="mediaFileId(m)"
@@ -91,27 +209,61 @@
                     :alt="typeLabel(m.message_type)"
                     loading="lazy"
                     @error="onMediaError($event, m)"
-                  />
-                  <div v-if="mediaCaption(m)" class="msg-text msg-caption">{{ mediaCaption(m) }}</div>
-                  <div v-else-if="!mediaFileId(m)" class="msg-text text-muted">[{{ typeLabel(m.message_type) }}]</div>
+                  >
+                  <div
+                    v-if="mediaCaption(m)"
+                    class="msg-text msg-caption"
+                  >
+                    {{ mediaCaption(m) }}
+                  </div>
+                  <div
+                    v-else-if="!mediaFileId(m)"
+                    class="msg-text text-muted"
+                  >
+                    [{{ typeLabel(m.message_type) }}]
+                  </div>
                 </template>
                 <template v-else>
-                  <div class="msg-type-badge" v-if="m.message_type && m.message_type !== 'text'">
+                  <div
+                    v-if="m.message_type && m.message_type !== 'text'"
+                    class="msg-type-badge"
+                  >
                     {{ typeLabel(m.message_type) }}
                   </div>
-                  <div class="msg-text" v-if="displayText(m)">{{ displayText(m) }}</div>
-                  <div class="msg-text text-muted" v-else-if="m.message_type !== 'text'">[{{ typeLabel(m.message_type) }}]</div>
+                  <div
+                    v-if="displayText(m)"
+                    class="msg-text"
+                  >
+                    {{ displayText(m) }}
+                  </div>
+                  <div
+                    v-else-if="m.message_type !== 'text'"
+                    class="msg-text text-muted"
+                  >
+                    [{{ typeLabel(m.message_type) }}]
+                  </div>
                 </template>
-                <div class="msg-meta">{{ fmtFull(m.created_at) }}</div>
+                <div class="msg-meta">
+                  {{ fmtFull(m.created_at) }}
+                </div>
               </div>
             </div>
           </template>
         </div>
 
         <div class="composer">
-          <div v-if="pendingFile" class="composer-attach">
+          <div
+            v-if="pendingFile"
+            class="composer-attach"
+          >
             <span class="composer-attach-name">{{ pendingFile.name }}</span>
-            <button type="button" class="btn-ghost btn-sm" @click="clearPendingFile">{{ t('common.cancel') }}</button>
+            <button
+              type="button"
+              class="btn-ghost btn-sm"
+              @click="clearPendingFile"
+            >
+              {{ t('common.cancel') }}
+            </button>
           </div>
           <div class="composer-row">
             <input
@@ -120,9 +272,18 @@
               class="composer-file-input"
               accept="image/*,.pdf,.zip,.doc,.docx,.xls,.xlsx,.txt,.csv,application/*"
               @change="onPickFile"
-            />
-            <button type="button" class="btn-ghost btn-sm composer-icon-btn" :title="t('conv.attach')" @click="fileInput?.click()" :disabled="sending || !!selUser?.is_blocked">
-              <AppIcon name="add" :size="16" />
+            >
+            <button
+              type="button"
+              class="btn-ghost btn-sm composer-icon-btn"
+              :title="t('conv.attach')"
+              :disabled="sending || !!selUser?.is_blocked"
+              @click="fileInput?.click()"
+            >
+              <AppIcon
+                name="add"
+                :size="16"
+              />
             </button>
             <textarea
               v-model="draft"
@@ -132,15 +293,32 @@
               :disabled="sending || !!selUser?.is_blocked"
               @keydown.enter.exact.prevent="sendText"
             />
-            <button type="button" class="btn-primary btn-sm composer-send-btn" :disabled="!canSend || sending || !!selUser?.is_blocked" @click="sendCurrent">
-              <span v-if="sending" class="spinner"></span>
-              <template v-else>{{ t('conv.send') }}</template>
+            <button
+              type="button"
+              class="btn-primary btn-sm composer-send-btn"
+              :disabled="!canSend || sending || !!selUser?.is_blocked"
+              @click="sendCurrent"
+            >
+              <span
+                v-if="sending"
+                class="spinner"
+              />
+              <template v-else>
+                {{ t('conv.send') }}
+              </template>
             </button>
           </div>
         </div>
       </template>
-      <div v-else class="conv-placeholder">
-        <AppIcon name="conversations" :size="40" class="placeholder-icon" />
+      <div
+        v-else
+        class="conv-placeholder"
+      >
+        <AppIcon
+          name="conversations"
+          :size="40"
+          class="placeholder-icon"
+        />
         <div>{{ t('conv.placeholder') }}</div>
       </div>
     </div>
@@ -553,7 +731,7 @@ function unpackMedia(content) {
   if (!s) return { fileId: '', caption: '' }
   const i = s.indexOf('\n')
   if (i < 0) {
-    if (/^[A-Za-z0-9_\-]{10,}$/.test(s)) return { fileId: s, caption: '' }
+    if (/^[A-Za-z0-9_-]{10,}$/.test(s)) return { fileId: s, caption: '' }
     return { fileId: '', caption: s }
   }
   return { fileId: s.slice(0, i).trim(), caption: s.slice(i + 1) }
@@ -584,7 +762,7 @@ function displayText(m) {
   const { fileId, caption } = unpackMedia(content)
   if (fileId && caption) return caption
   if (content === t('conv.media') || content === '[photo]' || content === '[document]') return ''
-  if (fileId && !caption && /^[A-Za-z0-9_\-]{10,}$/.test(fileId)) return ''
+  if (fileId && !caption && /^[A-Za-z0-9_-]{10,}$/.test(fileId)) return ''
   return content
 }
 

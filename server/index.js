@@ -272,6 +272,34 @@ if (fs.existsSync(distDir)) {
     },
   }))
 
+  // Swagger UI — API 文档
+  app.get('/api-docs', (_req, res) => {
+    res.send(`<!DOCTYPE html>
+<html>
+<head>
+  <title>Telegram ChatBot API</title>
+  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
+</head>
+<body>
+  <div id="swagger-ui"></div>
+  <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+  <script>
+    SwaggerUIBundle({ url: '/openapi.yaml', dom_id: '#swagger-ui' })
+  </script>
+</body>
+</html>`)
+  })
+
+  app.get('/openapi.yaml', (_req, res) => {
+    const openapiPath = path.join(ROOT, 'openapi.yaml')
+    if (fs.existsSync(openapiPath)) {
+      res.setHeader('Content-Type', 'text/yaml')
+      res.sendFile(openapiPath)
+    } else {
+      res.status(404).send('OpenAPI spec not found')
+    }
+  })
+
   // SPA 回退 — 对已知探测路径返回 404 而非 SPA 页面，避免掩盖真实端点
   const PROBE_PATTERNS = [
     '/admin', '/administrator', '/wp-admin', '/wp-login', '/wp-content',
@@ -380,6 +408,52 @@ httpServer.on('connection', (socket) => {
   openSockets.add(socket)
   socket.on('close', () => openSockets.delete(socket))
 })
+
+// ── WebSocket 支持 ──────────────────────────────────────────────────────────
+import { WebSocketServer } from 'ws'
+
+const wss = new WebSocketServer({ server: httpServer, path: '/ws' })
+const wsClients = new Map() // token -> WebSocket
+
+wss.on('connection', (ws, req) => {
+  // 从 cookie 中提取 session token
+  const cookie = req.headers.cookie || ''
+  const match = cookie.match(/session=([^;]+)/)
+  const token = match ? match[1] : null
+
+  if (!token) {
+    ws.close(4001, 'Unauthorized')
+    return
+  }
+
+  wsClients.set(token, ws)
+  console.log(`[WS] 客户端已连接: ${token.slice(0, 8)}...`)
+
+  ws.on('close', () => {
+    wsClients.delete(token)
+    console.log(`[WS] 客户端已断开: ${token.slice(0, 8)}...`)
+  })
+
+  ws.on('error', (err) => {
+    console.error(`[WS] 客户端错误: ${err.message}`)
+    wsClients.delete(token)
+  })
+
+  // 发送连接成功消息
+  ws.send(JSON.stringify({ type: 'connected' }))
+})
+
+// 广播消息给所有已连接的客户端
+function broadcastWsMessage(message) {
+  const data = JSON.stringify(message)
+  for (const [token, ws] of wsClients) {
+    if (ws.readyState === 1) { // WebSocket.OPEN
+      ws.send(data)
+    }
+  }
+}
+
+console.log(`[server] 🔌 WebSocket 地址: ws://${DISPLAY_HOST}:${PORT}/ws`)
 
 function destroyOpenSockets() {
   for (const socket of openSockets) {

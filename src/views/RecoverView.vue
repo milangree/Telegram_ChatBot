@@ -2,30 +2,75 @@
   <div class="auth-page">
     <div class="auth-card card">
       <div class="login-logo">
-        <AppIcon name="lock" :size="40" />
+        <AppIcon
+          name="lock"
+          :size="40"
+        />
       </div>
-      <h1 class="login-title">{{ t('auth.recover.title') }}</h1>
-      <p class="auth-tip">{{ t('auth.recover.tip') }}</p>
-      <div v-if="error" class="alert alert-error">{{ error }}</div>
-      <div v-if="success" class="alert alert-success">{{ t('auth.recover.success') }}</div>
+      <h1 class="login-title">
+        {{ t('auth.recover.title') }}
+      </h1>
+      <p class="auth-tip">
+        {{ t('auth.recover.tip') }}
+      </p>
+      <div
+        v-if="error"
+        class="alert alert-error"
+      >
+        {{ error }}
+      </div>
+      <div
+        v-if="success"
+        class="alert alert-success"
+      >
+        {{ t('auth.recover.success') }}
+      </div>
 
       <div class="form-group">
         <label>{{ t('auth.recover.username') }}</label>
-        <input v-model="username" :placeholder="t('auth.recover.username')" autocomplete="username" />
+        <input
+          v-model="username"
+          :placeholder="t('auth.recover.username')"
+          autocomplete="username"
+        >
       </div>
       <div class="form-group">
         <label>{{ t('auth.recover.totp') }}</label>
-        <input v-model="totp" :placeholder="t('auth.recover.totpPh')" maxlength="6" inputmode="numeric" autocomplete="one-time-code" />
+        <input
+          v-model="totp"
+          :placeholder="t('auth.recover.totpPh')"
+          maxlength="6"
+          inputmode="numeric"
+          autocomplete="one-time-code"
+        >
       </div>
       <div class="form-group">
         <label>{{ t('auth.recover.newPassword') }}</label>
-        <input v-model="newPassword" type="password" :placeholder="t('auth.recover.newPasswordPh')" autocomplete="new-password" @keydown.enter="doRecover" />
+        <input
+          v-model="newPassword"
+          type="password"
+          :placeholder="t('auth.recover.newPasswordPh')"
+          autocomplete="new-password"
+          @keydown.enter="doRecover"
+        >
       </div>
-      <button class="btn-primary w-full" @click="doRecover" :disabled="loading">
-        <span v-if="loading" class="spinner"></span>{{ loading ? t('auth.recover.submitting') : t('auth.recover.submit') }}
+      <button
+        class="btn-primary w-full"
+        :disabled="loading"
+        @click="doRecover"
+      >
+        <span
+          v-if="loading"
+          class="spinner"
+        />{{ loading ? t('auth.recover.submitting') : t('auth.recover.submit') }}
       </button>
       <div class="auth-footer-link">
-        <RouterLink to="/login" class="text-sm">← {{ t('auth.recover.backLogin') }}</RouterLink>
+        <RouterLink
+          to="/login"
+          class="text-sm"
+        >
+          ← {{ t('auth.recover.backLogin') }}
+        </RouterLink>
       </div>
     </div>
   </div>

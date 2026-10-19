@@ -1,21 +1,54 @@
 // server/bindings/kv.js
-// Cloudflare KV 兼容层 — 内存存储 + 可选 SQLite 持久化
+// Cloudflare KV 兼容层 — 内存存储 + 可选 SQLite 持久化（支持加密）
 // 实现了 CF Workers KV 的 get/put/delete/list API
 // better-sqlite3 不可用或 KV_PERSIST=false 时自动降级为纯内存模式
 
 import path from 'path'
 import fs from 'fs'
 import { createRequire } from 'module'
+import { webcrypto } from 'crypto'
 
 const require = createRequire(import.meta.url)
 const DB_PATH = path.resolve(process.env.KV_FILE || './data/kv-store.db')
 
 function tryLoadBetterSqlite3() {
   try {
-    return require('better-sqlite3')
-  } catch (err) {
-    return { error: err }
+    // 优先使用支持加密的版本
+    return require('better-sqlite3-multiple-ciphers')
+  } catch {
+    try {
+      return require('better-sqlite3')
+    } catch (err) {
+      return { error: err }
+    }
   }
+}
+
+async function generateEncryptionKey() {
+  const key = await webcrypto.subtle.generateKey(
+    { name: 'AES-GCM', length: 256 },
+    true,
+    ['encrypt', 'decrypt']
+  )
+  const exported = await webcrypto.subtle.exportKey('raw', key)
+  return Buffer.from(exported).toString('base64')
+}
+
+async function getEncryptionKey() {
+  const envKey = process.env.KV_ENCRYPTION_KEY
+  if (envKey) return envKey
+
+  // 尝试从文件读取
+  const keyPath = path.join(path.dirname(DB_PATH), '.kv-key')
+  if (fs.existsSync(keyPath)) {
+    return fs.readFileSync(keyPath, 'utf8').trim()
+  }
+
+  // 生成新密钥
+  const newKey = await generateEncryptionKey()
+  fs.writeFileSync(keyPath, newKey, { mode: 0o600 })
+  console.warn('[KV] 已生成新的加密密钥，请妥善保管 .kv-key 文件')
+  return newKey
 }
 
 export class LocalKV {
@@ -33,7 +66,7 @@ export class LocalKV {
     console.warn(`[KV] 已降级为纯内存模式: ${reason}`)
   }
 
-  _init() {
+  async _init() {
     if (!this._persist) {
       console.log('[KV] 纯内存模式（KV_PERSIST=false）')
       return
@@ -49,8 +82,29 @@ export class LocalKV {
       const Database = loaded
       const dir = path.dirname(DB_PATH)
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+
+      // 检查数据库是否已存在（用于判断是否需要加密）
+      const dbExists = fs.existsSync(DB_PATH)
+
       this._db = new Database(DB_PATH)
       this._db.pragma('journal_mode = WAL')
+
+      // 启用加密（如果配置了密钥）
+      const encryptionKey = process.env.KV_ENCRYPTION_KEY || await getEncryptionKey().catch(() => null)
+      if (encryptionKey) {
+        this._db.pragma(`key = '${encryptionKey}'`)
+        // 验证密钥是否正确（对已存在的数据库）
+        if (dbExists) {
+          try {
+            this._db.pragma('schema_version')
+          } catch (e) {
+            this._fallbackMemory('数据库加密密钥不匹配')
+            return
+          }
+        }
+        console.log('[KV] 数据库加密已启用')
+      }
+
       this._db.exec(`
         CREATE TABLE IF NOT EXISTS kv_store (
           key   TEXT PRIMARY KEY,
