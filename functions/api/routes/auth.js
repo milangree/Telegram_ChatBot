@@ -14,7 +14,8 @@ import {
 } from '../../_shared/admin-bootstrap.js';
 import { verifyTOTP, generateTOTPSecret } from '../../_shared/totp.js';
 import { renderCaptchaPNG } from '../../_shared/captcha.js';
-import { setupMiniAppMenu, getOrCreateThread, DEPLOY_VERSION } from '../../_shared/bot.js';
+import { setupMiniAppMenu, DEPLOY_VERSION } from '../../_shared/bot.js';
+import { getOrCreateThread } from '../../_shared/bot-thread.js';
 import { normalizeBotLocale, createBotT } from '../../_shared/bot-i18n.js';
 import { createT, normalizeLocale } from '../../../shared/i18n.js';
 import {
