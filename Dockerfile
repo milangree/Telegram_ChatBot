@@ -1,5 +1,5 @@
 # ─── 构建阶段 ────────────────────────────────────────────────────────
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 
 WORKDIR /app
 
@@ -12,7 +12,7 @@ COPY . .
 RUN npm ci && npm run build
 
 # ─── 生产运行阶段 ─────────────────────────────────────────────────────
-FROM node:20-alpine AS production
+FROM node:22-alpine AS production
 
 WORKDIR /app
 
@@ -20,7 +20,7 @@ WORKDIR /app
 COPY server/package.json server/package-lock.json ./
 RUN apk add --no-cache python3 make g++ libstdc++ && \
     npm ci --only=production && \
-    PYTHON=$(which python3) npm rebuild better-sqlite3-multiple-ciphers --build-from-source && \
+    npm_config_python=/usr/bin/python3 npm rebuild better-sqlite3-multiple-ciphers --build-from-source && \
     npm cache clean --force && \
     apk del python3 make g++
 
