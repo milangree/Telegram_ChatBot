@@ -1,26 +1,28 @@
 # ─── 构建阶段 ────────────────────────────────────────────────────────
-FROM node:22-alpine AS builder
+# 使用 --platform=$BUILDPLATFORM 在宿主原生架构完成前端静态打包，
+# 规避 QEMU 跨架构仿真执行 Node.js JIT / esbuild 导致的 SIGILL (exit code 132) 非法指令崩溃，
+# 且大幅提升前端构建性能（静态产物与 CPU 架构无关）。
+FROM --platform=$BUILDPLATFORM node:22-alpine AS builder
 
 WORKDIR /app
 
 # 先复制 package 文件以利用 Docker 缓存层
 COPY package.json package-lock.json ./
-RUN npm ci --only=production
+RUN npm ci
 
-# 复制源码并构建前端
+# 复制源码并构建前端静态资产
 COPY . .
-RUN npm ci && npm run build
+RUN npm run build
 
 # ─── 生产运行阶段 ─────────────────────────────────────────────────────
 FROM node:22-alpine AS production
 
 WORKDIR /app
 
-# 安装编译依赖 + 安装 server 依赖 + 编译 better-sqlite3（同一 RUN 保证 python3 可用）
+# 安装编译依赖 + 安装 server 生产依赖（优先使用 prebuild，支持 g++ 源码编译兜底）
 COPY server/package.json server/package-lock.json ./
 RUN apk add --no-cache python3 make g++ libstdc++ && \
-    npm ci --only=production && \
-    npm_config_python=/usr/bin/python3 npm rebuild better-sqlite3 --build-from-source && \
+    npm_config_python=/usr/bin/python3 npm ci --omit=dev && \
     npm cache clean --force && \
     apk del python3 make g++
 
