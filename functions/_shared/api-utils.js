@@ -93,8 +93,11 @@ export function isSecureRequest(request) {
   const proto = request.headers.get('x-forwarded-proto') || request.headers.get('cf-visitor') || '';
   if (String(proto).toLowerCase().includes('https')) return true;
   try {
-    if (typeof process !== 'undefined' && process?.env && process.env.COOKIE_SECURE === '1') {
-      return true;
+    if (typeof process !== 'undefined' && process?.env?.COOKIE_SECURE) {
+      const val = String(process.env.COOKIE_SECURE).trim().toLowerCase();
+      if (['1', 'true', 'yes', 'on'].includes(val)) {
+        return true;
+      }
     }
   } catch { /* noop */ }
   return false;

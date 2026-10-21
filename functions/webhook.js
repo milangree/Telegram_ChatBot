@@ -45,7 +45,22 @@ export async function onRequestPost(context) {
     const baseUrl = new URL(request.url).origin;
     const ctx = { _db: db, KV: env.KV, baseUrl, waitUntil };
 
-    silentCatch(processUpdate(update, ctx), 'WEBHOOK', 'processUpdate', { userId, updateType });
+    const task = Promise.resolve(processUpdate(update, ctx)).catch(err => {
+      logError('WEBHOOK', 'processUpdate', err, { userId, updateType });
+    });
+
+    const waitFn = typeof waitUntil === 'function' ? waitUntil
+      : typeof context?.waitUntil === 'function' ? context.waitUntil.bind(context)
+      : null;
+
+    if (waitFn) {
+      waitFn(task);
+    } else if (globalThis.__tgcb_taskTracker && typeof globalThis.__tgcb_taskTracker.add === 'function') {
+      globalThis.__tgcb_taskTracker.add(task);
+    } else {
+      silentCatch(task, 'WEBHOOK', 'processUpdate');
+    }
+
     return new Response(t('webhook.ok'));
   } catch (e) {
     logError('WEBHOOK', 'handler', e);

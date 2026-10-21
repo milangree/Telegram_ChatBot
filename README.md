@@ -297,7 +297,7 @@ docker run -d -p 3000:3000 -v data:/app/data telegram-chatbot
 | `D1_FILE` | `/app/data/d1-store.db` | D1 存储 SQLite 路径 |
 | `DATABASE_URL` | — | PostgreSQL / MySQL 连接串 |
 | `ACTIVE_DB` | `kv` | 存储后端：`kv` / `d1` / `hyperdrive` |
-| `COOKIE_SECURE` | `false` | 通过 HTTPS 反向代理时设为 `true` |
+| `COOKIE_SECURE` | `0` | 通过 HTTPS 反向代理时设为 `1` 或 `true`（开启 Cookie Secure 标记） |
 | `KV_PERSIST` | `true` | KV 持久化（Docker 模式建议开启） |
 | `ADMIN_USERNAME` | `admin` | 初始管理员用户名（Docker/VPS 部署，首次启动有效） |
 | `ADMIN_PASSWORD` | — | 初始管理员密码（设置后密码不打印在日志中，支持重启时修改密码） |

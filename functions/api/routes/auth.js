@@ -194,7 +194,7 @@ async function handleLogin(request, ctx) {
       if (!totp) {
         return err(t('auth.totpRequired'), 401);
       }
-      if (!await verifyTOTP(totp, user.totp_secret)) {
+      if (!await verifyTOTP(totp, user.totp_secret, { kv, userId: user.id })) {
         await recordAuthFailure(kv, 'login', rateId);
         return err(t('auth.invalidTotp'), 401);
       }
@@ -252,7 +252,7 @@ async function handleRecover(request, ctx) {
       return err(t('auth.invalidCredentials'), 401);
     }
 
-    if (!await verifyTOTP(totp, user.totp_secret)) {
+    if (!await verifyTOTP(totp, user.totp_secret, { kv, userId: user.id })) {
       await recordAuthFailure(kv, 'recover', rateId);
       return err(t('auth.invalidTotp'), 401);
     }

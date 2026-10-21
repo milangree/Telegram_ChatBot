@@ -10,16 +10,39 @@ export function generateTOTPSecret() {
  * Real RFC 6238 TOTP verification using Web Crypto (HMAC-SHA1).
  * Accepts codes from the previous, current, and next 30-second window.
  */
-export async function verifyTOTP(token, secret) {
+export async function verifyTOTP(token, secret, options = {}) {
   if (!token || !secret) return false;
   if (!/^\d{6}$/.test(token)) return false;
 
   const counter = Math.floor(Date.now() / 30000);
+  let matchedCounter = null;
   // Allow ±1 window to handle clock skew
   for (let delta = -1; delta <= 1; delta++) {
-    if (await hotp(secret, counter + delta) === token) return true;
+    const c = counter + delta;
+    if (await hotp(secret, c) === token) {
+      matchedCounter = c;
+      break;
+    }
   }
-  return false;
+
+  if (matchedCounter === null) return false;
+
+  // 防重放检查 (如果传入了 kv 与 contextKey/userId)
+  const kv = options.kv;
+  const contextKey = options.contextKey || options.userId;
+  if (kv && contextKey) {
+    const replayKey = `totp_used:${contextKey}:${matchedCounter}`;
+    try {
+      const alreadyUsed = await kv.get(replayKey);
+      if (alreadyUsed) return false;
+      // 标记已消费，保留 120 秒覆盖漂移窗口
+      await kv.put(replayKey, '1', { expirationTtl: 120 });
+    } catch {
+      // 若 KV 异常不阻断常规校验，但记录警告
+    }
+  }
+
+  return true;
 }
 
 // ── Internals ──────────────────────────────────────────────────────────────

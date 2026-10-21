@@ -20,7 +20,7 @@ WORKDIR /app
 COPY server/package.json server/package-lock.json ./
 RUN apk add --no-cache python3 make g++ libstdc++ && \
     npm ci --only=production && \
-    npm_config_python=/usr/bin/python3 npm rebuild better-sqlite3-multiple-ciphers --build-from-source && \
+    npm_config_python=/usr/bin/python3 npm rebuild better-sqlite3 --build-from-source && \
     npm cache clean --force && \
     apk del python3 make g++
 
@@ -56,7 +56,7 @@ EXPOSE 3000
 
 # 健康检查
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
-  CMD wget -qO- http://localhost:3000/api/auth/status || exit 1
+  CMD wget -qO- http://localhost:3000/healthz || exit 1
 
 # 启动命令
 CMD ["node", "server/index.js"]

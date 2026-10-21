@@ -57,7 +57,11 @@ export class LocalKV {
     this._mem = new Map()
     this._persist = process.env.KV_PERSIST !== 'false'
     this._cleanupInterval = null
-    this._init()
+    this._readyPromise = this._init()
+  }
+
+  async _ensureReady() {
+    await this._readyPromise
   }
 
   _fallbackMemory(reason) {
@@ -147,6 +151,7 @@ export class LocalKV {
   }
 
   async get(key, options = {}) {
+    await this._ensureReady()
     const entry = this._mem.get(key)
     if (!entry) return null
     if (entry.exp && entry.exp <= Date.now()) {
@@ -161,6 +166,7 @@ export class LocalKV {
   }
 
   async put(key, value, options = {}) {
+    await this._ensureReady()
     const strVal = typeof value === 'object' ? JSON.stringify(value) : String(value)
     let exp = null
     if (options.expirationTtl) {
@@ -178,6 +184,7 @@ export class LocalKV {
   }
 
   async delete(key) {
+    await this._ensureReady()
     this._mem.delete(key)
     if (this._persist && this._db) {
       this._db.prepare('DELETE FROM kv_store WHERE key = ?').run(key)
@@ -185,6 +192,7 @@ export class LocalKV {
   }
 
   async list(options = {}) {
+    await this._ensureReady()
     const prefix = options.prefix || ''
     const limit = options.limit || Infinity
     const cursorToken = options.cursor || ''
@@ -212,6 +220,7 @@ export class LocalKV {
   }
 
   async getWithMetadata(key) {
+    await this._ensureReady()
     const entry = this._mem.get(key)
     if (!entry) return null
     if (entry.exp && entry.exp <= Date.now()) {

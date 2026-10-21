@@ -224,6 +224,26 @@ app.use((req, res, next) => {
   next()
 })
 
+// 独立健康检查路由（解耦业务自举与重试锁，专供 Docker / K8s 存活与就绪探测）
+app.get('/healthz', async (_req, res) => {
+  try {
+    // 检查 KV
+    if (kv && typeof kv.get === 'function') {
+      await kv.get('__health_probe__')
+    }
+    // 检查活动 DB
+    const { DB } = await import('../functions/_shared/db.js')
+    const probeDb = new DB(kv, d1, hyperdrive)
+    const activeBackend = await probeDb.getActiveBackend().catch(() => null)
+    if (!activeBackend) {
+      return res.status(503).json({ status: 'unhealthy', error: 'No active DB backend available' })
+    }
+    res.status(200).json({ status: 'healthy', activeDb: activeBackend })
+  } catch (err) {
+    res.status(503).json({ status: 'unhealthy', error: err?.message || String(err) })
+  }
+})
+
 // Webhook 路由 — Telegram Bot 调用
 app.all('/webhook', async (req, res) => {
   try {
@@ -415,7 +435,7 @@ import { WebSocketServer } from 'ws'
 const wss = new WebSocketServer({ server: httpServer, path: '/ws' })
 const wsClients = new Map() // token -> WebSocket
 
-wss.on('connection', (ws, req) => {
+wss.on('connection', async (ws, req) => {
   // 从 cookie 中提取 session token
   const cookie = req.headers.cookie || ''
   const match = cookie.match(/session=([^;]+)/)
@@ -426,8 +446,22 @@ wss.on('connection', (ws, req) => {
     return
   }
 
+  // 严格校验 Session 有效性
+  try {
+    const { getSession } = await import('../functions/_shared/auth.js')
+    const sess = await getSession(kv, token)
+    if (!sess || !sess.userId) {
+      ws.close(4001, 'Unauthorized')
+      return
+    }
+  } catch (err) {
+    console.error('[WS] 鉴权异常:', err?.message || err)
+    ws.close(4001, 'Unauthorized')
+    return
+  }
+
   wsClients.set(token, ws)
-  console.log(`[WS] 客户端已连接: ${token.slice(0, 8)}...`)
+  console.log(`[WS] 客户端鉴权成功已连接: ${token.slice(0, 8)}...`)
 
   ws.on('close', () => {
     wsClients.delete(token)

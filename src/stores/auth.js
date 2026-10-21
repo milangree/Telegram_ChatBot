@@ -246,7 +246,6 @@ export const useAuthStore = defineStore('auth', () => {
     }
     if (!force && _checkAuthInflight) return _checkAuthInflight
 
-    setAuthNotice('')
     _checkAuthInflight = (async () => {
       try {
         const res = await fetch('/api/auth/me', {

@@ -17,10 +17,10 @@ const router = createRouter({
     { path: '/login', name: 'Login', component: LoginView, meta: { public: true } },
     { path: '/register', name: 'Register', component: RegisterView, meta: { public: true } },
     { path: '/recover', name: 'Recover', component: RecoverView, meta: { public: true } },
-    { path: '/', name: 'Dashboard', component: DashboardView },
-    { path: '/conversations', name: 'Conversations', component: ConversationsView },
-    { path: '/users', name: 'Users', component: UsersView },
-    { path: '/whitelist', name: 'Whitelist', component: WhitelistView },
+    { path: '/', name: 'Dashboard', component: DashboardView, meta: { admin: true } },
+    { path: '/conversations', name: 'Conversations', component: ConversationsView, meta: { admin: true } },
+    { path: '/users', name: 'Users', component: UsersView, meta: { admin: true } },
+    { path: '/whitelist', name: 'Whitelist', component: WhitelistView, meta: { admin: true } },
     { path: '/settings', name: 'Settings', component: SettingsView, meta: { admin: true } },
     { path: '/profile', name: 'Profile', component: ProfileView },
     { path: '/:pathMatch(.*)*', redirect: '/' },
@@ -59,8 +59,8 @@ router.beforeEach(async (to) => {
 
   const ok = await auth.checkAuth()
   if (ok) {
-    // 管理页需要 isAdmin
-    if (to.meta.admin && !auth.isAdmin) return '/'
+    // 管理页需要 isAdmin，非管理员平滑重定向至 /profile
+    if (to.meta.admin && !auth.isAdmin) return '/profile'
     return true
   }
 

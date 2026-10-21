@@ -297,7 +297,7 @@ docker run -d -p 3000:3000 -v data:/app/data telegram-chatbot
 | `D1_FILE` | `/app/data/d1-store.db` | D1 storage SQLite path |
 | `DATABASE_URL` | — | PostgreSQL / MySQL connection string |
 | `ACTIVE_DB` | `kv` | Storage backend: `kv` / `d1` / `hyperdrive` |
-| `COOKIE_SECURE` | `false` | Set to `true` behind HTTPS reverse proxy |
+| `COOKIE_SECURE` | `0` | Set to `1` or `true` behind HTTPS reverse proxy (enables Cookie Secure flag) |
 | `KV_PERSIST` | `true` | KV persistence (recommended for Docker) |
 | `ADMIN_USERNAME` | `admin` | Initial admin username (Docker/VPS, effective on first boot) |
 | `ADMIN_PASSWORD` | — | Initial admin password (not printed in logs when set, supports password sync on restart) |

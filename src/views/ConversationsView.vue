@@ -440,27 +440,15 @@ async function selectUser(c) {
   loadingMsgs.value = true
 
   try {
-    let page = 1
-    let detail = null
-    const allMessages = []
+    // 默认加载第 1 页，废除阻塞性的 while(true)
+    const detail = await api.get(`/api/conversations/${uid}?page=1`)
+    if (requestToken !== msgRequestToken.value || selId.value !== uid) return
 
-    while (true) {
-      const d = await api.get(`/api/conversations/${uid}?page=${page}`)
-
-      if (requestToken !== msgRequestToken.value || selId.value !== uid) return
-
-      if (!detail) detail = d
-      const batch = Array.isArray(d?.messages) ? d.messages : []
-      allMessages.push(...batch)
-
-      if (batch.length < CONVERSATION_PAGE_SIZE) break
-      page += 1
-    }
-
+    const batch = Array.isArray(detail?.messages) ? detail.messages : []
     const nextUser = detail?.user || c
 
     selUser.value = nextUser
-    msgs.value = allMessages
+    msgs.value = batch
 
     tryLoadAvatar(uid)
     updateConv(uid, { ...c, ...(detail?.user || {}) })

@@ -41,7 +41,7 @@ async function attachWhitelistFlags(db, payload) {
  * @returns {Response|null} null 表示不匹配
  */
 export async function handleUserRoutes(path, request, ctx) {
-  const { db } = ctx;
+  const { db, kv } = ctx;
   const t = ctx.t;
   const url = new URL(request.url);
 
