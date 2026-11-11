@@ -688,6 +688,33 @@ npm run preview:static
 
 ---
 
+## 🤝 开发与贡献
+
+本仓库使用单一 PR 流程：`main` 受保护，所有改动经 PR 合入，**一个 PR 只做一件事**。
+
+| 我要做什么 | 看这里 |
+| --- | --- |
+| 提第一个 PR | [CONTRIBUTING.md](CONTRIBUTING.md) · [PR 描述样例](docs/examples/PR_EXAMPLE.md) |
+| 了解分支/提交/PR 拆分规则 | [docs/GITHUB_WORKFLOW.md](docs/GITHUB_WORKFLOW.md) |
+| 知道什么会被审查打回 | [.github/REVIEW_GUIDELINES.md](.github/REVIEW_GUIDELINES.md) |
+| 用 AI 助手改这个仓库 | [AGENTS.md](AGENTS.md)（Claude Code 见 [CLAUDE.md](CLAUDE.md)，Copilot/Cursor 规则在 `.github/` 与 `.cursor/`） |
+| 理解分层与双运行时模型 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
+| 改接口 | [docs/API.md](docs/API.md) · `openapi.yaml`（本地 `http://localhost:3000/api-docs`） |
+| 发版 / 回滚 | [docs/RELEASE.md](docs/RELEASE.md) |
+| 报安全问题 | [docs/SECURITY_REPORTING.md](docs/SECURITY_REPORTING.md)（不要公开提 issue） |
+| 全部文档索引 | [docs/README.md](docs/README.md) |
+
+提交前本地必过：
+
+```bash
+npm run lint     # ESLint，0 error
+npm run build    # Vite 构建
+```
+
+> 本仓库**没有**测试框架（`npm test` 不存在），CI 门禁只有 lint + build。PR 描述里需要贴出真实执行过的命令与输出。
+
+---
+
 ## 🩺 常见问题
 
 <details>

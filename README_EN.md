@@ -688,6 +688,33 @@ npm run preview:static
 
 ---
 
+## 🤝 Development & Contributing
+
+Single PR workflow: `main` is protected, everything lands through a PR, and **one PR does one thing**.
+
+| I want to | Read |
+| --- | --- |
+| Open my first PR | [CONTRIBUTING_EN.md](CONTRIBUTING_EN.md) · [example PR](docs/examples/PR_EXAMPLE.md) |
+| Branch / commit / PR-splitting rules | [docs/GITHUB_WORKFLOW.md](docs/GITHUB_WORKFLOW.md) |
+| Know what gets rejected in review | [.github/REVIEW_GUIDELINES.md](.github/REVIEW_GUIDELINES.md) |
+| Use AI assistants on this repo | [AGENTS.md](AGENTS.md) (Claude Code: [CLAUDE.md](CLAUDE.md); Copilot/Cursor rules under `.github/` and `.cursor/`) |
+| Understand layering and the dual runtime | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
+| Change the API | [docs/API.md](docs/API.md) · `openapi.yaml` (local `http://localhost:3000/api-docs`) |
+| Release / roll back | [docs/RELEASE.md](docs/RELEASE.md) |
+| Report a vulnerability | [docs/SECURITY_REPORTING.md](docs/SECURITY_REPORTING.md) (never a public issue) |
+| Browse all docs | [docs/README.md](docs/README.md) |
+
+Must pass locally before pushing:
+
+```bash
+npm run lint     # ESLint, 0 errors
+npm run build    # Vite build
+```
+
+> There is **no** test framework here (`npm test` does not exist); the CI gate is lint + build only. The PR description must contain commands you actually ran and their output.
+
+---
+
 ## 🩺 Troubleshooting
 
 <details>
