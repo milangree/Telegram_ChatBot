@@ -1,0 +1,39 @@
+---
+description: Telegram_ChatBot 仓库规则（Vue3 + Cloudflare Functions + Node 桥接层）
+alwaysApply: true
+---
+
+# 仓库规则
+
+完整规则在 `AGENTS.md`，此处为 Cursor 生效的最小集。
+
+## 架构要点
+
+- `functions/` 同时运行在 Cloudflare Workers 与 Node（`server/index.js` Express 适配层）。共享代码禁用平台专有 API。
+- 存储统一入口 `functions/_shared/db.js`，后端实现 `db-kv.js` / `db-d1.js` / `db-hyperdrive.js` / `db-sql.js`，由 `db-routing.js` 按 `ACTIVE_DB` 解析。跨后端改动必须一起改。
+- 鉴权 `auth.js`（PBKDF2 + 会话 Cookie）、`totp.js`（2FA）、`audit-log.js`（审计）、`cors.js`（同源白名单）。
+- 验证码：`captcha.js` 服务端校验 + `bot-verify.js` 流程；`CAPTCHA_TYPE` 决定类型。
+- 前端：Vue 3 + Pinia（`src/stores`）+ Vue Router；请求统一走 `src/stores/api.js`。
+
+## 命令
+
+```bash
+npm run lint      # ESLint，必须 0 error
+npm run build     # Vite 构建
+npm run server    # :3000，/healthz，/api-docs
+```
+
+无 `npm test`，不要新增测试框架。
+
+## 禁止
+
+- 提交 `.env`、`data/*.db*`、`dist/`、`node_modules/`
+- 硬编码用户可见文案（走 i18n 三语）
+- `Access-Control-Allow-Origin: *`
+- 空 `catch` 吞异常、`throw` 字符串
+- 一个提交/PR 混合多个主题
+- 修改 `.github/**`、`docs/**`、`AGENTS.md` 与源码放在同一 PR
+
+## 提交格式
+
+`<type>(<scope>): ≤50 字说明` + 正文写"为什么"；type 取 `feat fix docs chore refactor perf style ci build revert`，scope 取 `web api bot auth db server shared verify i18n docker ci docs deps`。
