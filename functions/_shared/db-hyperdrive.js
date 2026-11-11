@@ -161,7 +161,7 @@ CREATE TABLE IF NOT EXISTS web_users (
   password_hash TEXT,
   totp_secret TEXT,
   totp_enabled INTEGER DEFAULT 0,
-  is_admin INTEGER DEFAULT 1,
+  is_admin INTEGER DEFAULT 0,
   created_at TEXT
 );
 `
@@ -224,7 +224,7 @@ CREATE TABLE IF NOT EXISTS web_users (
   password_hash TEXT,
   totp_secret TEXT,
   totp_enabled TINYINT DEFAULT 0,
-  is_admin TINYINT DEFAULT 1,
+  is_admin TINYINT DEFAULT 0,
   created_at TEXT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 `

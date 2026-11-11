@@ -4,6 +4,19 @@ import { TG } from '../../_shared/tg.js';
 import { j, err } from '../../_shared/api-utils.js';
 import { logError } from '../../_shared/error-handler.js';
 
+/** 单文件上限 20MB；请求体上限留出 multipart/base64 编码开销 */
+const MAX_FILE_BYTES = 20 * 1024 * 1024;
+const MAX_REQUEST_BYTES = 32 * 1024 * 1024;
+
+/** 在读取 body 之前拦截超大请求（声明大小 / Content-Length 任一超限即拒绝）。 */
+function rejectIfTooLarge(request) {
+  const len = Number(request.headers.get('content-length') || 0);
+  if (Number.isFinite(len) && len > MAX_REQUEST_BYTES) {
+    return err('文件过大（上限 20MB）', 413);
+  }
+  return null;
+}
+
 /**
  * 处理对话记录路由
  * @returns {Response|null} null 表示不匹配
@@ -90,6 +103,9 @@ async function handleSendMessage(uid, request, ctx) {
   try {
     if (!Number.isFinite(uid) || uid <= 0) return err(t('common.missingParams'));
 
+    const tooLarge = rejectIfTooLarge(request);
+    if (tooLarge) return tooLarge;
+
     const contentType = String(request.headers.get('content-type') || '').toLowerCase();
     let kind = 'text';
     let text = '';
@@ -105,6 +121,10 @@ async function handleSendMessage(uid, request, ctx) {
       caption = String(form.get('caption') || text || '').trim();
       const file = form.get('file');
       if (file && typeof file.arrayBuffer === 'function') {
+        // 先看声明大小，避免把超大文件一次性读进内存
+        if (Number(file.size) > MAX_FILE_BYTES) {
+          return err(t('conversations.fileTooLarge') || '文件过大（上限 20MB）', 413);
+        }
         fileName = String(file.name || form.get('filename') || 'file.bin');
         mimeType = String(file.type || form.get('mime') || 'application/octet-stream');
         fileBytes = new Uint8Array(await file.arrayBuffer());
@@ -124,6 +144,10 @@ async function handleSendMessage(uid, request, ctx) {
       if (kind !== 'text') {
         const b64 = String(body?.fileBase64 || body?.data || '').replace(/^data:[^;]+;base64,/, '');
         if (!b64) return err(t('common.missingParams'));
+        // base64 约为原始体积的 4/3，先按编码长度拒绝，避免无谓解码
+        if (b64.length > Math.ceil(MAX_FILE_BYTES / 3) * 4) {
+          return err(t('conversations.fileTooLarge') || '文件过大（上限 20MB）', 413);
+        }
         fileName = String(body?.filename || body?.fileName || 'file.bin');
         mimeType = String(body?.mime || body?.mimeType || 'application/octet-stream');
         const bin = atob(b64);
@@ -135,8 +159,8 @@ async function handleSendMessage(uid, request, ctx) {
       }
     }
 
-    if (fileBytes && fileBytes.byteLength > 20 * 1024 * 1024) {
-      return err(t('conversations.fileTooLarge') || '文件过大（上限 20MB）', 400);
+    if (fileBytes && fileBytes.byteLength > MAX_FILE_BYTES) {
+      return err(t('conversations.fileTooLarge') || '文件过大（上限 20MB）', 413);
     }
 
     const settings = await db.getAllSettings();

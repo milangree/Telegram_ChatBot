@@ -1603,6 +1603,31 @@ async function testToken() {
   }
 }
 
+/**
+ * 高风险操作二次认证：要求输入当前账号密码（启用 2FA 时再输入验证码）。
+ * 返回 { password, totp } 或 null（用户取消）。
+ */
+async function requireReauth() {
+  const password = await dialog.prompt({
+    title: t('settings.reauth.title'),
+    message: t('settings.reauth.message'),
+    placeholder: t('settings.reauth.passwordPlaceholder'),
+    confirmText: t('common.confirm'),
+  })
+  if (!password) return null
+  let totp = ''
+  if (auth.totpEnabled) {
+    totp = await dialog.prompt({
+      title: t('settings.reauth.title'),
+      message: t('settings.reauth.message'),
+      placeholder: t('settings.reauth.totpPlaceholder'),
+      confirmText: t('common.confirm'),
+    })
+    if (totp === null) return null
+  }
+  return { accountPassword: password, totp }
+}
+
 async function resolveChat(val, which) {
   if (!val) return
   if (which === 'group') {
@@ -1652,10 +1677,13 @@ async function switchDb(target, sync = true) {
   })
   if (!ok) return
 
+  const reauth = await requireReauth()
+  if (!reauth) return
+
   dbSwitching.value = true
   dbMsg.value = ''
   try {
-    await api.post('/api/settings/db/switch', { target, sync })
+    await api.post('/api/settings/db/switch', { target, sync, ...reauth })
     dbInfo.value.active = target
     writeLocalCache(SETTINGS_DB_CACHE_KEY, dbInfo.value)
     dbMsg.value = t('settings.storage.switched', { target: targetLabel })
@@ -1792,9 +1820,15 @@ async function handleSqlFileChange(event) {
   sqlFileName.value = file.name
 
   try {
+    const reauth = await requireReauth()
+    if (!reauth) {
+      if (event?.target) event.target.value = ''
+      return
+    }
     // 加密 .db 以 base64 上传，避免 JSON 损坏二进制
     const sql = await fileToBase64(file)
-    await api.post('/api/settings/sql/import', { sql, password: sqlPassword.value }, { timeout: 5 * 60 * 1000 })
+    await api.post('/api/settings/sql/import', { sql, password: sqlPassword.value, ...reauth }, { timeout: 5 * 60 * 1000 })
+    sqlPassword.value = ''
     await load(true)
     sqlMsg.value = t('settings.storage.sqlImported', { name: file.name })
     sqlOk.value = true
@@ -1820,11 +1854,14 @@ async function clearData() {
   })
   if (!ok) return
 
+  const reauth = await requireReauth()
+  if (!reauth) return
+
   clearingData.value = true
   dbMsg.value = ''
 
   try {
-    await api.post('/api/settings/clear-data', {})
+    await api.post('/api/settings/clear-data', { ...reauth })
     dbMsg.value = t('settings.storage.cleared')
     dbOk.value = true
     toast.success(dbMsg.value)

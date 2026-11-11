@@ -8,6 +8,7 @@ import path from 'path'
 import fs from 'fs'
 import { fileURLToPath } from 'url'
 import { LocalKV } from './bindings/kv.js'
+import { corsHeadersFor, checkRequestOrigin } from '../functions/_shared/cors.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.resolve(__dirname, '..')
@@ -103,14 +104,35 @@ function expressToCfRequest(req, fullUrl) {
     }
   }
 
+  // 防伪造：剥离客户端自带的转发头，只保留服务端自己观测到的对端地址。
+  // 未启用 TRUST_PROXY 时，外部提供的 XFF / X-Real-IP 一律不可信。
+  headers.delete('x-forwarded-for')
+  headers.delete('x-real-ip')
+  headers.delete('x-tgcb-peer-ip')
+  const peerIp = req.socket?.remoteAddress || ''
+  if (peerIp) {
+    headers.set('x-tgcb-peer-ip', String(peerIp).replace(/^::ffff:/, ''))
+    process.env.TGCB_TRUST_LOCAL_IP = '1'
+  }
+
   const init = {
     method: req.method,
     headers,
   }
 
   // 对于有 body 的请求，传递原始 body
-  if (req.method !== 'GET' && req.method !== 'HEAD' && req.body) {
-    init.body = typeof req.body === 'string' ? req.body : JSON.stringify(req.body)
+  // Buffer 必须原样透传：JSON.stringify(Buffer) 会变成 {"type":"Buffer","data":[...]}，
+  // 破坏 multipart 边界与二进制内容。
+  if (req.method !== 'GET' && req.method !== 'HEAD' && req.body !== undefined && req.body !== null) {
+    if (Buffer.isBuffer(req.body)) {
+      init.body = req.body
+    } else if (typeof req.body === 'string') {
+      init.body = req.body
+    } else if (req.body instanceof Uint8Array) {
+      init.body = req.body
+    } else {
+      init.body = JSON.stringify(req.body)
+    }
   }
 
   return new Request(fullUrl, init)
@@ -180,24 +202,54 @@ const app = express()
 // 禁用 Express 版本标识，防止信息泄露
 app.disable('x-powered-by')
 
+// 请求体上限：必须早于任何 body 解析器，否则声明大 Content-Length 的请求
+// 会被解析器拖着读流（挂住连接），而不是立刻拒绝。
+const MAX_REQUEST_BODY_BYTES = 32 * 1024 * 1024
+app.use((req, res, next) => {
+  const len = Number(req.headers['content-length'] || 0)
+  if (Number.isFinite(len) && len > MAX_REQUEST_BODY_BYTES) {
+    return res.status(413).json({ error: '文件过大（上限 20MB）' })
+  }
+  next()
+})
+
 // 解析 JSON body（用于 API 请求）
 app.use(express.json({ limit: '10mb' }))
 
-// CORS 中间件：默认同源（不设 *）；可通过 CORS_ORIGIN 指定白名单
+// 非 JSON 请求体（multipart / 二进制）：保留原始字节，供 Functions 按原样解析。
+// 之前只装了 express.json，multipart 的 req.body 为空，桥接层传不出 body，
+// 导致 /api/conversations/:id 的文件上传在本地部署必然失败。
+app.use(express.raw({ type: () => true, limit: '32mb' }))
+
+// CORS 中间件：复用 functions/_shared/cors.js 的单一策略（默认同源，白名单可选）
 app.use((req, res, next) => {
-  const raw = process.env.CORS_ORIGIN || ''
-  const allowed = raw.split(',').map((s) => s.trim()).filter(Boolean)
-  const reqOrigin = req.get('Origin')
-  if (allowed.length === 1 && allowed[0] !== '*') {
-    res.set('Access-Control-Allow-Origin', allowed[0])
-  } else if (allowed.length > 1 && reqOrigin && allowed.includes(reqOrigin)) {
-    res.set('Access-Control-Allow-Origin', reqOrigin)
-    res.set('Vary', 'Origin')
+  // 构造一个最小的 Headers 视图供统一策略计算，避免两套逻辑漂移
+  const probe = new Request(`http://${req.get('host') || 'localhost'}${req.originalUrl || req.url}`, {
+    method: req.method,
+    headers: new Headers(req.headers),
+  })
+  for (const [key, value] of Object.entries(corsHeadersFor(probe, process.env))) {
+    res.set(key, value)
   }
-  // 未配置 CORS_ORIGIN 时不返回 Allow-Origin（浏览器跨站读会被拦；同域 Cookie 会话不受影响）
-  res.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
-  res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Locale')
   if (req.method === 'OPTIONS') return res.status(204).end()
+  next()
+})
+
+// 反向代理信任：仅当 TRUST_PROXY=1 时采信 X-Forwarded-*（影响 req.ip / req.protocol）
+if (['1', 'true', 'yes', 'on'].includes(String(process.env.TRUST_PROXY || '').toLowerCase())) {
+  app.set('trust proxy', 1)
+}
+
+// 状态变更请求的跨站来源校验（与 API 入口同一策略）
+app.use((req, res, next) => {
+  const probe = new Request(`http://${req.get('host') || 'localhost'}${req.originalUrl || req.url}`, {
+    method: req.method,
+    headers: new Headers(req.headers),
+  })
+  const result = checkRequestOrigin(probe, process.env)
+  if (!result.ok) {
+    return res.status(403).json({ error: 'Forbidden' })
+  }
   next()
 })
 
@@ -234,7 +286,8 @@ app.get('/healthz', async (_req, res) => {
     // 检查活动 DB
     const { DB } = await import('../functions/_shared/db.js')
     const probeDb = new DB(kv, d1, hyperdrive)
-    const activeBackend = await probeDb.getActiveBackend().catch(() => null)
+    // DB 暴露的是 getActiveDb()（历史代码曾误用不存在的 getActiveBackend，导致健康检查恒为 503）
+    const activeBackend = await probeDb.getActiveDb().catch(() => null)
     if (!activeBackend) {
       return res.status(503).json({ status: 'unhealthy', error: 'No active DB backend available' })
     }
@@ -242,6 +295,20 @@ app.get('/healthz', async (_req, res) => {
   } catch (err) {
     res.status(503).json({ status: 'unhealthy', error: err?.message || String(err) })
   }
+})
+
+// body 解析失败（超限/格式错误）统一返回 JSON，避免 Express 默认 HTML 错误页
+app.use((err, req, res, next) => {
+  if (!err) return next()
+  const status = err.status || err.statusCode || 500
+  if (status === 413 || err.type === 'entity.too.large') {
+    return res.status(413).json({ error: '文件过大（上限 20MB）' })
+  }
+  if (err.type === 'entity.parse.failed') {
+    return res.status(400).json({ error: '请求体格式错误' })
+  }
+  console.error('[body-parser]', err?.message || err)
+  res.status(status).json({ error: '请求处理失败' })
 })
 
 // Webhook 路由 — Telegram Bot 调用
@@ -433,7 +500,39 @@ httpServer.on('connection', (socket) => {
 import { WebSocketServer } from 'ws'
 
 const wss = new WebSocketServer({ server: httpServer, path: '/ws' })
-const wsClients = new Map() // token -> WebSocket
+// userId -> Set<WebSocket>：同一账号多标签页/重连不会互相覆盖
+const wsClients = new Map()
+
+function addWsClient(userId, ws) {
+  const key = String(userId)
+  if (!wsClients.has(key)) wsClients.set(key, new Set())
+  wsClients.get(key).add(ws)
+  return key
+}
+
+function removeWsClient(userId, ws) {
+  const key = String(userId)
+  const set = wsClients.get(key)
+  if (!set) return
+  set.delete(ws)
+  if (!set.size) wsClients.delete(key)
+}
+
+/** 周期性复核连接权限，兜住会话过期 / 降权 / 删除。 */
+async function revalidateWsClient(userId, ws) {
+  try {
+    const { DB } = await import('../functions/_shared/db.js')
+    const { isWebAdmin } = await import('../functions/_shared/api-utils.js')
+    const { isBootstrapAdminDisabled } = await import('../functions/_shared/admin-bootstrap.js')
+    const db = new DB(kv, d1, hyperdrive)
+    const user = await db.getWebUserById(userId)
+    if (!user || !isWebAdmin(user) || await isBootstrapAdminDisabled({ kv, user })) {
+      ws.close(4003, 'Forbidden')
+    }
+  } catch (e) {
+    console.error('[WS] 权限复核异常:', e?.message || e)
+  }
+}
 
 wss.on('connection', async (ws, req) => {
   // 从 cookie 中提取 session token
@@ -446,31 +545,58 @@ wss.on('connection', async (ws, req) => {
     return
   }
 
-  // 严格校验 Session 有效性
+  let sess
   try {
     const { getSession } = await import('../functions/_shared/auth.js')
-    const sess = await getSession(kv, token)
-    if (!sess || !sess.userId) {
-      ws.close(4001, 'Unauthorized')
-      return
-    }
+    sess = await getSession(kv, token)
   } catch (err) {
     console.error('[WS] 鉴权异常:', err?.message || err)
     ws.close(4001, 'Unauthorized')
     return
   }
+  if (!sess || !sess.userId) {
+    ws.close(4001, 'Unauthorized')
+    return
+  }
 
-  wsClients.set(token, ws)
-  console.log(`[WS] 客户端鉴权成功已连接: ${token.slice(0, 8)}...`)
+  // 与 API 入口保持一致的权限校验：用户必须存在且仍是管理员
+  try {
+    const { DB } = await import('../functions/_shared/db.js')
+    const { isWebAdmin } = await import('../functions/_shared/api-utils.js')
+    const { isBootstrapAdminDisabled } = await import('../functions/_shared/admin-bootstrap.js')
+    const db = new DB(kv, d1, hyperdrive)
+    const user = await db.getWebUserById(sess.userId)
+    if (!user || !isWebAdmin(user) || await isBootstrapAdminDisabled({ kv, user })) {
+      ws.close(4003, 'Forbidden')
+      return
+    }
+  } catch (e) {
+    console.error('[WS] 权限校验异常:', e?.message || e)
+    ws.close(4001, 'Unauthorized')
+    return
+  }
+
+  const userId = sess.userId
+  const clientKey = addWsClient(userId, ws)
+  console.log(`[WS] 客户端鉴权成功已连接: user=${userId} conns=${wsClients.get(clientKey).size}`)
+
+  // 每 5 分钟复核一次权限（会话过期 / 降权即时断开）
+  const revalidateTimer = setInterval(() => {
+    if (ws.readyState !== 1) return
+    revalidateWsClient(userId, ws)
+  }, 5 * 60 * 1000)
+  if (revalidateTimer.unref) revalidateTimer.unref()
 
   ws.on('close', () => {
-    wsClients.delete(token)
-    console.log(`[WS] 客户端已断开: ${token.slice(0, 8)}...`)
+    clearInterval(revalidateTimer)
+    removeWsClient(userId, ws)
+    console.log(`[WS] 客户端已断开: user=${userId}`)
   })
 
   ws.on('error', (err) => {
+    clearInterval(revalidateTimer)
+    removeWsClient(userId, ws)
     console.error(`[WS] 客户端错误: ${err.message}`)
-    wsClients.delete(token)
   })
 
   // 发送连接成功消息
@@ -480,9 +606,11 @@ wss.on('connection', async (ws, req) => {
 // 广播消息给所有已连接的客户端
 function broadcastWsMessage(message) {
   const data = JSON.stringify(message)
-  for (const [token, ws] of wsClients) {
-    if (ws.readyState === 1) { // WebSocket.OPEN
-      ws.send(data)
+  for (const set of wsClients.values()) {
+    for (const ws of set) {
+      if (ws.readyState === 1) { // WebSocket.OPEN
+        ws.send(data)
+      }
     }
   }
 }

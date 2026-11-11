@@ -59,6 +59,8 @@ export const useAuthStore = defineStore('auth', () => {
   const token = ref('')
   const username = ref(localStorage.getItem('username') || '')
   const isAdmin = ref(localStorage.getItem('isAdmin') === 'true')
+  // 2FA 状态：仅用于 UI 决定是否需要额外输入验证码（不是安全边界，服务端会再次校验）
+  const totpEnabled = ref(false)
   const sessionReady = ref(false)
 
   // Telegram Mini App 自动登录状态机：idle / checking / success / notDetected / failed
@@ -86,6 +88,7 @@ export const useAuthStore = defineStore('auth', () => {
     token.value = ''
     username.value = data.username
     isAdmin.value = data.isAdmin || false
+    totpEnabled.value = !!data.totpEnabled
     sessionReady.value = true
     // 登录成功后重置缓存
     _checkAuthCachedOk = true
@@ -215,6 +218,7 @@ export const useAuthStore = defineStore('auth', () => {
     token.value = ''
     username.value = ''
     isAdmin.value = false
+    totpEnabled.value = false
     sessionReady.value = false
   }
 
@@ -284,6 +288,7 @@ export const useAuthStore = defineStore('auth', () => {
         token.value = ''
         username.value = data.username
         isAdmin.value = !!data.isAdmin
+        totpEnabled.value = !!data.totpEnabled
         sessionReady.value = true
         localStorage.setItem('username', data.username)
         localStorage.setItem('isAdmin', String(!!data.isAdmin))
@@ -324,6 +329,7 @@ export const useAuthStore = defineStore('auth', () => {
     token,
     username,
     isAdmin,
+    totpEnabled,
     isLoggedIn,
     sessionReady,
     autoLoginStatus,

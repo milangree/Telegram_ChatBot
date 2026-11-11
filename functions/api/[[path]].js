@@ -4,6 +4,7 @@ import { DB } from '../_shared/db.js';
 import { ensureAdminInitializedOnce, isBootstrapAdminDisabled } from '../_shared/admin-bootstrap.js';
 import { extractToken, getSession } from '../_shared/auth.js';
 import { j, err, getApiTranslator, isWebAdmin } from '../_shared/api-utils.js';
+import { applyCorsToResponse, checkRequestOrigin } from '../_shared/cors.js';
 import { logError, silentCatch } from '../_shared/error-handler.js';
 import { handleAuthRoutes, ensureMiniAppMenu } from './routes/auth.js';
 import { handleProfileRoutes } from './routes/profile.js';
@@ -13,11 +14,28 @@ import { handleSettingsRoutes } from './routes/settings.js';
 import { handleWhitelistRoutes } from './routes/whitelist.js';
 import { handleTgRoutes } from './routes/tg.js';
 
-export async function onRequest({ request, env, waitUntil }) {
+export async function onRequest(context) {
+  const { request, env, waitUntil } = context;
+  const response = await dispatch({ request, env, waitUntil });
+  // 统一按请求 Origin 追加 CORS 白名单头（不再回写 *）
+  return applyCorsToResponse(response, request, env);
+}
+
+async function dispatch({ request, env, waitUntil }) {
   if (request.method === 'OPTIONS') return new Response(null, { status: 204 });
   if (!env.KV) {
     const t = getApiTranslator(request);
     return err(t('kvNotBound'), 500);
+  }
+
+  // 状态变更请求的跨站来源校验（CSRF 基础防护）
+  const originCheck = checkRequestOrigin(request, env);
+  if (!originCheck.ok) {
+    logError('API', 'csrf.origin', new Error(originCheck.reason), {
+      path: new URL(request.url).pathname,
+      method: request.method,
+    }, 'warn');
+    return err(getApiTranslator(request)('auth.forbidden'), 403);
   }
 
   const db = new DB(env.KV, env.D1 || null, env.HYPERDRIVE || null);
@@ -42,7 +60,7 @@ export async function onRequest({ request, env, waitUntil }) {
   }
 
   // 构建共享上下文
-  const ctx = { db, kv, env, waitUntil, t };
+  const ctx = { db, kv, env, waitUntil, t, request };
 
   // ── 公开路由（无需认证）──────────────────────────────────────────────────
   const publicResponse = await handleAuthRoutes(path, request, ctx);

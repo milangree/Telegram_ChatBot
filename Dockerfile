@@ -6,6 +6,9 @@ FROM --platform=$BUILDPLATFORM node:22-alpine AS builder
 
 WORKDIR /app
 
+# 构建容器内无法访问官方 npm 源（超时），统一使用国内镜像
+RUN npm config set registry https://registry.npmmirror.com
+
 # 先复制 package 文件以利用 Docker 缓存层
 COPY package.json package-lock.json ./
 RUN npm ci
@@ -18,6 +21,9 @@ RUN npm run build
 FROM node:22-alpine AS production
 
 WORKDIR /app
+
+# 同上：生产阶段也使用国内 npm 镜像
+RUN npm config set registry https://registry.npmmirror.com
 
 # 安装编译依赖 + 安装 server 生产依赖（优先使用 prebuild，支持 g++ 源码编译兜底）
 COPY server/package.json server/package-lock.json ./
@@ -58,7 +64,9 @@ EXPOSE 3000
 
 # 健康检查
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
-  CMD wget -qO- http://localhost:3000/healthz || exit 1
+  # 必须用 127.0.0.1：容器内 localhost 会先解析到 IPv6 ::1，而服务仅监听 IPv4，
+  # 会导致健康检查永远 connection refused。
+  CMD wget -qO- http://127.0.0.1:3000/healthz || exit 1
 
 # 启动命令
 CMD ["node", "server/index.js"]

@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS whitelist (
 );
 CREATE TABLE IF NOT EXISTS web_users (
   id TEXT PRIMARY KEY, username TEXT UNIQUE NOT NULL, password_hash TEXT,
-  totp_secret TEXT, totp_enabled INTEGER DEFAULT 0, is_admin INTEGER DEFAULT 1, created_at TEXT
+  totp_secret TEXT, totp_enabled INTEGER DEFAULT 0, is_admin INTEGER DEFAULT 0, created_at TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_messages_user ON messages(user_id);
 CREATE INDEX IF NOT EXISTS idx_messages_created ON messages(created_at);

@@ -126,15 +126,6 @@
 </details>
 
 <details>
-<summary><b>🧪 测试</b></summary>
-
-- Vitest 测试框架
-- 66 个单元测试覆盖核心模块
-- 运行测试：`npm test`
-
-</details>
-
-<details>
 <summary><b>🌍 多语言</b></summary>
 
 - 简体中文 / 繁體中文 / English

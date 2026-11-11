@@ -29,3 +29,6 @@ data/
 # 本地开发文件
 CLAUDE.md
 .mailmap
+
+# 本机部署笔记：含主机路径/容器名/账号等环境信息，不入库
+DEPLOY_NOTES.md

@@ -1,6 +1,7 @@
 // functions/_shared/api-utils.js
 // API 路由共享工具函数
 import { createT, normalizeLocale } from '../../shared/i18n.js';
+import { corsHeadersFor } from './cors.js';
 
 /** 返回给前端时需要脱敏的密钥字段 */
 export const SECRET_SETTING_KEYS = [
@@ -12,11 +13,31 @@ export const SECRET_SETTING_KEYS = [
   'HCAPTCHA_SECRET_KEY',
 ];
 
-export const CORS = {
-  'Access-Control-Allow-Origin': '*',
+/**
+ * 兼容旧引用：CORS 不再固定为通配符。
+ * 新代码请使用 jsonResponse()/jsonError()（会按请求 Origin 计算）。
+ * 该常量仅用于「无请求上下文」的兜底，默认不含 Allow-Origin。
+ * @deprecated 使用 corsHeadersFor(request, env)
+ */
+export const CORS = Object.freeze({
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Locale',
-};
+  'Vary': 'Origin',
+});
+
+/**
+ * 构造 JSON 响应（按请求 Origin 计算 CORS 白名单头）。
+ * @param {any} data
+ * @param {number} status
+ * @param {{request?: Request, env?: object, headers?: object}} opts
+ */
+export function jsonResponse(data, status = 200, opts = {}) {
+  const cors = opts.request ? corsHeadersFor(opts.request, opts.env || {}) : { ...CORS };
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { ...cors, ...(opts.headers || {}), 'Content-Type': 'application/json' },
+  });
+}
 
 export function j(data, status = 200) {
   return new Response(JSON.stringify(data), {

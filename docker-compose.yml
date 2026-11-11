@@ -10,7 +10,11 @@
 
 services:
   telegram-chatbot:
+    # 同时声明 image 与 build：本地源码重建，并沿用原镜像名，便于回滚
     image: kakuwari/tg-chatbot:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: telegram-chatbot
     restart: unless-stopped
     ports:
@@ -36,13 +40,18 @@ services:
     volumes:
       - telegram-chatbot-data:/app/data
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3000/healthz"]
+      # 用 127.0.0.1 而非 localhost：容器内 localhost 优先解析为 IPv6 ::1，服务只监听 IPv4
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/healthz"]
       interval: 30s
       timeout: 3s
       start_period: 10s
       retries: 3
 
   # ── 可选：PostgreSQL 后端（如需使用 Hyperdrive）────────────────────
+  # 安全说明：
+  #   - 本文件不提供任何默认数据库口令；未设置 POSTGRES_PASSWORD 时容器拒绝启动。
+  #   - 默认不映射 5432 到宿主机（仅 compose 内部网络可达），避免数据库直接暴露。
+  #   - 如需从本机调试，取消注释 ports 并仅绑定 127.0.0.1。
   # postgres:
   #   image: postgres:16-alpine
   #   container_name: telegram-chatbot-db
@@ -50,11 +59,11 @@ services:
   #   environment:
   #     POSTGRES_DB: telegram_bot
   #     POSTGRES_USER: telegram
-  #     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-telegram_password}
+  #     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
   #   volumes:
   #     - postgres-data:/var/lib/postgresql/data
-  #   ports:
-  #     - "5432:5432"
+  #   # ports:
+  #   #   - "127.0.0.1:5432:5432"
 
 volumes:
   telegram-chatbot-data:

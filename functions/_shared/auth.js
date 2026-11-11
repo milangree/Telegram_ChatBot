@@ -268,35 +268,15 @@ export async function requireAuth(req, kv, db) {
 }
 
 /**
- * CORS：生产默认同源（不反射 Origin），避免 * 扩大跨站滥用面。
- * 如需跨域管理后台，设置 CORS_ORIGIN=https://admin.example.com
- *（多个用逗号分隔）；未配置时不返回 Allow-Origin，浏览器跨站读响应会被拦。
+ * 兼容导出：CORS 统一由 ./cors.js 计算（按请求 Origin 白名单）。
+ * 这里的 CORS 仅作为无请求上下文的兜底，默认不含 Allow-Origin。
+ * @deprecated 使用 corsHeadersFor(request, env)
  */
-function resolveCorsOrigin() {
-  try {
-    if (typeof process !== 'undefined' && process?.env?.CORS_ORIGIN) {
-      const list = String(process.env.CORS_ORIGIN)
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean);
-      // 不使用 *；若只配一个固定源则回写该源
-      if (list.length === 1 && list[0] !== '*') return list[0];
-      // 多源时由调用方按请求 Origin 匹配；此处返回 null 表示不默认放开
-      if (list.length > 1) return null;
-    }
-  } catch { /* noop */ }
-  return null;
-}
-
-export const CORS = (() => {
-  const origin = resolveCorsOrigin();
-  const headers = {
-    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Locale',
-  };
-  if (origin) headers['Access-Control-Allow-Origin'] = origin;
-  return headers;
-})();
+export const CORS = Object.freeze({
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Locale',
+  'Vary': 'Origin',
+});
 
 export const j = (d, s = 200) => new Response(JSON.stringify(d), {
   status: s,
@@ -312,23 +292,77 @@ export const AUTH_RATE_LIMITS = Object.freeze({
   login: { maxFails: 5, windowSec: 900 },       // 15 分钟 5 次
   recover: { maxFails: 3, windowSec: 1800 },    // 30 分钟 3 次（更严）
   totpStatus: { maxFails: 20, windowSec: 600 }, // 防用户枚举
+  testToken: { maxFails: 10, windowSec: 600 },  // 10 分钟 10 次（外部 API 调用）
 });
 
+/** 冷却型限流：每次调用都计数（不区分成功失败），用于防止高频外部请求。 */
+export async function consumeRateLimit(kv, action, identity = {}, ttlSec = 600) {
+  if (!kv) return { allowed: true, remaining: 1 };
+  const conf = AUTH_RATE_LIMITS[action] || { maxFails: 10, windowSec: ttlSec };
+  const key = rateLimitKey(action, 'hit', identity.key || identity.ip || identity.username || 'global');
+  const raw = await kv.get(key).catch(() => null);
+  let count = 0;
+  if (raw) {
+    try {
+      const data = JSON.parse(raw);
+      count = Number(data?.count) || 0;
+    } catch { count = 0; }
+  }
+  if (count >= conf.maxFails) {
+    return { allowed: false, remaining: 0, retryAfterSec: conf.windowSec };
+  }
+  const next = count + 1;
+  const ttl = Math.max(60, Math.ceil(((ttlSec || conf.windowSec))));
+  await kv.put(key, JSON.stringify({ count: next }), { expirationTtl: ttl }).catch(() => {});
+  return { allowed: true, remaining: Math.max(0, conf.maxFails - next) };
+}
+
 /**
- * 从请求头提取客户端 IP（Cloudflare / 反代 / 直连兜底）。
- * 注意：x-forwarded-for 可被伪造，生产应经可信反代并只信最左侧或 cf-connecting-ip。
+ * 从请求头提取客户端 IP。
+ *
+ * 可信度分层（防伪造）：
+ * 1) 本地 Node 桥接：server 在入口剥离客户端伪造的转发头，并写入 x-tgcb-peer-ip；
+ *    仅当 TGCB_TRUST_LOCAL_IP=1（由 server 自身设置，客户端无法注入）时采信。
+ * 2) Cloudflare：cf-connecting-ip 由边缘覆盖写入，可采信。
+ * 3) 自建反代：仅在 TRUST_PROXY=1 时采信 x-forwarded-for 最左值 / x-real-ip。
+ * 4) 其余一律 'unknown'，避免攻击者伪造 IP 绕过限流。
  */
+export function isTrustedProxyEnabled() {
+  try {
+    if (typeof process !== 'undefined' && process?.env) {
+      const v = String(process.env.TRUST_PROXY || '').trim().toLowerCase();
+      return v === '1' || v === 'true' || v === 'yes' || v === 'on';
+    }
+  } catch { /* Workers */ }
+  return false;
+}
+
 export function getClientIp(request) {
   try {
+    // 1) 本地桥接写入的可信对端 IP
+    let trustLocal = false;
+    try {
+      trustLocal = typeof process !== 'undefined' && process?.env?.TGCB_TRUST_LOCAL_IP === '1';
+    } catch { /* Workers */ }
+    if (trustLocal) {
+      const peer = request?.headers?.get?.('x-tgcb-peer-ip');
+      if (peer && String(peer).trim()) return String(peer).trim().slice(0, 64);
+    }
+
+    // 2) Cloudflare 边缘写入
     const cf = request?.headers?.get?.('cf-connecting-ip');
     if (cf && String(cf).trim()) return String(cf).trim().slice(0, 64);
-    const xff = request?.headers?.get?.('x-forwarded-for');
-    if (xff) {
-      const first = String(xff).split(',')[0].trim();
-      if (first) return first.slice(0, 64);
+
+    // 3) 显式信任反代时才看 XFF / X-Real-IP
+    if (isTrustedProxyEnabled()) {
+      const xff = request?.headers?.get?.('x-forwarded-for');
+      if (xff) {
+        const first = String(xff).split(',')[0].trim();
+        if (first) return first.slice(0, 64);
+      }
+      const realIp = request?.headers?.get?.('x-real-ip');
+      if (realIp && String(realIp).trim()) return String(realIp).trim().slice(0, 64);
     }
-    const realIp = request?.headers?.get?.('x-real-ip');
-    if (realIp && String(realIp).trim()) return String(realIp).trim().slice(0, 64);
   } catch { /* noop */ }
   return 'unknown';
 }
@@ -444,6 +478,31 @@ export async function clearAuthFailures(kv, action, { ip, username } = {}) {
   for (const key of targets) {
     await kv.delete(key).catch(() => {});
   }
+}
+
+/** 二次认证（step-up）失败次数限制：5 次 / 15 分钟，按 Web 用户维度。 */
+export async function consumeReauthAttempt(kv, userId) {
+  const conf = { maxFails: 5, windowSec: 900 };
+  const key = rateLimitKey('reauth', 'user', userId);
+  const now = Date.now();
+  const prev = await readRateBucket(kv, key);
+  let fails = 1;
+  let firstAt = now;
+  let lockedUntil = 0;
+  if (prev && prev.firstAt && (now - prev.firstAt) < conf.windowSec * 1000) {
+    fails = (Number(prev.fails) || 0) + 1;
+    firstAt = prev.firstAt;
+    lockedUntil = Number(prev.lockedUntil) || 0;
+  }
+  if (fails > conf.maxFails) {
+    return { allowed: false, retryAfterSec: Math.max(1, Math.ceil((firstAt + conf.windowSec * 1000 - now) / 1000)) };
+  }
+  if (fails >= conf.maxFails) {
+    lockedUntil = Math.max(lockedUntil, now + conf.windowSec * 1000);
+  }
+  const ttlSec = Math.max(60, Math.ceil(((lockedUntil || (firstAt + conf.windowSec * 1000)) - now) / 1000) + 30);
+  await kv.put(key, JSON.stringify({ fails, firstAt, lockedUntil }), { expirationTtl: ttlSec }).catch(() => {});
+  return { allowed: true };
 }
 
 // ── Telegram Web App initData 验签 ──────────────────────────────────────

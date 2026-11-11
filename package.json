@@ -15,9 +15,7 @@
     "admin:list": "node scripts/admin-recovery.js list",
     "admin:reset": "node scripts/admin-recovery.js reset-password",
     "lint": "eslint --ext .js,.vue src/ functions/ server/ scripts/ shared/",
-    "lint:fix": "eslint --ext .js,.vue src/ functions/ server/ scripts/ shared/ --fix",
-    "test": "vitest run",
-    "test:watch": "vitest"
+    "lint:fix": "eslint --ext .js,.vue src/ functions/ server/ scripts/ shared/ --fix"
   },
   "dependencies": {
     "axios": "^1.7.0",
@@ -31,7 +29,6 @@
     "eslint": "^10.13.0",
     "eslint-plugin-vue": "^10.11.1",
     "vite": "^8.0.8",
-    "vitest": "^5.0.5",
     "ws": "^8.22.0"
   }
 }

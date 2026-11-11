@@ -1,14 +1,17 @@
 // functions/api/routes/settings.js
 // 设置路由
 import { TG } from '../../_shared/tg.js';
-import { genToken } from '../../_shared/auth.js';
+import { genToken, consumeRateLimit, verifyPw, consumeReauthAttempt } from '../../_shared/auth.js';
 import { exportBusinessDataSql, importBusinessDataSql, parseBusinessSql } from '../../_shared/db-sql.js';
 import { setupMiniAppMenu } from '../../_shared/bot.js';
 import {
   j, err, maskSettingsForClient, isMaskedOrEmptySecret, SECRET_SETTING_KEYS,
 } from '../../_shared/api-utils.js';
 import { logError } from '../../_shared/error-handler.js';
+import { withOperationLock } from '../../_shared/op-lock.js';
 import { logAuditAction, getAuditLogs } from '../../_shared/audit-log.js';
+import { verifyTOTP } from '../../_shared/totp.js';
+import { BOOTSTRAP_KEY } from '../../_shared/admin-bootstrap.js';
 
 const ALLOWED_SETTINGS = [
   'BOT_TOKEN', 'FORUM_GROUP_ID', 'ADMIN_IDS',
@@ -53,13 +56,22 @@ export async function handleSettingsRoutes(path, request, ctx) {
     return handleSetupWebhook(request, ctx);
   }
 
-  // 测试 Bot Token
+  // 测试 Bot Token（高影响外部调用：限流 + 输入校验）
   if (path === '/settings/test-token' && request.method === 'POST') {
     try {
-      const { token: testToken } = await request.json();
-      if (!testToken) return err(t('settings.missingToken'), 400);
-      const res = await new TG(testToken).getMe();
-      if (!res.ok) return err(t('settings.invalidToken', { error: res.description }));
+      const { token: testToken } = await request.json().catch(() => ({}));
+      if (!testToken || typeof testToken !== 'string') return err(t('settings.missingToken'), 400);
+      const candidate = testToken.trim();
+      // Telegram Bot Token 形如 123456789:AAxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+      if (candidate.length < 20 || candidate.length > 200 || !/^[0-9]+:[A-Za-z0-9_-]+$/.test(candidate)) {
+        return err(t('settings.invalidToken', { error: 'format' }), 400);
+      }
+      const rate = await consumeRateLimit(kv, 'testToken', { key: `admin:${ctx.webUser.id}` });
+      if (!rate.allowed) {
+        return err(t('settings.testTooMany', { seconds: rate.retryAfterSec }), 429);
+      }
+      const res = await new TG(candidate).getMe();
+      if (!res.ok) return err(t('settings.invalidToken', { error: res.description }), 400);
       return j({ ok: true, bot: res.result });
     } catch {
       return err(t('settings.testFailed'), 500);
@@ -81,40 +93,73 @@ export async function handleSettingsRoutes(path, request, ctx) {
     return j({ logs });
   }
 
-  // 数据库切换
+  // 数据库切换（高影响：二次认证 + 互斥锁 + 失败回滚）
   if (path === '/settings/db/switch' && request.method === 'POST') {
+    const body = await request.json().catch(() => ({}));
+    const target = String(body?.target || '');
+    const sync = body?.sync !== false;
+    if (!['kv', 'd1', 'hyperdrive'].includes(target)) return err(t('settings.invalidTarget'), 400);
+    if (target === 'd1' && !env.D1) return err(t('settings.d1NotBound'), 400);
+    if (target === 'hyperdrive' && !env.HYPERDRIVE) return err(t('settings.hyperdriveNotBound'), 400);
+
+    const rejected = await requireReauth(request, ctx, body);
+    if (rejected) return rejected;
+
     try {
-      const { target, sync } = await request.json();
-      if (!['kv', 'd1', 'hyperdrive'].includes(target)) return err(t('settings.invalidTarget'), 400);
-      if (target === 'd1' && !env.D1) return err(t('settings.d1NotBound'), 400);
-      if (target === 'hyperdrive' && !env.HYPERDRIVE) return err(t('settings.hyperdriveNotBound'), 400);
+      const result = await withOperationLock(
+        { kv, name: 'db-switch', owner: `web:${ctx.webUser.id}`, ttlSec: 300 },
+        async () => {
+          const current = await db.getActiveDb();
+          if (current === target) return { active: target, switched: false };
 
-      const current = await db.getActiveDb();
-      if (sync && current !== target) await db.syncData(current, target);
+          // 1) 先同步数据（失败则活动后端不变，无需回滚）
+          if (sync) await db.syncData(current, target);
 
-      await db.switchDb(target);
-      return j({ ok: true, active: target });
+          // 2) 写入切换标记；失败则回滚数据副本标记，保持原后端
+          try {
+            await db.switchDb(target);
+          } catch (e) {
+            // 切换标记写失败时，尽力把标记恢复为 current，避免半切换状态
+            await db.switchDb(current).catch(() => {});
+            throw e;
+          }
+          return { active: target, switched: true, previous: current };
+        },
+      );
+      await logAuditAction(db, kv, 'data.switch', ctx.webUser.id, result);
+      return j({ ok: true, active: result.active, previous: result.previous || null });
     } catch (e) {
-      console.error('[API Error] settings.switchFailed:', e.message);
+      if (e?.code === 'OPERATION_IN_PROGRESS') return err(t('settings.operationInProgress'), 409);
+      logError('API', 'settings.switchFailed', e);
       return err(t('settings.switchFailed'), 500);
     }
   }
 
-  // 清空数据
+  // 清空数据（高影响：二次认证 + 互斥锁）
   if (path === '/settings/clear-data' && request.method === 'POST') {
+    const body = await request.json().catch(() => ({}));
+    const rejected = await requireReauth(request, ctx, body);
+    if (rejected) return rejected;
+
     try {
-      const botToken = await db.getSetting('BOT_TOKEN');
-      if (botToken) {
-        try {
-          await new TG(botToken).deleteWebhook({ dropPendingUpdates: true });
-        } catch (e) {
-          logError('API', 'clearData.deleteWebhook', e);
-        }
-      }
-      await db.clearAppDataPreserveWebUsers();
+      await withOperationLock(
+        { kv, name: 'data-clear', owner: `web:${ctx.webUser.id}`, ttlSec: 300 },
+        async () => {
+          const botToken = await db.getSetting('BOT_TOKEN');
+          if (botToken) {
+            try {
+              await new TG(botToken).deleteWebhook({ dropPendingUpdates: true });
+            } catch (e) {
+              logError('API', 'clearData.deleteWebhook', e);
+            }
+          }
+          await db.clearAppDataPreserveWebUsers();
+        },
+      );
       await logAuditAction(db, kv, 'data.clear', ctx.webUser.id);
       return j({ ok: true });
     } catch (e) {
+      if (e?.code === 'OPERATION_IN_PROGRESS') return err(t('settings.operationInProgress'), 409);
       logError('API', 'clearData', e);
       return err(t('settings.clearDataFailed'), 500);
     }
@@ -130,6 +175,37 @@ export async function handleSettingsRoutes(path, request, ctx) {
     return handleSqlImport(request, ctx);
   }
 
+  return null;
+}
+
+
+/**
+ * 高风险操作的二次认证（step-up auth）。
+ * 必须提供当前账号密码；若已启用 2FA，则还需提供 TOTP。
+ * 返回 null 表示通过，否则返回错误 Response。
+ */
+async function requireReauth(request, ctx, payload = null) {
+  const t = ctx.t;
+  const webUser = ctx.webUser;
+  const body = payload || await request.json().catch(() => ({}));
+  // 注意：SQL 导入用 password 表示 AES 解密密码，二次认证统一用 accountPassword，避免字段冲突
+  const password = String(body?.accountPassword ?? body?.reauthPassword ?? '');
+  if (!password) return err(t('settings.reauthRequired'), 401);
+
+  const limited = await consumeReauthAttempt(ctx.kv, webUser.id);
+  if (!limited.allowed) return err(t('auth.tooManyAttempts', { seconds: limited.retryAfterSec }), 429);
+
+  if (!await verifyPw(password, webUser.password_hash)) {
+    await logAuditAction(ctx.db, ctx.kv, 'auth.reauth_failed', webUser.id, { path: new URL(request.url).pathname });
+    return err(t('settings.reauthFailed'), 401);
+  }
+  if (webUser.totp_enabled) {
+    const totp = String(body?.totp || '');
+    if (!totp) return err(t('auth.totpRequired'), 401);
+    if (!await verifyTOTP(totp, webUser.totp_secret, { kv: ctx.kv, userId: webUser.id })) {
+      return err(t('auth.invalidTotp'), 401);
+    }
+  }
   return null;
 }
 
@@ -262,46 +338,111 @@ async function handleSqlExport(request, ctx) {
 async function handleSqlImport(request, ctx) {
   const { db, kv } = ctx;
   const t = ctx.t;
+  const body = await request.json().catch(() => ({}));
+  const password = String(body?.password || '');
+  const sqlPayload = body?.sql ?? body?.data ?? '';
+  if (!sqlPayload || !String(sqlPayload).trim()) return err(t('common.missingParams'), 400);
+  if (!password) return err(t('common.missingParams'), 400);
+
+  // 二次认证：导入会覆盖全部业务数据，必须重新验证管理员身份
+  const rejected = await requireReauth(request, ctx, body);
+  if (rejected) return rejected;
+
   try {
-    const body = await request.json().catch(() => ({}));
-    const password = String(body?.password || '');
-    const sqlPayload = body?.sql ?? body?.data ?? '';
-    if (!sqlPayload || !String(sqlPayload).trim()) return err(t('common.missingParams'), 400);
-    if (!password) return err(t('common.missingParams'), 400);
+    const result = await withOperationLock(
+      { kv, name: 'data-import', owner: `web:${ctx.webUser.id}`, ttlSec: 900 },
+      async () => {
+        const active = await db.getActiveDb();
 
-    const active = await db.getActiveDb();
-    const snapshotStore = await db._store();
+        // 1) 先解密校验，解密失败不触碰任何现有数据
+        const parsedPreview = await parseBusinessSql(sqlPayload, { password });
+        const hasWebUsers = Array.isArray(parsedPreview.web_users) && parsedPreview.web_users.length > 0;
 
-    const parsedPreview = await parseBusinessSql(sqlPayload, { password });
-    const hasWebUsers = Array.isArray(parsedPreview.web_users) && parsedPreview.web_users.length > 0;
+        // 2) 导入成功后按目标写入；写入前的快照用于失败回滚
+        const snapshot = await captureSnapshot(db, active);
+        // 清空阶段会删除 bootstrap 标记，若备份含 web_users，需在写入后还原，
+        // 否则名为 admin 的既有账号会被 isBootstrapAdminDisabled 永久判定为已退役。
+        const bootstrapRecord = await kv.get(BOOTSTRAP_KEY).catch(() => null);
 
-    await importBusinessDataSql({
-      sqlText: sqlPayload,
-      target: active,
-      kvStore: db._kv,
-      d1Store: db._d1,
-      hyperdriveStore: db._hyperdrive,
-      password,
-      clearFn: () => hasWebUsers
-        ? db.clearAppDataIncludingWebUsers()
-        : db.clearAppDataPreserveWebUsers(),
-      snapshotStore,
-    });
+        try {
+          await importBusinessDataSql({
+            sqlText: sqlPayload,
+            target: active,
+            kvStore: db._kv,
+            d1Store: db._d1,
+            hyperdriveStore: db._hyperdrive,
+            password,
+            clearFn: () => hasWebUsers
+              ? db.clearAppDataIncludingWebUsers()
+              : db.clearAppDataPreserveWebUsers(),
+            snapshotStore: await db._store(),
+          });
+        } catch (e) {
+          // 回滚：尽量恢复导入前的数据，避免留下被清空的库
+          await restoreSnapshot(db, active, snapshot).catch((re) => {
+            logError('API', 'sqlImport.rollbackFailed', re, { active });
+          });
+          throw e;
+        }
 
-    if (db._d1 && active !== 'd1') {
-      const other = active === 'kv' ? 'd1' : 'kv';
-      await db.syncData(active, other);
-    }
-    if (db._hyperdrive && active !== 'hyperdrive') {
-      await db.syncData(active, 'hyperdrive');
-    }
+        if (bootstrapRecord) {
+          await kv.put(BOOTSTRAP_KEY, bootstrapRecord).catch(() => {});
+        }
 
-    await logAuditAction(db, kv, 'data.import', ctx.webUser.id, { active, hasWebUsers });
-    return j({ ok: true, active, restoredWebUsers: hasWebUsers });
+        if (db._d1 && active !== 'd1') {
+          await db.syncData(active, 'd1');
+        }
+        if (db._hyperdrive && active !== 'hyperdrive') {
+          await db.syncData(active, 'hyperdrive');
+        }
+
+        return { active, hasWebUsers };
+      },
+    );
+
+    await logAuditAction(db, kv, 'data.import', ctx.webUser.id, result);
+    return j({ ok: true, active: result.active, restoredWebUsers: result.hasWebUsers });
   } catch (e) {
+    if (e?.code === 'OPERATION_IN_PROGRESS') return err(t('settings.operationInProgress'), 409);
     logError('API', 'sqlImport', e);
     return err(t('settings.sqlImportFailed'), 500);
   }
+}
+
+/**
+ * 导入前快照：复用导出逻辑生成加密备份，失败时可用同一路径完整回滚。
+ * 返回 { payload, password } 或 null（快照失败时不阻塞导入，只记录告警）。
+ */
+async function captureSnapshot(db, active) {
+  try {
+    const password = genToken(32);
+    const store = active === 'hyperdrive' ? db._hyperdrive : (active === 'd1' ? db._d1 : db._kv);
+    const payload = await exportBusinessDataSql(store, active, {
+      password,
+      includeSecrets: true,
+      includeWebUsers: true,
+      secretKeys: SECRET_SETTING_KEYS,
+    });
+    return { payload, password };
+  } catch (e) {
+    logError('API', 'snapshot.capture', e, { active }, 'warn');
+    return null;
+  }
+}
+
+/** 用加密快照回滚：与导入共用同一恢复路径，避免字段遗漏。 */
+async function restoreSnapshot(db, active, snapshot) {
+  if (!snapshot?.payload || !snapshot?.password) return;
+  await importBusinessDataSql({
+    sqlText: snapshot.payload,
+    target: active,
+    kvStore: db._kv,
+    d1Store: db._d1,
+    hyperdriveStore: db._hyperdrive,
+    password: snapshot.password,
+    clearFn: () => db.clearAppDataIncludingWebUsers(),
+    snapshotStore: await db._store(),
+  });
 }
 
 function normalizeBotLocale(input) {

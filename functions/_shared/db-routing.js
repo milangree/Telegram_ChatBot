@@ -48,9 +48,18 @@ export async function autoRepairDb({ kv, kvStore, d1Store, hyperdriveStore }, fo
       await d1Store.initSchema()
     }
 
+    // 迁移：历史上 web_users.is_admin 的列默认值为 1，导致「缺省即管理员」。
+    // CREATE TABLE IF NOT EXISTS 不会改动既有表，因此这里显式修正列默认值（幂等，失败不阻塞）。
+    // 说明：只改默认值，不改动任何已存在的 is_admin=1 记录，避免误降权真实管理员。
+    if (d1Store) {
+      await migrateIsAdminDefault(d1Store, 'sqlite')
+    }
+
     // Initialize Hyperdrive schema
     if (hyperdriveStore) {
       await hyperdriveStore.initSchema()
+      const dbType = hyperdriveStore.dbType === 'postgres' ? 'postgres' : 'mysql'
+      await migrateIsAdminDefault(hyperdriveStore, dbType)
     }
 
     for (const [key, defVal] of Object.entries(DEFAULT_SETTINGS)) {
@@ -105,6 +114,41 @@ export async function autoRepairDb({ kv, kvStore, d1Store, hyperdriveStore }, fo
     await kv.put('db:auto_repair:last', String(now), { expirationTtl: 86400 })
   } catch (e) {
     console.error('autoRepair:', e)
+  }
+}
+
+
+/**
+ * 将 web_users.is_admin 的列默认值从 1 修正为 0（幂等）。
+ * 只调整 DEFAULT，不触碰既有行，避免把真实管理员误降权。
+ */
+async function migrateIsAdminDefault(store, dialect) {
+  try {
+    if (dialect === 'sqlite') {
+      // SQLite 无法直接修改列默认值；用可安全重放的表重建（仅当默认值确实为 1 时）
+      const ddl = await store.first?.("SELECT sql FROM sqlite_master WHERE type='table' AND name='web_users'")
+      const current = String(ddl?.sql || '')
+      if (!/is_admin\s+INTEGER\s+DEFAULT\s+1/i.test(current)) return
+      await store.exec('ALTER TABLE web_users RENAME TO web_users_old')
+      await store.exec(`CREATE TABLE web_users (
+        id TEXT PRIMARY KEY, username TEXT UNIQUE NOT NULL, password_hash TEXT,
+        totp_secret TEXT, totp_enabled INTEGER DEFAULT 0, is_admin INTEGER DEFAULT 0, created_at TEXT
+      )`)
+      await store.exec('INSERT INTO web_users(id,username,password_hash,totp_secret,totp_enabled,is_admin,created_at) '
+        + 'SELECT id,username,password_hash,totp_secret,totp_enabled,is_admin,created_at FROM web_users_old')
+      await store.exec('DROP TABLE web_users_old')
+      return
+    }
+
+    if (dialect === 'postgres') {
+      await store.exec('ALTER TABLE web_users ALTER COLUMN is_admin SET DEFAULT 0')
+      return
+    }
+
+    // MySQL / MariaDB
+    await store.exec('ALTER TABLE web_users MODIFY COLUMN is_admin TINYINT DEFAULT 0')
+  } catch (e) {
+    console.warn('[migrate] is_admin default normalization skipped:', e?.message || e)
   }
 }
 

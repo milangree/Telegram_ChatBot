@@ -126,15 +126,6 @@ All verification methods support:
 </details>
 
 <details>
-<summary><b>🧪 Testing</b></summary>
-
-- Vitest test framework
-- 66 unit tests covering core modules
-- Run tests: `npm test`
-
-</details>
-
-<details>
 <summary><b>🌍 Internationalization</b></summary>
 
 - Simplified Chinese / Traditional Chinese / English
