@@ -1,0 +1,43 @@
+# CODEOWNERS · Telegram ChatBot
+# 语法：<路径模式> <@用户或@组织/团队>
+# 生效前提：仓库 Settings → Branches 中开启 "Require review from Code Owners"
+# 维护说明：路径模式自上而下匹配，最后匹配的规则优先；新增顶层目录请同步本文件。
+# 详见 docs/GITHUB_WORKFLOW.md 与 docs/BRANCH_PROTECTION.md
+
+# ── 默认：全仓库 ───────────────────────────────────────────────
+*                                   @milangree
+
+# ── 工作流与仓库治理：模板、Actions、CODEOWNERS 自身 ─────────
+/.github/                           @milangree
+/.gitmessage                        @milangree
+/.github/CODEOWNERS                 @milangree
+
+# ── 认证 / 安全 / 加解密：改动必须显式审查 ───────────────────
+/functions/_shared/auth.js          @milangree
+/functions/_shared/totp.js          @milangree
+/functions/_shared/audit-log.js     @milangree
+/functions/_shared/cors.js          @milangree
+/functions/_shared/captcha.js       @milangree
+/functions/_shared/bot-verify.js    @milangree
+/scripts/admin-recovery.js          @milangree
+
+# ── 存储层：数据结构与迁移敏感 ───────────────────────────────
+/functions/_shared/db.js            @milangree
+/functions/_shared/db-kv.js         @milangree
+/functions/_shared/db-d1.js         @milangree
+/functions/_shared/db-hyperdrive.js @milangree
+/functions/_shared/db-sql.js        @milangree
+/functions/_shared/db-routing.js    @milangree
+/functions/_shared/db-settings.js   @milangree
+
+# ── 部署与构建产物 ───────────────────────────────────────────
+/Dockerfile                         @milangree
+/docker-compose.yml                 @milangree
+/.dockerignore                      @milangree
+/vite.config.js                     @milangree
+/package.json                       @milangree
+/server/package.json                @milangree
+
+# ── 对外契约：API 文档与共享模块 ────────────────────────────
+/openapi.yaml                       @milangree
+/shared/                            @milangree

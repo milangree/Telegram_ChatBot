@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 使用与部署问题
+    url: https://github.com/milangree/Telegram_ChatBot/discussions
+    about: 部署配置、Bot 接入、环境变量等使用问题请到 Discussions，issue 区只跟踪可复现缺陷与功能建议。
+  - name: 🔐 安全漏洞
+    url: https://github.com/milangree/Telegram_ChatBot/blob/main/docs/SECURITY_REPORTING.md
+    about: 请勿公开提交漏洞细节，按 SECURITY 流程私密上报。
+  - name: 📖 开发与提交流程
+    url: https://github.com/milangree/Telegram_ChatBot/blob/main/CONTRIBUTING.md
+    about: 分支命名、提交规范、PR 拆分要求与本地验证命令。
