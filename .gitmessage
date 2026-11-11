@@ -1,0 +1,27 @@
+# ─────────────────────────────────────────────────────────────────────
+# 提交信息模板（Conventional Commits）· Telegram ChatBot
+# 启用：git config --local commit.template .gitmessage
+# 详细规范：docs/GITHUB_WORKFLOW.md
+# ─────────────────────────────────────────────────────────────────────
+# <type>(<scope>): <≤50 字，祈使句，中文或英文但同类改动保持一致>
+#   ↑ 空一行 ↑
+# 为什么要做这个改动（问题现象 / 用户场景 / 收益），不要复述 diff。
+# 如修复缺陷，写明：根因 → 修复方式 → 影响面。
+#   ↑ 空一行 ↑
+# 关联：Closes #123
+# 验证：npm run lint / npm run build / 手动步骤
+# 风险与回滚：<无 或 具体说明>
+# ─────────────────────────────────────────────────────────────────────
+# type：feat 新功能｜fix 缺陷修复｜docs 文档｜chore 杂务/依赖｜
+#       refactor 重构（不改行为）｜perf 性能｜style 格式｜
+#       ci 流水线｜build 构建/镜像｜revert 回滚
+# 允许的 scope：
+#   web(前端 src/)        api(functions/api 路由)
+#   bot(functions/webhook 与 _shared/bot-*)
+#   auth(登录/2FA/TOTP/会话)  db(KV/D1/Hyperdrive 存储层)
+#   server(Node 桥接层 server/)  shared(shared/ 共享模块)
+#   verify(验证码/人机验证)  i18n(多语言)
+#   docker(Dockerfile/compose)  ci(Actions)  docs  deps
+# 破坏性变更：type(scope)!: ... 并在正文写「BREAKING CHANGE: 旧 → 新」
+# 一个提交只做一件事；同一 PR 内的提交不要求 squash。
+# ─────────────────────────────────────────────────────────────────────

@@ -27,5 +27,5 @@ data/
 .server.pid
 
 # 本地开发文件
-CLAUDE.md
+# 注：CLAUDE.md / AGENTS.md 属仓库资产（AI 助手规则），已纳入版本控制，不要在此忽略。
 .mailmap

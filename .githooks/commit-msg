@@ -1,0 +1,44 @@
+#!/bin/sh
+# .githooks/commit-msg
+# 提交信息首行校验：<type>(<scope>)!: <说明>
+# 安装：bash scripts/install-git-hooks.sh   （等价 git config core.hooksPath .githooks）
+# 绕过：git commit --no-verify（仅在确有理由时使用）
+
+msg_file="$1"
+first_line=$(head -n 1 "$msg_file")
+
+# 允许合并/回滚提交与 fixup/squash 前缀
+case "$first_line" in
+  "Merge "*|"Revert "*|fixup\ *|squash\ *|amend\ *) exit 0 ;;
+esac
+
+# 空提交信息（交互式编辑器被清空）交给 git 自己报错
+[ -z "$first_line" ] && exit 0
+
+types="feat|fix|docs|chore|refactor|perf|style|ci|build|revert"
+scopes="web|api|bot|auth|db|server|shared|verify|i18n|docker|ci|docs|deps"
+
+if ! printf '%s' "$first_line" | grep -Eq "^($types)(\((($scopes))\))?!?: .+"; then
+  cat >&2 <<EOF
+
+✖ 提交信息首行不符合规范：
+  $first_line
+
+  期望格式：<type>(<scope>): <说明>
+    type  : feat fix docs chore refactor perf style ci build revert
+    scope : web api bot auth db server shared verify i18n docker ci docs deps
+  破坏性变更：type(scope)!: 说明，并在正文写 BREAKING CHANGE: 旧 → 新
+
+  参考：.gitmessage · docs/GITHUB_WORKFLOW.md
+  如确需跳过：git commit --no-verify
+
+EOF
+  exit 1
+fi
+
+len=$(printf '%s' "$first_line" | wc -c | tr -d ' ')
+if [ "$len" -gt 72 ]; then
+  printf '\n⚠ 首行 %s 字节，建议控制在 72 字节内（约定 ≤50 字）。\n\n' "$len" >&2
+fi
+
+exit 0
