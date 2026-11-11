@@ -1,0 +1,85 @@
+# 路径 → 标签映射（actions/labeler）
+# 与 .github/labels.yml 的 scope/* 标签一一对应；标签需先存在，
+# 首次启用请按 docs/GITHUB_WORKFLOW.md「标签」一节批量创建。
+
+# 打包/构建/部署
+build:
+  - changed-files:
+      - any-glob-to-any-file: ['Dockerfile', 'docker-compose.yml', '.dockerignore', 'vite.config.js', '_redirects']
+
+ci:
+  - changed-files:
+      - any-glob-to-any-file: ['.github/**']
+
+docs:
+  - changed-files:
+      - any-glob-to-any-file: ['**/*.md', 'docs/**']
+
+# 模块
+'scope/web':
+  - changed-files:
+      - any-glob-to-any-file: ['src/**']
+
+'scope/api':
+  - changed-files:
+      - any-glob-to-any-file: ['functions/api/**']
+
+'scope/bot':
+  - changed-files:
+      - any-glob-to-any-file: ['functions/webhook.js', 'functions/_shared/bot-*.js']
+
+'scope/auth':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'functions/_shared/auth.js'
+          - 'functions/_shared/totp.js'
+          - 'functions/_shared/audit-log.js'
+          - 'functions/_shared/cors.js'
+          - 'functions/_shared/admin-bootstrap.js'
+          - 'scripts/admin-recovery.js'
+
+'scope/db':
+  - changed-files:
+      - any-glob-to-any-file: ['functions/_shared/db*.js']
+
+'scope/server':
+  - changed-files:
+      - any-glob-to-any-file: ['server/**']
+
+'scope/shared':
+  - changed-files:
+      - any-glob-to-any-file: ['shared/**']
+
+'scope/verify':
+  - changed-files:
+      - any-glob-to-any-file: ['functions/_shared/captcha.js', 'functions/_shared/bot-verify.js']
+
+'scope/i18n':
+  - changed-files:
+      - any-glob-to-any-file: ['shared/locales/**', 'src/locales/**', 'functions/_shared/bot-i18n.js']
+
+'scope/deps':
+  - changed-files:
+      - any-glob-to-any-file: ['package.json', 'package-lock.json', 'server/package.json', 'server/package-lock.json']
+
+# 风险
+security:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'functions/_shared/auth.js'
+          - 'functions/_shared/totp.js'
+          - 'functions/_shared/captcha.js'
+          - 'functions/_shared/cors.js'
+          - 'functions/_shared/audit-log.js'
+
+'data-migration':
+  - changed-files:
+      - any-glob-to-any-file: ['functions/_shared/db*.js', 'scripts/admin-recovery.js']
+
+deploy/cloudflare:
+  - changed-files:
+      - any-glob-to-any-file: ['_redirects', 'functions/**']
+
+deploy/docker:
+  - changed-files:
+      - any-glob-to-any-file: ['Dockerfile', 'docker-compose.yml', '.dockerignore']

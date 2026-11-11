@@ -1,0 +1,141 @@
+# PR Hygiene — 规模与卫生检查
+# 目的：让「一个 PR 只做一件事」变成可检查的信号。
+#   · 按有效改动行数打 size/* 标签
+#   · 禁止提交构建产物 / 数据文件 / 密钥文件
+#   · 文档类 PR 混入源码、源码 PR 混入仓库治理文件 → 提示拆分
+#   · PR 描述缺少验证证据 → 留提醒（不阻塞，由人工审查把关）
+# 注意：本工作流不做批准/驳回，只提供信号；必需检查仍是 CI Quality Gate。
+
+name: PR Hygiene
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: pr-hygiene-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  hygiene:
+    name: 规模与拆分检查
+    runs-on: ubuntu-latest
+    steps:
+      - name: Inspect changed files
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo
+            const pr = context.payload.pull_request
+            const number = pr.number
+
+            // 分页拉取全部改动文件
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner, repo, pull_number: number, per_page: 100
+            })
+
+            const FORBIDDEN = [
+              /^dist\//, /^node_modules\//, /^data\/.*\.db(-shm|-wal)?$/,
+              /^\.env$/, /^\.env\.(?!example$)/, /\.pem$/, /\.key$/,
+              /^\.server\.pid$/, /^npm-debug\.log$/
+            ]
+            const GOVERNANCE = [
+              /^\.github\//, /^\.gitmessage$/, /^CONTRIBUTING/, /^AGENTS\.md$/,
+              /^CLAUDE\.md$/, /^docs\//
+            ]
+            const SOURCE = [
+              /^src\//, /^functions\//, /^server\//, /^shared\//, /^scripts\//
+            ]
+
+            const names = files.map(f => f.filename)
+            const forbidden = names.filter(n => FORBIDDEN.some(r => r.test(n)))
+            const governance = names.filter(n => GOVERNANCE.some(r => r.test(n)))
+            const source = names.filter(n => SOURCE.some(r => r.test(n)))
+
+            // 有效改动行数（忽略 lock 文件与纯文档，避免体积失真）
+            const counted = files.filter(f =>
+              !/(^|\/)package-lock\.json$/.test(f.filename) && !/\.md$/.test(f.filename)
+            )
+            const lines = counted.reduce((sum, f) => sum + f.additions + f.deletions, 0)
+
+            let sizeLabel = 'size/xl'
+            if (lines <= 50) sizeLabel = 'size/xs'
+            else if (lines <= 200) sizeLabel = 'size/s'
+            else if (lines <= 400) sizeLabel = 'size/m'
+            else if (lines <= 800) sizeLabel = 'size/l'
+
+            const warnings = []
+            if (forbidden.length) {
+              warnings.push(
+                '🔴 提交了不应入库的文件：\n' +
+                forbidden.map(f => `- \`${f}\``).join('\n') +
+                '\n请从提交中移除（`git rm --cached <file>`）并确认 `.gitignore` 覆盖。'
+              )
+            }
+            if (governance.length && source.length) {
+              warnings.push(
+                '🔴 这个 PR 同时改了仓库治理文件与源码，按规范应拆成两个 PR：\n' +
+                `- 治理/文档：${governance.slice(0, 12).join(', ')}\n` +
+                `- 源码：${source.slice(0, 12).join(', ')}\n` +
+                '参见 `docs/GITHUB_WORKFLOW.md`「拆分矩阵」。'
+              )
+            }
+            if (files.length > 15 || lines > 400) {
+              warnings.push(
+                `🟡 规模偏大：${files.length} 个文件 / ${lines} 行有效改动（阈值 15 文件 / 400 行）。` +
+                '若确实不可拆，请在 PR 描述中说明原因。'
+              )
+            }
+
+            // 描述里的验证证据：有代码块里的命令或「结果：」才算填了
+            const body = pr.body || ''
+            const hasEvidence = /```(bash|sh|shell)/i.test(body) || /结果[:：]\s*\S/.test(body)
+            const isDocOnly = source.length === 0
+            if (!hasEvidence && !isDocOnly) {
+              warnings.push(
+                '🟡 PR 描述缺少验证证据。请按模板补上实际执行的命令与输出摘要（`npm run lint`、`npm run build`、手动验证步骤）。'
+              )
+            }
+
+            // 管理 size 标签（缺失时自动创建）
+            const SIZE = ['size/xs', 'size/s', 'size/m', 'size/l', 'size/xl']
+            const current = (pr.labels || []).map(l => l.name)
+            const stale = current.filter(n => SIZE.includes(n) && n !== sizeLabel)
+            for (const name of stale) {
+              try {
+                await github.rest.issues.removeLabel({ owner, repo, issue_number: number, name })
+              } catch (e) { core.info(`removeLabel ${name}: ${e.message}`) }
+            }
+            try {
+              await github.rest.issues.addLabels({ owner, repo, issue_number: number, labels: [sizeLabel] })
+            } catch (e) {
+              core.info(`addLabels failed, trying create: ${e.message}`)
+              const colors = { 'size/xs': '3cbf00', 'size/s': '5d9801', 'size/m': '7f6a00', 'size/l': 'd98300', 'size/xl': 'b60205' }
+              await github.rest.issues.createLabel({
+                owner, repo, name: sizeLabel, color: colors[sizeLabel],
+                description: `PR 规模（有效改动行数）：${sizeLabel.replace('size/', '')}`
+              })
+              await github.rest.issues.addLabels({ owner, repo, issue_number: number, labels: [sizeLabel] })
+            }
+
+            await core.summary
+              .addHeading(`PR #${number} 卫生检查`)
+              .addTable([
+                [{ data: '指标', header: true }, { data: '值', header: true }],
+                ['改动文件数', String(files.length)],
+                ['有效改动行数', String(lines)],
+                ['规模标签', sizeLabel],
+                ['描述含验证证据', hasEvidence ? '是' : '否'],
+                ['禁止入库文件', forbidden.length ? String(forbidden.length) : '无']
+              ])
+              .addHeading('提示', 3)
+              .addRaw(warnings.length ? warnings.join('\n\n') : '未发现问题。')
+              .write()
+
+            if (warnings.length) {
+              core.warning(warnings.join('\n').replace(/[#*`]/g, ''))
+            }

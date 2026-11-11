@@ -1,0 +1,146 @@
+# 标签定义 · Labels
+# 唯一事实来源。导入命令见 docs/GITHUB_WORKFLOW.md「标签」一节。
+# 结构：<标签名>: { color: "6 位 hex（不带 #）", description: "<描述>" }
+# 命名约定：类型用裸词（feat/fix/...），模块用 scope/<模块>，规模用 size/<档>。
+
+# ── 类型（与 Conventional Commits type 对齐）──────────────
+feat:
+  color: "0e8a16"
+  description: 新功能
+fix:
+  color: "d73a4a"
+  description: 缺陷修复
+docs:
+  color: "0075ca"
+  description: 文档
+chore:
+  color: "fef2c0"
+  description: 杂务 / 依赖 / 维护
+refactor:
+  color: "5319e7"
+  description: 重构（不改变行为）
+perf:
+  color: "fbca04"
+  description: 性能优化
+style:
+  color: "cfd3d7"
+  description: 格式 / 命名，无逻辑变化
+ci:
+  color: "1d76db"
+  description: CI / Actions / 仓库自动化
+build:
+  color: "bf8700"
+  description: 构建、镜像、Docker
+revert:
+  color: "e4e669"
+  description: 回滚
+
+# ── 模块（scope）────────────────────────────────────────
+scope/web:
+  color: "c2e0c6"
+  description: 前端 src/
+scope/api:
+  color: "c2e0c6"
+  description: functions/api 路由
+scope/bot:
+  color: "c2e0c6"
+  description: Telegram Bot 与话题逻辑
+scope/auth:
+  color: "c2e0c6"
+  description: 登录 / 2FA / 会话 / 审计
+scope/db:
+  color: "c2e0c6"
+  description: KV / D1 / Hyperdrive 存储层
+scope/server:
+  color: "c2e0c6"
+  description: Node 桥接层 server/
+scope/shared:
+  color: "c2e0c6"
+  description: shared/ 共享模块
+scope/verify:
+  color: "c2e0c6"
+  description: 验证码 / 人机验证
+scope/i18n:
+  color: "c2e0c6"
+  description: 多语言
+scope/docker:
+  color: "c2e0c6"
+  description: 容器与部署
+scope/docs:
+  color: "c2e0c6"
+  description: 文档
+scope/deps:
+  color: "c2e0c6"
+  description: 依赖升级
+
+# ── 状态与流程 ──────────────────────────────────────────
+needs-triage:
+  color: "fbca04"
+  description: 待分类
+needs-repro:
+  color: "fbca04"
+  description: 等待可复现步骤
+needs-info:
+  color: "fbca04"
+  description: 等待补充信息
+blocked:
+  color: "b60205"
+  description: 被外部条件阻塞
+in-progress:
+  color: "0e8a16"
+  description: 有人正在处理
+ready-for-review:
+  color: "0e8a16"
+  description: 可进入审查
+good first issue:
+  color: "7057ff"
+  description: 适合新贡献者
+help wanted:
+  color: "008672"
+  description: 欢迎社区参与
+duplicate:
+  color: "cfd3d7"
+  description: 重复问题
+wontfix:
+  color: "ffffff"
+  description: 不计划处理
+stale:
+  color: "cfd3d7"
+  description: 长期无活动
+
+# ── 风险与规模（自动化写入）─────────────────────────────
+breaking:
+  color: "b60205"
+  description: 破坏性变更
+security:
+  color: "b60205"
+  description: 安全相关
+data-migration:
+  color: "d93f0b"
+  description: 涉及数据结构或迁移
+size/xs:
+  color: "3cbf00"
+  description: ≤ 50 行有效改动
+size/s:
+  color: "5d9801"
+  description: 51–200 行
+size/m:
+  color: "7f6a00"
+  description: 201–400 行
+size/l:
+  color: "d98300"
+  description: 401–800 行
+size/xl:
+  color: "b60205"
+  description: 大于 800 行，应拆分为多个 PR
+
+# ── 部署形态 ────────────────────────────────────────────
+deploy/cloudflare:
+  color: "f38020"
+  description: Cloudflare Pages / Functions
+deploy/docker:
+  color: "2496ed"
+  description: Docker / docker compose
+deploy/self-host:
+  color: "5d9801"
+  description: 自建 Node / VPS

@@ -1,0 +1,75 @@
+# 提交信息校验 — 在 PR 上校验标题与每个提交是否符合 Conventional Commits
+# 依据：.gitmessage、CONTRIBUTING.md 第 3 节
+# 说明：不做自动改写，只给出可读的失败原因；本工作流不设为必需检查，
+#       避免外部贡献者因标题格式被卡死（人工审查可要求修正）。
+
+name: Commit Convention
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  check:
+    name: 校验提交信息
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate PR title and commits
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo
+            const pr = context.payload.pull_request
+
+            const TYPES = ['feat','fix','docs','chore','refactor','perf','style','ci','build','revert']
+            const SCOPES = ['web','api','bot','auth','db','server','shared','verify','i18n','docker','ci','docs','deps']
+            // <type>(<scope>)!: <subject>
+            const re = new RegExp(`^(${TYPES.join('|')})(\\(([a-z0-9-]+)\\))?(!)?: .{2,}$`)
+
+            const problems = []
+            const title = pr.title || ''
+            const m = title.match(re)
+            if (!m) {
+              problems.push(
+                `PR 标题不符合约定式格式：\n\`${title}\`\n` +
+                `应为 \`<type>(<scope>): 说明\`，type 取 ${TYPES.join(' / ')}。`
+              )
+            } else if (m[3] && !SCOPES.includes(m[3])) {
+              problems.push(
+                `未知 scope \`${m[3]}\`。本仓库允许：${SCOPES.join(', ')}。` +
+                '新增 scope 请先更新 CONTRIBUTING.md 与 .gitmessage。'
+              )
+            }
+
+            const commits = await github.paginate(github.rest.pulls.listCommits, {
+              owner, repo, pull_number: pr.number, per_page: 100
+            })
+            for (const c of commits) {
+              const msg = (c.commit.message || '').split('\n')[0].trim()
+              if (/^(Merge|Revert) /.test(msg)) continue
+              const cm = msg.match(re)
+              if (!cm) {
+                problems.push(`提交 \`${c.sha.slice(0, 7)}\` 首行不符合格式：\`${msg}\``)
+              } else if (cm[3] && !SCOPES.includes(cm[3])) {
+                problems.push(
+                  `提交 \`${c.sha.slice(0, 7)}\` 使用了未知 scope \`${cm[3]}\`；允许：${SCOPES.join(', ')}。`
+                )
+              }
+            }
+
+            if (!problems.length) {
+              core.info('提交信息检查通过。')
+              await core.summary.addHeading('提交信息检查').addRaw('✅ 全部通过').write()
+              return
+            }
+
+            await core.summary
+              .addHeading('提交信息检查')
+              .addRaw(problems.map(p => `- ${p.replace(/\n/g, ' ')}`).join('\n'))
+              .write()
+            // 只作为提示输出，不使工作流失败（非必需检查）
+            core.warning(problems.join('\n\n'))
