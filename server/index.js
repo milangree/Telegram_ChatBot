@@ -23,6 +23,43 @@ const IS_LOCAL_DEV = process.env.NODE_ENV !== 'production'
   && !process.env.DOCKER
   && !fs.existsSync('/.dockerenv')
 
+function isTruthyEnv(value) {
+  return ['1', 'true', 'yes', 'on'].includes(String(value || '').toLowerCase())
+}
+
+// 获取浏览器看到的请求协议。反向代理场景优先使用 Express 已信任的协议；
+// 即使部署者尚未开启 TRUST_PROXY，也能从同源 Origin/Referer 安全识别 HTTPS，
+// 避免 CSRF 校验把 HTTPS 同源登录误判为跨站请求。
+function getExternalProtocol(req) {
+  const protocol = String(req.protocol || '').toLowerCase()
+  if (protocol === 'https') return 'https'
+
+  if (isTruthyEnv(process.env.TRUST_PROXY)) {
+    const forwarded = String(req.get('x-forwarded-proto') || '').split(',')[0].trim().toLowerCase()
+    if (forwarded === 'https') return 'https'
+  }
+
+  const host = String(req.get('host') || '').toLowerCase()
+  for (const header of ['origin', 'referer']) {
+    const value = req.get(header)
+    if (!value) continue
+    try {
+      const parsed = new URL(value)
+      if (parsed.host.toLowerCase() === host && (parsed.protocol === 'http:' || parsed.protocol === 'https:')) {
+        return parsed.protocol.slice(0, -1)
+      }
+    } catch {
+      // 忽略格式错误的来源头，继续使用 HTTP 默认值。
+    }
+  }
+
+  return 'http'
+}
+
+function getRequestUrl(req) {
+  return `${getExternalProtocol(req)}://${req.get('host') || 'localhost'}${req.originalUrl || req.url}`
+}
+
 // ── 全局 polyfill ─────────────────────────────────────────────────────────
 // Cloudflare Workers 全局可用，Node.js 也需要
 if (typeof globalThis.crypto === 'undefined') {
@@ -224,7 +261,7 @@ app.use(express.raw({ type: () => true, limit: '32mb' }))
 // CORS 中间件：复用 functions/_shared/cors.js 的单一策略（默认同源，白名单可选）
 app.use((req, res, next) => {
   // 构造一个最小的 Headers 视图供统一策略计算，避免两套逻辑漂移
-  const probe = new Request(`http://${req.get('host') || 'localhost'}${req.originalUrl || req.url}`, {
+  const probe = new Request(getRequestUrl(req), {
     method: req.method,
     headers: new Headers(req.headers),
   })
@@ -242,7 +279,7 @@ if (['1', 'true', 'yes', 'on'].includes(String(process.env.TRUST_PROXY || '').to
 
 // 状态变更请求的跨站来源校验（与 API 入口同一策略）
 app.use((req, res, next) => {
-  const probe = new Request(`http://${req.get('host') || 'localhost'}${req.originalUrl || req.url}`, {
+  const probe = new Request(getRequestUrl(req), {
     method: req.method,
     headers: new Headers(req.headers),
   })
@@ -314,7 +351,7 @@ app.use((err, req, res, next) => {
 // Webhook 路由 — Telegram Bot 调用
 app.all('/webhook', async (req, res) => {
   try {
-    const fullUrl = `${req.protocol}://${req.get('host')}${req.originalUrl}`
+    const fullUrl = getRequestUrl(req)
     const cfReq = expressToCfRequest(req, fullUrl)
     const ctx = buildContext(cfReq)
     const cfRes = await webhookHandler(ctx)
@@ -328,7 +365,7 @@ app.all('/webhook', async (req, res) => {
 // API 路由 — 所有 /api/* 请求
 app.all('/api/{*path}', async (req, res) => {
   try {
-    const fullUrl = `${req.protocol}://${req.get('host')}${req.originalUrl}`
+    const fullUrl = getRequestUrl(req)
     const cfReq = expressToCfRequest(req, fullUrl)
     const ctx = buildContext(cfReq)
     const cfRes = await apiHandler(ctx)
